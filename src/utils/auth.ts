@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export interface User {
   username: string;
@@ -32,6 +32,7 @@ export const signIn = async (username: string, password: string) => {
     localStorage.setItem("user", JSON.stringify(data.user));
 
     return { data: data.user, error: null };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     return {
       error: new Error("Greška prilikom povezivanja sa serverom"),

@@ -3,16 +3,18 @@ import { env } from "../config/env.js";
 import { withConnection } from "./db.service.js";
 
 export const login = async (username, password) => {
+  console.log("Login attempt for user:", username, "with password:", password);
   return withConnection(async (connection) => {
-    const [rows] = await connection.execute("CALL logovanje_korisnika(?, ?)", [
-      username,
-      password,
-    ]);
+    const [rows] = await connection.execute(
+      "CALL sp_pregled_aktivnih_radnika(?, ?)",
+      [username, password],
+    );
 
     const row = rows?.[0]?.[0] || null;
 
-    const sifraRadnika = row?.povratna ?? null;
-    const vrstaRadnika = row?.vrsta ?? null;
+    console.log("Database response for login:", row);
+    const sifraRadnika = row?.lozinka ?? null;
+    const vrstaRadnika = row?.vrsta_radnika ?? null;
 
     if (sifraRadnika == null) return { success: false };
     if (sifraRadnika == 0) return { success: false };
