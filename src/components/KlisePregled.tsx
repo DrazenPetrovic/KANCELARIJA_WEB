@@ -1,0 +1,394 @@
+import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  BadgeCheck,
+  ClipboardList,
+  Factory,
+  Filter,
+  HelpCircle,
+  Layers,
+  Loader2,
+  Search,
+  Wallet,
+} from "lucide-react";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
+const PRIMARY = "#785E9E";
+
+interface Klise {
+  sifra: string;
+  naziv_klisea: string;
+  lokacija_partnera: string;
+  dimenzija_za_stampu: string;
+  povrsina_klisea: string;
+  cijena_klisea: string;
+  datum_narcucivanja: string;
+  napomena: string;
+  primljen_u_proizvodnju: number;
+  naplacen_kancelarija: string;
+  dobavljac_klisea: string;
+  placeno_dobavljacu: number | string;
+  povrsina_kod_dobavljaca: number | string;
+  broj_racuna_od_dobavljaca: string;
+  datum_racuna_od_dobavljaca: string;
+  broj_nepopunjenih_polja: number;
+}
+
+const STATUS_CONFIG: Record<
+  number,
+  {
+    bg: string;
+    border: string;
+    text: string;
+    icon: React.ReactNode;
+    label: string;
+  }
+> = {
+  0: {
+    bg: "#eff6ff",
+    border: "#93c5fd",
+    text: "#1d4ed8",
+    icon: <ClipboardList size={13} />,
+    label: "Naručen",
+  },
+  1: {
+    bg: "#ede8f5",
+    border: "#a78bdc",
+    text: "#785E9E",
+    icon: <Factory size={13} />,
+    label: "Potvrđen u proizvodnji",
+  },
+  2: {
+    bg: "#fefce8",
+    border: "#fcd34d",
+    text: "#b45309",
+    icon: <Wallet size={13} />,
+    label: "Kancelarija potvrdila naplatu",
+  },
+  3: {
+    bg: "#edf7e0",
+    border: "#86efac",
+    text: "#15803d",
+    icon: <BadgeCheck size={13} />,
+    label: "Potvrđena cijena i površina",
+  },
+};
+
+const NEPOZNAT = {
+  bg: "#fef2f2",
+  border: "#fca5a5",
+  text: "#b91c1c",
+  icon: <HelpCircle size={13} />,
+  label: "Nepoznat status",
+};
+
+function StatusBadge({ status }: { status: number }) {
+  const cfg = STATUS_CONFIG[status] ?? NEPOZNAT;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap"
+      style={{ background: cfg.bg, borderColor: cfg.border, color: cfg.text }}
+    >
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  );
+}
+
+const TH = ({
+  children,
+  center,
+  narrow,
+}: {
+  children: React.ReactNode;
+  center?: boolean;
+  narrow?: boolean;
+}) => (
+  <th
+    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap ${center ? "text-center" : "text-left"}`}
+    style={{ color: PRIMARY, background: "#f4f1f9" }}
+  >
+    {children}
+  </th>
+);
+
+const TD = ({
+  children,
+  pending,
+  noBorder,
+  narrow,
+  center,
+}: {
+  children: React.ReactNode;
+  pending?: boolean;
+  noBorder?: boolean;
+  narrow?: boolean;
+  center?: boolean;
+}) => (
+  <td
+    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-2.5 text-sm whitespace-nowrap ${
+      noBorder ? "" : "border-b border-gray-100"
+    } ${pending ? "text-amber-500" : "text-gray-700"} ${center ? "text-center" : ""}`}
+  >
+    {children}
+  </td>
+);
+
+const STATUSI_OPTIONS = [
+  { value: -1, label: "Svi statusi" },
+  { value: 0, label: "Naručen" },
+  { value: 1, label: "Potvrđen u proizvodnji" },
+  { value: 2, label: "Kancelarija potvrdila naplatu" },
+  { value: 3, label: "Potvrđena cijena i površina" },
+];
+
+export function KlisePregled() {
+  const [data, setData] = useState<Klise[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(-1);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/klise/klise-pregled`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Greška pri učitavanju podataka");
+        const json = await res.json();
+        setData(json.data || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Nepoznata greška");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return data.filter((k) => {
+      const matchSearch =
+        search === "" ||
+        k.naziv_klisea.toLowerCase().includes(search.toLowerCase()) ||
+        k.sifra.toLowerCase().includes(search.toLowerCase()) ||
+        k.dobavljac_klisea.toLowerCase().includes(search.toLowerCase());
+
+      const matchStatus =
+        statusFilter === -1 || k.primljen_u_proizvodnju === statusFilter;
+
+      return matchSearch && matchStatus;
+    });
+  }, [data, search, statusFilter]);
+
+  return (
+    <div className="space-y-4">
+      {/* Naslov */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: "#ede8f5" }}
+          >
+            <Layers size={20} style={{ color: PRIMARY }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Pregled kliša</h2>
+            {!loading && !error && (
+              <p className="text-xs text-gray-400">
+                Ukupno: {filtered.length} / {data.length}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Filter zona */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Filter size={14} style={{ color: PRIMARY }} />
+          <span
+            className="text-xs font-bold uppercase tracking-wider"
+            style={{ color: PRIMARY }}
+          >
+            Filteri
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="relative">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              placeholder="Šifra, naziv, dobavljač..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl w-64 focus:outline-none focus:border-[#785E9E] transition-colors"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(Number(e.target.value))}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700"
+          >
+            {STATUSI_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Prostor za buduće filtere */}
+          <div
+            className="flex items-center px-3 py-2 text-xs text-gray-300 border border-dashed border-gray-200 rounded-xl"
+            title="Prostor za dodatne filtere"
+          >
+            + filteri
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading && (
+          <div className="flex items-center justify-center py-20 gap-3">
+            <Loader2
+              size={22}
+              className="animate-spin"
+              style={{ color: PRIMARY }}
+            />
+            <span className="text-sm text-gray-500">Učitavanje...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-sm text-red-500">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && filtered.length === 0 && (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-sm text-gray-400">Nema podataka za prikaz.</p>
+          </div>
+        )}
+
+        {!loading && !error && filtered.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <TH>Šif</TH>
+                  <TH narrow>Naziv kliša</TH>
+                  <TH>Lokacija</TH>
+                  <TH>Dimenzija</TH>
+                  <TH narrow>Površina</TH>
+                  <TH>Cijena</TH>
+                  <TH>Datum</TH>
+                  <TH center>Status</TH>
+                  <TH>Naplaćeno (kan.)</TH>
+                  <TH>Dobavljač</TH>
+                  <TH>Plaćeno dobavljaču</TH>
+                  <TH>Površina (dob.)</TH>
+                  <TH>Br. računa (dob.)</TH>
+                  <TH>Datum računa (dob.)</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((k, i) => {
+                  const hasPending = k.broj_nepopunjenih_polja > 0;
+                  const rowBg = hasPending
+                    ? "hover:bg-amber-50"
+                    : "hover:bg-purple-50/40";
+                  return (
+                    <Fragment key={k.sifra ?? i}>
+                      {/* Red 1 — podaci */}
+                      <tr className={`transition-colors ${rowBg}`}>
+                        <TD noBorder>
+                          <span
+                            className="font-mono font-semibold text-xs"
+                            style={{ color: PRIMARY }}
+                          >
+                            {k.sifra}
+                          </span>
+                        </TD>
+                        <TD noBorder narrow>
+                          <span className="font-medium">{k.naziv_klisea}</span>
+                        </TD>
+                        <TD noBorder>{k.lokacija_partnera}</TD>
+                        <TD noBorder>{k.dimenzija_za_stampu}</TD>
+                        <TD noBorder narrow>
+                          {k.povrsina_klisea}
+                        </TD>
+                        <TD noBorder>{k.cijena_klisea}</TD>
+                        <TD noBorder>{k.datum_narcucivanja}</TD>
+                        <TD noBorder center>
+                          <StatusBadge status={k.primljen_u_proizvodnju} />
+                        </TD>
+                        <TD
+                          noBorder
+                          pending={k.naplacen_kancelarija === "ceka"}
+                        >
+                          {k.naplacen_kancelarija}
+                        </TD>
+                        <TD noBorder pending={k.dobavljac_klisea === "ceka"}>
+                          {k.dobavljac_klisea}
+                        </TD>
+                        <TD noBorder pending={Number(k.placeno_dobavljacu) < 0}>
+                          {Number(k.placeno_dobavljacu) < 0
+                            ? "čeka"
+                            : `${k.placeno_dobavljacu} KM`}
+                        </TD>
+                        <TD
+                          noBorder
+                          pending={Number(k.povrsina_kod_dobavljaca) < 0}
+                        >
+                          {Number(k.povrsina_kod_dobavljaca) < 0
+                            ? "čeka"
+                            : `${k.povrsina_kod_dobavljaca} m²`}
+                        </TD>
+                        <TD
+                          noBorder
+                          pending={k.broj_racuna_od_dobavljaca === "ceka"}
+                        >
+                          {k.broj_racuna_od_dobavljaca}
+                        </TD>
+                        <TD
+                          noBorder
+                          pending={k.datum_racuna_od_dobavljaca === "ceka"}
+                        >
+                          {k.datum_racuna_od_dobavljaca}
+                        </TD>
+                      </tr>
+
+                      {/* Red 2 — napomena */}
+                      <tr className={`transition-colors ${rowBg}`}>
+                        <td
+                          colSpan={14}
+                          className="px-4 pb-2.5 pt-0 text-xs border-b border-gray-100"
+                          style={{ color: "#9ca3af" }}
+                        >
+                          <span
+                            className="font-semibold"
+                            style={{ color: "#6b7280" }}
+                          >
+                            Napomena:{" "}
+                          </span>
+                          {k.napomena}
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

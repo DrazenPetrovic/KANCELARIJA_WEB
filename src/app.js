@@ -1,11 +1,16 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { env } from "./config/env.js";
 
 import healthRoutes from "./routes/health.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import preglediRoutes from "./routes/pregledi.routes.js";
+import kliseRoutes from "./routes/klise.routes.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const createApp = () => {
   const app = express();
@@ -22,6 +27,16 @@ export const createApp = () => {
   app.use("/api", healthRoutes);
   app.use("/api/auth", authRoutes);
   app.use("/api/pregledi", preglediRoutes);
+  app.use("/api/klise", kliseRoutes);
+
+  // Serviranje frontenda u produkciji
+  if (env.NODE_ENV === "production") {
+    const distPath = path.join(__dirname, "../dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
 
   return app;
 };

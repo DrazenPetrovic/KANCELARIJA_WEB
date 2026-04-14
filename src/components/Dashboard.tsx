@@ -1,4 +1,6 @@
 import ReactDOM from "react-dom";
+import { KlisePregled } from "./KlisePregled";
+import { KliseUnosNovog } from "./KliseUnosNovog";
 import { useEffect, useRef, useState } from "react";
 import {
   BarChart2,
@@ -6,12 +8,18 @@ import {
   Calendar,
   ChevronDown,
   ChevronRight,
+  CreditCard,
+  Eye,
+  Factory,
+  FilePlus,
   FileText,
   FolderArchive,
+  Layers,
   LogOut,
   Receipt,
   Settings,
   ShoppingCart,
+  Truck,
 } from "lucide-react";
 
 const PRIMARY = "#785E9E";
@@ -34,6 +42,10 @@ type MenuSection =
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "narudzbe-pregled"
+  | "klise-unos"
+  | "klise-naplata"
+  | "klise-dobavljac"
+  | "klise-pregled"
   | null;
 
 export function Dashboard({
@@ -43,17 +55,20 @@ export function Dashboard({
 }: DashboardProps) {
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
-    "file" | "pregledi" | "narudzbe" | null
+    "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
+  const proizvodnjaBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
+  const proizvodnjaDrop = useRef<HTMLDivElement>(null);
 
   const isAdministrator = vrstaRadnika === 1;
   const isStandardUser = vrstaRadnika === 3;
@@ -70,33 +85,41 @@ export function Dashboard({
       const inNarudzbe =
         narudzbeBtnRef.current?.contains(t) ||
         narudzbeDropRef.current?.contains(t);
-      if (!inFile && !inPregledi && !inNarudzbe) setOpenMenu(null);
+      const inProizvodnja =
+        proizvodnjaBtnRef.current?.contains(t) ||
+        proizvodnjaDrop.current?.contains(t);
+      if (!inFile && !inPregledi && !inNarudzbe && !inProizvodnja)
+        setOpenMenu(null);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const toggleMenu = (menu: "file" | "pregledi" | "narudzbe") => {
+  const toggleMenu = (
+    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja",
+  ) => {
     const ref =
       menu === "file"
         ? fileBtnRef
         : menu === "pregledi"
           ? preglediBtnRef
-          : narudzbeBtnRef;
+          : menu === "narudzbe"
+            ? narudzbeBtnRef
+            : proizvodnjaBtnRef;
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 6, left: r.left });
     }
     setOpenMenu((prev) => (prev === menu ? null : menu));
-    if (menu !== "file") {
-      setArchiveExpanded(false);
-    }
+    if (menu !== "file") setArchiveExpanded(false);
+    if (menu !== "proizvodnja") setKliseExpanded(false);
   };
 
   const handleSectionChange = (section: MenuSection) => {
     setActiveSection(section);
     setOpenMenu(null);
     setArchiveExpanded(false);
+    setKliseExpanded(false);
   };
 
   const navBtnActive = {
@@ -555,6 +578,145 @@ export function Dashboard({
                     document.body,
                   )}
               </div>
+              {/* PROIZVODNJA */}
+              <div>
+                <button
+                  ref={proizvodnjaBtnRef}
+                  onClick={() => toggleMenu("proizvodnja")}
+                  className={navBtnBase}
+                  style={
+                    openMenu === "proizvodnja" ||
+                    activeSection?.startsWith("klise-")
+                      ? navBtnActive
+                      : {}
+                  }
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{
+                      background:
+                        openMenu === "proizvodnja" ||
+                        activeSection?.startsWith("klise-")
+                          ? "rgba(255,255,255,0.2)"
+                          : "#ede8f5",
+                    }}
+                  >
+                    <Factory
+                      size={13}
+                      style={{
+                        color:
+                          openMenu === "proizvodnja" ||
+                          activeSection?.startsWith("klise-")
+                            ? "#fff"
+                            : PRIMARY,
+                      }}
+                    />
+                  </span>
+                  Proizvodnja
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "proizvodnja" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "proizvodnja" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={proizvodnjaDrop}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className="w-56 rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden"
+                    >
+                      <div
+                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2"
+                        style={{ color: PRIMARY, background: "#f4f1f9" }}
+                      >
+                        <Factory size={12} />
+                        Proizvodnja
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        {/* Kliše toggle */}
+                        <button
+                          onClick={() => setKliseExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-purple-50 transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span
+                              className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
+                              style={{ background: "#ede8f5" }}
+                            >
+                              <Layers size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Kliše
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 ${kliseExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {kliseExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            {[
+                              {
+                                key: "klise-unos" as MenuSection,
+                                label: "Unos kliše",
+                                icon: <FilePlus size={13} />,
+                              },
+                              {
+                                key: "klise-naplata" as MenuSection,
+                                label: "Unos naplate klišea",
+                                icon: <CreditCard size={13} />,
+                              },
+                              {
+                                key: "klise-dobavljac" as MenuSection,
+                                label: "Unos podataka od dobavljača",
+                                icon: <Truck size={13} />,
+                              },
+                              {
+                                key: "klise-pregled" as MenuSection,
+                                label: "Pregled",
+                                icon: <Eye size={13} />,
+                              },
+                            ].map(({ key, label, icon }) => {
+                              const isActive = activeSection === key;
+                              return (
+                                <button
+                                  key={key}
+                                  onClick={() => handleSectionChange(key)}
+                                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                    isActive
+                                      ? "font-bold"
+                                      : "text-gray-600 hover:bg-purple-50"
+                                  }`}
+                                  style={isActive ? { color: PRIMARY } : {}}
+                                >
+                                  <span
+                                    className="flex-shrink-0"
+                                    style={{
+                                      color: isActive ? PRIMARY : "#9ca3af",
+                                    }}
+                                  >
+                                    {icon}
+                                  </span>
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
             </>
           )}
         </div>
@@ -563,15 +725,7 @@ export function Dashboard({
       {/* Content */}
       <main className="mx-[10px] px-[10px] py-8">
         {activeSection === null && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow"
-              style={{ background: PRIMARY }}
-            >
-              <FileText size={28} className="text-white" />
-            </div>
-            <p className="text-gray-400 text-sm">Odaberite stavku iz menija.</p>
-          </div>
+          <div className="flex flex-col items-center justify-center py-20 text-center"></div>
         )}
 
         {activeSection === "file-opcije" && (
@@ -659,6 +813,44 @@ export function Dashboard({
             <p className="text-gray-500">Sve narudžbe.</p>
           </div>
         )}
+
+        {activeSection === "klise-unos" && <KliseUnosNovog />}
+
+        {activeSection === "klise-naplata" && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: "#ede8f5" }}
+              >
+                <CreditCard size={20} style={{ color: PRIMARY }} />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800">
+                Unos naplate klišea
+              </h2>
+            </div>
+            <p className="text-gray-500">Unos podataka o naplati klišea.</p>
+          </div>
+        )}
+
+        {activeSection === "klise-dobavljac" && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: "#ede8f5" }}
+              >
+                <Truck size={20} style={{ color: PRIMARY }} />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800">
+                Unos podataka od dobavljača
+              </h2>
+            </div>
+            <p className="text-gray-500">Unos podataka o dobavljačima kliša.</p>
+          </div>
+        )}
+
+        {activeSection === "klise-pregled" && <KlisePregled />}
       </main>
     </div>
   );
