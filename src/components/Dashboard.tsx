@@ -1,6 +1,8 @@
 import ReactDOM from "react-dom";
 import { KlisePregled } from "./KlisePregled";
+import { KliseNaplataOdKupca } from "./KliseNaplataOdKupca";
 import { KliseUnosNovog } from "./KliseUnosNovog";
+import { KliseUnosZaDobavljaca } from "./KliseUnosZaDobavljaca";
 import { useEffect, useRef, useState } from "react";
 import {
   BarChart2,
@@ -60,6 +62,7 @@ export function Dashboard({
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const [hoveredBtn, setHoveredBtn] = useState<"file" | "pregledi" | "narudzbe" | "proizvodnja" | null>(null);
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
@@ -122,14 +125,17 @@ export function Dashboard({
     setKliseExpanded(false);
   };
 
-  const navBtnActive = {
-    background: PRIMARY,
+  const navBtnStyle = (
+    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja",
+    isActive: boolean,
+  ): React.CSSProperties => ({
+    background: isActive || hoveredBtn === menu ? ACCENT : PRIMARY,
+    borderColor: ACCENT,
     color: "#fff",
-    borderColor: PRIMARY,
-  } as React.CSSProperties;
+  });
 
   const navBtnBase =
-    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 transition-all duration-150 whitespace-nowrap hover:border-[#785E9E] hover:text-[#785E9E] text-gray-600 bg-white";
+    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all duration-150 whitespace-nowrap";
 
   const dropdownItemClass = (active: boolean) =>
     `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all ${
@@ -193,32 +199,15 @@ export function Dashboard({
                   ref={fileBtnRef}
                   onClick={() => toggleMenu("file")}
                   className={navBtnBase}
-                  style={
-                    openMenu === "file" || activeSection?.startsWith("file-")
-                      ? navBtnActive
-                      : {}
-                  }
+                  style={navBtnStyle("file", !!(openMenu === "file" || activeSection?.startsWith("file-")))}
+                  onMouseEnter={() => setHoveredBtn("file")}
+                  onMouseLeave={() => setHoveredBtn(null)}
                 >
                   <span
                     className="flex items-center justify-center w-6 h-6 rounded-lg"
-                    style={{
-                      background:
-                        openMenu === "file" ||
-                        activeSection?.startsWith("file-")
-                          ? "rgba(255,255,255,0.2)"
-                          : "#ede8f5",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.85)" }}
                   >
-                    <FileText
-                      size={13}
-                      style={{
-                        color:
-                          openMenu === "file" ||
-                          activeSection?.startsWith("file-")
-                            ? "#fff"
-                            : PRIMARY,
-                      }}
-                    />
+                    <FileText size={13} style={{ color: "#111" }} />
                   </span>
                   File
                   <ChevronDown
@@ -347,36 +336,15 @@ export function Dashboard({
                   ref={preglediBtnRef}
                   onClick={() => toggleMenu("pregledi")}
                   className={navBtnBase}
-                  style={
-                    openMenu === "pregledi" ||
-                    activeSection === "pregledi-racuna" ||
-                    activeSection === "pregled-kalkulacija"
-                      ? navBtnActive
-                      : {}
-                  }
+                  style={navBtnStyle("pregledi", !!(openMenu === "pregledi" || activeSection === "pregledi-racuna" || activeSection === "pregled-kalkulacija"))}
+                  onMouseEnter={() => setHoveredBtn("pregledi")}
+                  onMouseLeave={() => setHoveredBtn(null)}
                 >
                   <span
                     className="flex items-center justify-center w-6 h-6 rounded-lg"
-                    style={{
-                      background:
-                        openMenu === "pregledi" ||
-                        activeSection === "pregledi-racuna" ||
-                        activeSection === "pregled-kalkulacija"
-                          ? "rgba(255,255,255,0.2)"
-                          : "#ede8f5",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.85)" }}
                   >
-                    <BarChart2
-                      size={13}
-                      style={{
-                        color:
-                          openMenu === "pregledi" ||
-                          activeSection === "pregledi-racuna" ||
-                          activeSection === "pregled-kalkulacija"
-                            ? "#fff"
-                            : PRIMARY,
-                      }}
-                    />
+                    <BarChart2 size={13} style={{ color: "#111" }} />
                   </span>
                   Pregledi
                   <ChevronDown
@@ -484,33 +452,15 @@ export function Dashboard({
                   ref={narudzbeBtnRef}
                   onClick={() => toggleMenu("narudzbe")}
                   className={navBtnBase}
-                  style={
-                    openMenu === "narudzbe" ||
-                    activeSection === "narudzbe-pregled"
-                      ? navBtnActive
-                      : {}
-                  }
+                  style={navBtnStyle("narudzbe", !!(openMenu === "narudzbe" || activeSection === "narudzbe-pregled"))}
+                  onMouseEnter={() => setHoveredBtn("narudzbe")}
+                  onMouseLeave={() => setHoveredBtn(null)}
                 >
                   <span
                     className="flex items-center justify-center w-6 h-6 rounded-lg"
-                    style={{
-                      background:
-                        openMenu === "narudzbe" ||
-                        activeSection === "narudzbe-pregled"
-                          ? "rgba(255,255,255,0.2)"
-                          : "#edf7e0",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.85)" }}
                   >
-                    <ShoppingCart
-                      size={13}
-                      style={{
-                        color:
-                          openMenu === "narudzbe" ||
-                          activeSection === "narudzbe-pregled"
-                            ? "#fff"
-                            : ACCENT,
-                      }}
-                    />
+                    <ShoppingCart size={13} style={{ color: "#111" }} />
                   </span>
                   Narudžbe
                   <ChevronDown
@@ -584,33 +534,15 @@ export function Dashboard({
                   ref={proizvodnjaBtnRef}
                   onClick={() => toggleMenu("proizvodnja")}
                   className={navBtnBase}
-                  style={
-                    openMenu === "proizvodnja" ||
-                    activeSection?.startsWith("klise-")
-                      ? navBtnActive
-                      : {}
-                  }
+                  style={navBtnStyle("proizvodnja", !!(openMenu === "proizvodnja" || activeSection?.startsWith("klise-")))}
+                  onMouseEnter={() => setHoveredBtn("proizvodnja")}
+                  onMouseLeave={() => setHoveredBtn(null)}
                 >
                   <span
                     className="flex items-center justify-center w-6 h-6 rounded-lg"
-                    style={{
-                      background:
-                        openMenu === "proizvodnja" ||
-                        activeSection?.startsWith("klise-")
-                          ? "rgba(255,255,255,0.2)"
-                          : "#ede8f5",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.85)" }}
                   >
-                    <Factory
-                      size={13}
-                      style={{
-                        color:
-                          openMenu === "proizvodnja" ||
-                          activeSection?.startsWith("klise-")
-                            ? "#fff"
-                            : PRIMARY,
-                      }}
-                    />
+                    <Factory size={13} style={{ color: "#111" }} />
                   </span>
                   Proizvodnja
                   <ChevronDown
@@ -816,39 +748,9 @@ export function Dashboard({
 
         {activeSection === "klise-unos" && <KliseUnosNovog />}
 
-        {activeSection === "klise-naplata" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#ede8f5" }}
-              >
-                <CreditCard size={20} style={{ color: PRIMARY }} />
-              </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Unos naplate klišea
-              </h2>
-            </div>
-            <p className="text-gray-500">Unos podataka o naplati klišea.</p>
-          </div>
-        )}
+        {activeSection === "klise-naplata" && <KliseNaplataOdKupca />}
 
-        {activeSection === "klise-dobavljac" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#ede8f5" }}
-              >
-                <Truck size={20} style={{ color: PRIMARY }} />
-              </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Unos podataka od dobavljača
-              </h2>
-            </div>
-            <p className="text-gray-500">Unos podataka o dobavljačima kliša.</p>
-          </div>
-        )}
+        {activeSection === "klise-dobavljac" && <KliseUnosZaDobavljaca />}
 
         {activeSection === "klise-pregled" && <KlisePregled />}
       </main>

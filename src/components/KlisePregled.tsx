@@ -287,15 +287,15 @@ export function KlisePregled() {
                   <TH>Lokacija</TH>
                   <TH>Dimenzija</TH>
                   <TH narrow>Površina</TH>
-                  <TH>Cijena</TH>
-                  <TH>Datum</TH>
+                  <TH center>Cijena</TH>
+                  <TH center>Datum</TH>
                   <TH center>Status</TH>
-                  <TH>Naplaćeno (kan.)</TH>
-                  <TH>Dobavljač</TH>
-                  <TH>Plaćeno dobavljaču</TH>
-                  <TH>Površina (dob.)</TH>
-                  <TH>Br. računa (dob.)</TH>
-                  <TH>Datum računa (dob.)</TH>
+                  <TH center>Naplaćeno</TH>
+                  <TH center>Dobavljač</TH>
+                  <TH center>Plaćeno dob</TH>
+                  <TH center>Površina</TH>
+                  <TH center>Br. računa</TH>
+                  <TH center>Datum računa</TH>
                 </tr>
               </thead>
               <tbody>
@@ -324,51 +324,67 @@ export function KlisePregled() {
                         <TD noBorder narrow>
                           {k.povrsina_klisea}
                         </TD>
-                        <TD noBorder>{k.cijena_klisea}</TD>
-                        <TD noBorder>{k.datum_narcucivanja}</TD>
+                        <TD noBorder center>
+                          {k.cijena_klisea}
+                        </TD>
+                        <TD noBorder center>
+                          {k.datum_narcucivanja}
+                        </TD>
                         <TD noBorder center>
                           <StatusBadge status={k.primljen_u_proizvodnju} />
                         </TD>
                         <TD
                           noBorder
+                          center
                           pending={k.naplacen_kancelarija === "ceka"}
                         >
-                          {k.naplacen_kancelarija}
+                          {k.naplacen_kancelarija === "ceka" ? "čeka" : k.naplacen_kancelarija}
                         </TD>
-                        <TD noBorder pending={k.dobavljac_klisea === "ceka"}>
-                          {k.dobavljac_klisea}
+                        <TD
+                          noBorder
+                          center
+                          pending={k.dobavljac_klisea === "ceka"}
+                        >
+                          {k.dobavljac_klisea === "ceka" ? "čeka" : k.dobavljac_klisea}
                         </TD>
-                        <TD noBorder pending={Number(k.placeno_dobavljacu) < 0}>
+                        <TD
+                          noBorder
+                          center
+                          pending={Number(k.placeno_dobavljacu) < 0}
+                        >
                           {Number(k.placeno_dobavljacu) < 0
                             ? "čeka"
                             : `${k.placeno_dobavljacu} KM`}
                         </TD>
                         <TD
                           noBorder
+                          center
                           pending={Number(k.povrsina_kod_dobavljaca) < 0}
                         >
                           {Number(k.povrsina_kod_dobavljaca) < 0
                             ? "čeka"
-                            : `${k.povrsina_kod_dobavljaca} m²`}
+                            : `${k.povrsina_kod_dobavljaca} dm²`}
                         </TD>
                         <TD
                           noBorder
+                          center
                           pending={k.broj_racuna_od_dobavljaca === "ceka"}
                         >
-                          {k.broj_racuna_od_dobavljaca}
+                          {k.broj_racuna_od_dobavljaca === "ceka" ? "čeka" : k.broj_racuna_od_dobavljaca}
                         </TD>
                         <TD
                           noBorder
+                          center
                           pending={k.datum_racuna_od_dobavljaca === "ceka"}
                         >
-                          {k.datum_racuna_od_dobavljaca}
+                          {k.datum_racuna_od_dobavljaca === "ceka" ? "čeka" : k.datum_racuna_od_dobavljaca}
                         </TD>
                       </tr>
 
                       {/* Red 2 — napomena */}
                       <tr className={`transition-colors ${rowBg}`}>
                         <td
-                          colSpan={14}
+                          colSpan={9}
                           className="px-4 pb-2.5 pt-0 text-xs border-b border-gray-100"
                           style={{ color: "#9ca3af" }}
                         >
@@ -379,6 +395,18 @@ export function KlisePregled() {
                             Napomena:{" "}
                           </span>
                           {k.napomena}
+                        </td>
+                        <td
+                          colSpan={5}
+                          className="px-3 pb-2.5 pt-0 text-xs border-b border-gray-100 text-center"
+                        >
+                          {Number(k.placeno_dobavljacu) > 0 && Number(k.povrsina_kod_dobavljaca) > 0 ? (
+                            <span className="font-semibold" style={{ color: PRIMARY }}>
+                              {(Number(k.placeno_dobavljacu) / Number(k.povrsina_kod_dobavljaca)).toFixed(3)} KM/dm²
+                            </span>
+                          ) : (
+                            <span style={{ color: "#9ca3af" }}>–</span>
+                          )}
                         </td>
                       </tr>
                     </Fragment>
