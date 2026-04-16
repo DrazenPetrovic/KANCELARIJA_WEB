@@ -42,7 +42,6 @@ function formatDatum(datum: string | null | undefined): string {
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
-
 function formatDecimal(val: string | null | undefined, suffix = ""): string {
   if (!val) return "-";
   const num = parseFloat(val);
@@ -91,9 +90,10 @@ export function KliseUnosZaDobavljaca() {
     fetchLista();
   }, [refreshKey]);
 
-  const set = (field: keyof FormData) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const set =
+    (field: keyof FormData) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleSelect = (k: KliseRow) => {
     setSelected(k);
@@ -219,7 +219,7 @@ export function KliseUnosZaDobavljaca() {
                     <th className="px-4 py-3 text-left">Dimenzija</th>
                     <th className="px-4 py-3 text-right">Površina</th>
                     <th className="px-4 py-3 text-right">Cijena</th>
-                    <th className="px-4 py-3 text-left">Datum naručivanja</th>
+                    <th className="px-4 py-3 text-left">Datum</th>
                   </tr>
                 </thead>
                 <tbody>
