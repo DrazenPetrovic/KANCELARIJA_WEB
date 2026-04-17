@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Package, Truck } from "lucide-react";
+import { useBaza } from "../context/BazaContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -60,6 +61,7 @@ const Label = ({ children }: { children: React.ReactNode }) => (
 );
 
 export function KliseUnosZaDobavljaca() {
+  const { isArhiva } = useBaza();
   const [lista, setLista] = useState<KliseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<KliseRow | null>(null);
@@ -437,7 +439,7 @@ export function KliseUnosZaDobavljaca() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || isArhiva}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60"
                   style={{ background: PRIMARY }}
                 >

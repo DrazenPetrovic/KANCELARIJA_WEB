@@ -4,6 +4,7 @@ import { KliseNaplataOdKupca } from "./KliseNaplataOdKupca";
 import { KliseUnosNovog } from "./KliseUnosNovog";
 import { KliseUnosZaDobavljaca } from "./KliseUnosZaDobavljaca";
 import { useEffect, useRef, useState } from "react";
+import { BazaContext } from "../context/BazaContext";
 import {
   BarChart2,
   Calculator,
@@ -11,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   CreditCard,
+  Database,
   Eye,
   Factory,
   FilePlus,
@@ -62,7 +64,9 @@ export function Dashboard({
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
-  const [hoveredBtn, setHoveredBtn] = useState<"file" | "pregledi" | "narudzbe" | "proizvodnja" | null>(null);
+  const [hoveredBtn, setHoveredBtn] = useState<
+    "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
+  >(null);
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
@@ -76,6 +80,13 @@ export function Dashboard({
   const isAdministrator = vrstaRadnika === 1;
   const isStandardUser = vrstaRadnika === 3;
   const roleLabel = isAdministrator ? "Administrator" : "Korisnik";
+
+  const bazaLabel = activeSection?.startsWith("file-arhiva-")
+    ? `žiralni ${activeSection.replace("file-arhiva-", "")}`
+    : "žiralni";
+
+  const isArhiva = activeSection?.startsWith("file-arhiva-") ?? false;
+  const aktivnaGodina = isArhiva ? activeSection!.replace("file-arhiva-", "") : null;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -146,32 +157,49 @@ export function Dashboard({
     <div className="min-h-screen" style={{ background: "#f4f1f9" }}>
       {/* Header */}
       <header style={{ background: PRIMARY }} className="text-white shadow-lg">
-        <div className="mx-[15px] px-[5px] py-3 flex items-center justify-between">
+        <div className="mx-[15px] px-[5px] py-3 flex items-center justify-between relative">
           <div className="flex items-center gap-3">
             <img
               src="/foto/karpas_logo_software.png"
               alt="Karpas logo"
-              className="h-10 w-10 object-contain rounded-lg bg-white/10 p-1"
+              className="h-10 w-10 object-contain rounded-lg bg-white/40 p-1"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
-            <div>
-              <p className="text-lg font-bold leading-tight tracking-wide">
+            <div className="flex items-center gap-2">
+              <p
+                className="text-lg font-bold leading-tight tracking-wide"
+                style={{ color: ACCENT }}
+              >
                 Kancelarija
-              </p>
-              <p className="text-xs text-white/60 hidden sm:block">
-                Karpas Ambalaže
               </p>
             </div>
           </div>
 
+          <div className="absolute left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center">
+            <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
+              Rad u bazi podataka
+            </p>
+            <p
+              className="text-sm font-bold uppercase tracking-wide"
+              style={{ color: ACCENT }}
+            >
+              {bazaLabel}
+            </p>
+          </div>
+
           <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
+            <div className="hidden sm:flex items-center gap-2">
               <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
-                {roleLabel}
+                {roleLabel}:
               </p>
-              <p className="text-sm font-semibold">{username}</p>
+              <p
+                className="text-sm font-semibold uppercase"
+                style={{ color: ACCENT }}
+              >
+                {username}
+              </p>
             </div>
             <button
               onClick={onLogout}
@@ -190,7 +218,7 @@ export function Dashboard({
 
       {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-100">
-        <div className="mx-[5px] px-[5px] flex gap-2 py-3 items-center">
+        <div className="mx-[5px] px-[5px] flex gap-2 py-3 items-center justify-center">
           {isStandardUser && (
             <>
               {/* FILE */}
@@ -199,7 +227,12 @@ export function Dashboard({
                   ref={fileBtnRef}
                   onClick={() => toggleMenu("file")}
                   className={navBtnBase}
-                  style={navBtnStyle("file", !!(openMenu === "file" || activeSection?.startsWith("file-")))}
+                  style={navBtnStyle(
+                    "file",
+                    !!(
+                      openMenu === "file" || activeSection?.startsWith("file-")
+                    ),
+                  )}
                   onMouseEnter={() => setHoveredBtn("file")}
                   onMouseLeave={() => setHoveredBtn(null)}
                 >
@@ -297,6 +330,23 @@ export function Dashboard({
                             className="ml-4 pl-3 space-y-0.5 border-l-2"
                             style={{ borderColor: ACCENT }}
                           >
+                            <button
+                              onClick={() => handleSectionChange(null)}
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                !activeSection?.startsWith("file-arhiva-")
+                                  ? "font-bold"
+                                  : "text-gray-600 hover:bg-purple-50"
+                              }`}
+                              style={!activeSection?.startsWith("file-arhiva-") ? { color: ACCENT } : {}}
+                            >
+                              <Database
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{ color: !activeSection?.startsWith("file-arhiva-") ? ACCENT : "#9ca3af" }}
+                              />
+                              Žiralni
+                            </button>
+                            <div className="my-1 border-t border-dashed border-gray-200" />
                             {["2025", "2024", "2023", "2022", "2021"].map(
                               (year) => {
                                 const val =
@@ -336,7 +386,14 @@ export function Dashboard({
                   ref={preglediBtnRef}
                   onClick={() => toggleMenu("pregledi")}
                   className={navBtnBase}
-                  style={navBtnStyle("pregledi", !!(openMenu === "pregledi" || activeSection === "pregledi-racuna" || activeSection === "pregled-kalkulacija"))}
+                  style={navBtnStyle(
+                    "pregledi",
+                    !!(
+                      openMenu === "pregledi" ||
+                      activeSection === "pregledi-racuna" ||
+                      activeSection === "pregled-kalkulacija"
+                    ),
+                  )}
                   onMouseEnter={() => setHoveredBtn("pregledi")}
                   onMouseLeave={() => setHoveredBtn(null)}
                 >
@@ -452,7 +509,13 @@ export function Dashboard({
                   ref={narudzbeBtnRef}
                   onClick={() => toggleMenu("narudzbe")}
                   className={navBtnBase}
-                  style={navBtnStyle("narudzbe", !!(openMenu === "narudzbe" || activeSection === "narudzbe-pregled"))}
+                  style={navBtnStyle(
+                    "narudzbe",
+                    !!(
+                      openMenu === "narudzbe" ||
+                      activeSection === "narudzbe-pregled"
+                    ),
+                  )}
                   onMouseEnter={() => setHoveredBtn("narudzbe")}
                   onMouseLeave={() => setHoveredBtn(null)}
                 >
@@ -534,7 +597,13 @@ export function Dashboard({
                   ref={proizvodnjaBtnRef}
                   onClick={() => toggleMenu("proizvodnja")}
                   className={navBtnBase}
-                  style={navBtnStyle("proizvodnja", !!(openMenu === "proizvodnja" || activeSection?.startsWith("klise-")))}
+                  style={navBtnStyle(
+                    "proizvodnja",
+                    !!(
+                      openMenu === "proizvodnja" ||
+                      activeSection?.startsWith("klise-")
+                    ),
+                  )}
                   onMouseEnter={() => setHoveredBtn("proizvodnja")}
                   onMouseLeave={() => setHoveredBtn(null)}
                 >
@@ -655,6 +724,7 @@ export function Dashboard({
       </nav>
 
       {/* Content */}
+      <BazaContext.Provider value={{ isArhiva, godina: aktivnaGodina }}>
       <main className="mx-[10px] px-[10px] py-8">
         {activeSection === null && (
           <div className="flex flex-col items-center justify-center py-20 text-center"></div>
@@ -754,6 +824,7 @@ export function Dashboard({
 
         {activeSection === "klise-pregled" && <KlisePregled />}
       </main>
+      </BazaContext.Provider>
     </div>
   );
 }

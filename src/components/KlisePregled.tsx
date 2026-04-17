@@ -7,9 +7,13 @@ import {
   HelpCircle,
   Layers,
   Loader2,
+  Printer,
   Search,
   Wallet,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { useBaza } from "../context/BazaContext";
+import { KlisePregledTemplate } from "../print/templates/KlisePregledTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -142,6 +146,8 @@ const STATUSI_OPTIONS = [
 ];
 
 export function KlisePregled() {
+  const { openPrint } = usePrint();
+  const { godina } = useBaza();
   const [data, setData] = useState<Klise[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +208,25 @@ export function KlisePregled() {
             )}
           </div>
         </div>
+        <button
+          onClick={() =>
+            openPrint({
+              title: `Pregled klišea${godina ? ` — Arhiva ${godina}` : ""}`,
+              component: (
+                <KlisePregledTemplate
+                  data={filtered}
+                  godina={godina}
+                />
+              ),
+            })
+          }
+          disabled={loading || filtered.length === 0}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+          style={{ background: PRIMARY }}
+        >
+          <Printer size={15} />
+          Štampaj
+        </button>
       </div>
 
       {/* Filter zona */}

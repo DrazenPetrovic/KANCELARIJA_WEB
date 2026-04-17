@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, CreditCard, Loader2, Wallet } from "lucide-react";
+import { useBaza } from "../context/BazaContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -35,6 +36,7 @@ const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 placeholder:text-gray-300";
 
 export function KliseNaplataOdKupca() {
+  const { isArhiva } = useBaza();
   const [lista, setLista] = useState<KliseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<KliseRow | null>(null);
@@ -336,7 +338,7 @@ export function KliseNaplataOdKupca() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || isArhiva}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60"
                   style={{ background: PRIMARY }}
                 >

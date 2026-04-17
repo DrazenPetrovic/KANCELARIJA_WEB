@@ -14,6 +14,21 @@
   }
 }
 
+/* ── Print isolation ─────────────────────────────── */
+#print-root {
+  display: none;
+}
+
+@media print {
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    display: block !important;
+  }
+}
+/* ─────────────────────────────────────────────────── */
+
 .login-soft-bg {
   background: linear-gradient(
     135deg,

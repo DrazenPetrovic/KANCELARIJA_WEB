@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LoginPanel } from "./components/LoginPanel";
 import { Dashboard } from "./components/Dashboard";
 import { verifyAuth, signOut } from "./utils/auth";
+import { PrintProvider } from "./context/PrintContext";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -46,14 +47,18 @@ function App() {
     );
   }
 
-  return isAuthenticated ? (
-    <Dashboard
-      username={username}
-      vrstaRadnika={vrstaRadnika}
-      onLogout={handleLogout}
-    />
-  ) : (
-    <LoginPanel onLoginSuccess={handleLoginSuccess} />
+  return (
+    <PrintProvider>
+      {isAuthenticated ? (
+        <Dashboard
+          username={username}
+          vrstaRadnika={vrstaRadnika}
+          onLogout={handleLogout}
+        />
+      ) : (
+        <LoginPanel onLoginSuccess={handleLoginSuccess} />
+      )}
+    </PrintProvider>
   );
 }
 
