@@ -3,8 +3,12 @@ import { KlisePregled } from "./KlisePregled";
 import { KliseNaplataOdKupca } from "./KliseNaplataOdKupca";
 import { KliseUnosNovog } from "./KliseUnosNovog";
 import { KliseUnosZaDobavljaca } from "./KliseUnosZaDobavljaca";
+import { OrdersList } from "./OrdersList.tsx";
+import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
+import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
+import { useTheme } from "../context/ThemeContext";
 import {
   BarChart2,
   Calculator,
@@ -20,9 +24,13 @@ import {
   FolderArchive,
   Layers,
   LogOut,
+  MapPin,
+  Moon,
+  PenLine,
   Receipt,
   Settings,
   ShoppingCart,
+  Sun,
   Truck,
 } from "lucide-react";
 
@@ -46,6 +54,8 @@ type MenuSection =
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "narudzbe-pregled"
+  | "narudzbe-teren"
+  | "narudzbe-lokalno"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -57,6 +67,7 @@ export function Dashboard({
   vrstaRadnika,
   onLogout,
 }: DashboardProps) {
+  const { theme, toggleTheme } = useTheme();
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
     "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
@@ -86,7 +97,9 @@ export function Dashboard({
     : "žiralni";
 
   const isArhiva = activeSection?.startsWith("file-arhiva-") ?? false;
-  const aktivnaGodina = isArhiva ? activeSection!.replace("file-arhiva-", "") : null;
+  const aktivnaGodina = isArhiva
+    ? activeSection!.replace("file-arhiva-", "")
+    : null;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -150,15 +163,25 @@ export function Dashboard({
 
   const dropdownItemClass = (active: boolean) =>
     `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all ${
-      active ? "text-white" : "text-gray-700 hover:bg-purple-50"
+      active
+        ? "text-white"
+        : "text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
     }`;
 
+  const dropBg =
+    "bg-white dark:bg-[#261f38] border-gray-100 dark:border-[#2d2648]";
+  const dropStripeBg = "bg-[#f4f1f9] dark:bg-[#2a2340]";
+
   return (
-    <div className="min-h-screen" style={{ background: "#f4f1f9" }}>
+    <div className="min-h-screen bg-[#f4f1f9] dark:bg-[#1c1828]">
       {/* Header */}
       <header style={{ background: PRIMARY }} className="text-white shadow-lg">
         <div className="mx-[15px] px-[5px] py-3 flex items-center justify-between relative">
-          <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleSectionChange(null)}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            title="Početna strana"
+          >
             <img
               src="/foto/karpas_logo_software.png"
               alt="Karpas logo"
@@ -167,15 +190,13 @@ export function Dashboard({
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
-            <div className="flex items-center gap-2">
-              <p
-                className="text-lg font-bold leading-tight tracking-wide"
-                style={{ color: ACCENT }}
-              >
-                Kancelarija
-              </p>
-            </div>
-          </div>
+            <p
+              className="text-lg font-bold leading-tight tracking-wide"
+              style={{ color: ACCENT }}
+            >
+              Kancelarija
+            </p>
+          </button>
 
           <div className="absolute left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center">
             <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
@@ -189,7 +210,7 @@ export function Dashboard({
             </p>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2">
               <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
                 {roleLabel}:
@@ -209,6 +230,13 @@ export function Dashboard({
               <LogOut size={15} />
               Odjava
             </button>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all"
+              title={theme === "dark" ? "Svjetla tema" : "Tamna tema"}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
           </div>
         </div>
 
@@ -217,7 +245,7 @@ export function Dashboard({
       </header>
 
       {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-100">
+      <nav className="bg-white dark:bg-[#1e1730] shadow-sm border-b border-gray-100 dark:border-[#2d2648]">
         <div className="mx-[5px] px-[5px] flex gap-2 py-3 items-center justify-center">
           {isStandardUser && (
             <>
@@ -259,11 +287,11 @@ export function Dashboard({
                         left: dropPos.left,
                         zIndex: 9999,
                       }}
-                      className="w-52 rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden"
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
                     >
                       <div
-                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2"
-                        style={{ color: PRIMARY, background: "#f4f1f9" }}
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
                       >
                         <FileText size={12} />
                         File
@@ -281,13 +309,16 @@ export function Dashboard({
                           }
                         >
                           <span
-                            className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                            style={{
-                              background:
-                                activeSection === "file-opcije"
-                                  ? "rgba(255,255,255,0.2)"
-                                  : "#ede8f5",
-                            }}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "file-opcije"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "file-opcije"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <Settings
                               size={13}
@@ -305,13 +336,10 @@ export function Dashboard({
                         {/* Arhiva toggle */}
                         <button
                           onClick={() => setArchiveExpanded((p) => !p)}
-                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-purple-50 transition-all"
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
                         >
                           <span className="flex items-center gap-3">
-                            <span
-                              className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                              style={{ background: "#edf7e0" }}
-                            >
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#edf7e0] dark:bg-[#1a2c12]">
                               <FolderArchive
                                 size={13}
                                 style={{ color: ACCENT }}
@@ -321,7 +349,7 @@ export function Dashboard({
                           </span>
                           <ChevronRight
                             size={14}
-                            className={`transition-transform duration-200 text-gray-400 ${archiveExpanded ? "rotate-90" : ""}`}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${archiveExpanded ? "rotate-90" : ""}`}
                           />
                         </button>
 
@@ -335,18 +363,28 @@ export function Dashboard({
                               className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
                                 !activeSection?.startsWith("file-arhiva-")
                                   ? "font-bold"
-                                  : "text-gray-600 hover:bg-purple-50"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                               }`}
-                              style={!activeSection?.startsWith("file-arhiva-") ? { color: ACCENT } : {}}
+                              style={
+                                !activeSection?.startsWith("file-arhiva-")
+                                  ? { color: ACCENT }
+                                  : {}
+                              }
                             >
                               <Database
                                 size={12}
                                 className="flex-shrink-0"
-                                style={{ color: !activeSection?.startsWith("file-arhiva-") ? ACCENT : "#9ca3af" }}
+                                style={{
+                                  color: !activeSection?.startsWith(
+                                    "file-arhiva-",
+                                  )
+                                    ? ACCENT
+                                    : "#9ca3af",
+                                }}
                               />
                               Žiralni
                             </button>
-                            <div className="my-1 border-t border-dashed border-gray-200" />
+                            <div className="my-1 border-t border-dashed border-gray-200 dark:border-[#3a3158]" />
                             {["2025", "2024", "2023", "2022", "2021"].map(
                               (year) => {
                                 const val =
@@ -359,13 +397,13 @@ export function Dashboard({
                                     className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
                                       isActive
                                         ? "font-bold"
-                                        : "text-gray-600 hover:bg-purple-50"
+                                        : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                                     }`}
                                     style={isActive ? { color: PRIMARY } : {}}
                                   >
                                     <Calendar
                                       size={12}
-                                      className="text-gray-400 flex-shrink-0"
+                                      className="text-gray-400 dark:text-[#5f5878] flex-shrink-0"
                                     />
                                     {year}
                                   </button>
@@ -420,11 +458,11 @@ export function Dashboard({
                         left: dropPos.left,
                         zIndex: 9999,
                       }}
-                      className="w-56 rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden"
+                      className={`w-56 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
                     >
                       <div
-                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2"
-                        style={{ color: PRIMARY, background: "#f4f1f9" }}
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
                       >
                         <BarChart2 size={12} />
                         Pregledi
@@ -442,13 +480,16 @@ export function Dashboard({
                           }
                         >
                           <span
-                            className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                            style={{
-                              background:
-                                activeSection === "pregledi-racuna"
-                                  ? "rgba(255,255,255,0.2)"
-                                  : "#ede8f5",
-                            }}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "pregledi-racuna"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "pregledi-racuna"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <Receipt
                               size={13}
@@ -477,13 +518,16 @@ export function Dashboard({
                           }
                         >
                           <span
-                            className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                            style={{
-                              background:
-                                activeSection === "pregled-kalkulacija"
-                                  ? "rgba(255,255,255,0.2)"
-                                  : "#ede8f5",
-                            }}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "pregled-kalkulacija"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "pregled-kalkulacija"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <Calculator
                               size={13}
@@ -542,16 +586,16 @@ export function Dashboard({
                         left: dropPos.left,
                         zIndex: 9999,
                       }}
-                      className="w-52 rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden"
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
                     >
                       <div
-                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2"
-                        style={{ color: ACCENT, background: "#edf7e0" }}
+                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 bg-[#edf7e0] dark:bg-[#1a2c12]"
+                        style={{ color: ACCENT }}
                       >
                         <ShoppingCart size={12} />
                         Narudžbe
                       </div>
-                      <div className="p-2">
+                      <div className="p-2 space-y-0.5">
                         <button
                           onClick={() =>
                             handleSectionChange("narudzbe-pregled")
@@ -566,13 +610,12 @@ export function Dashboard({
                           }
                         >
                           <span
-                            className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                            style={{
-                              background:
-                                activeSection === "narudzbe-pregled"
-                                  ? "rgba(255,255,255,0.2)"
-                                  : "#edf7e0",
-                            }}
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "narudzbe-pregled" ? "" : "bg-[#edf7e0] dark:bg-[#1a2c12]"}`}
+                            style={
+                              activeSection === "narudzbe-pregled"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <ShoppingCart
                               size={13}
@@ -585,6 +628,72 @@ export function Dashboard({
                             />
                           </span>
                           Pregled narudžbi
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("narudzbe-teren")}
+                          className={dropdownItemClass(
+                            activeSection === "narudzbe-teren",
+                          )}
+                          style={
+                            activeSection === "narudzbe-teren"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "narudzbe-teren" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "narudzbe-teren"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <MapPin
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "narudzbe-teren"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos narudžbe teren
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("narudzbe-lokalno")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "narudzbe-lokalno",
+                          )}
+                          style={
+                            activeSection === "narudzbe-lokalno"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "narudzbe-lokalno" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "narudzbe-lokalno"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <PenLine
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "narudzbe-lokalno"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos narudžbe lokalno
                         </button>
                       </div>
                     </div>,
@@ -630,11 +739,11 @@ export function Dashboard({
                         left: dropPos.left,
                         zIndex: 9999,
                       }}
-                      className="w-56 rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden"
+                      className={`w-56 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
                     >
                       <div
-                        className="px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2"
-                        style={{ color: PRIMARY, background: "#f4f1f9" }}
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
                       >
                         <Factory size={12} />
                         Proizvodnja
@@ -643,20 +752,17 @@ export function Dashboard({
                         {/* Kliše toggle */}
                         <button
                           onClick={() => setKliseExpanded((p) => !p)}
-                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-purple-50 transition-all"
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
                         >
                           <span className="flex items-center gap-3">
-                            <span
-                              className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0"
-                              style={{ background: "#ede8f5" }}
-                            >
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
                               <Layers size={13} style={{ color: PRIMARY }} />
                             </span>
                             Kliše
                           </span>
                           <ChevronRight
                             size={14}
-                            className={`transition-transform duration-200 text-gray-400 ${kliseExpanded ? "rotate-90" : ""}`}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${kliseExpanded ? "rotate-90" : ""}`}
                           />
                         </button>
 
@@ -695,7 +801,7 @@ export function Dashboard({
                                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
                                     isActive
                                       ? "font-bold"
-                                      : "text-gray-600 hover:bg-purple-50"
+                                      : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                                   }`}
                                   style={isActive ? { color: PRIMARY } : {}}
                                 >
@@ -725,105 +831,90 @@ export function Dashboard({
 
       {/* Content */}
       <BazaContext.Provider value={{ isArhiva, godina: aktivnaGodina }}>
-      <main className="mx-[10px] px-[10px] py-8">
-        {activeSection === null && (
-          <div className="flex flex-col items-center justify-center py-20 text-center"></div>
-        )}
+        <main className="mx-[10px] px-[10px] py-8">
+          {activeSection === null && (
+            <div className="flex flex-col items-center justify-center py-20 text-center"></div>
+          )}
 
-        {activeSection === "file-opcije" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#ede8f5" }}
-              >
-                <Settings size={20} style={{ color: PRIMARY }} />
+          {activeSection === "file-opcije" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Settings size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Opcije
+                </h2>
               </div>
-              <h2 className="text-xl font-bold text-gray-800">Opcije</h2>
+              <p className="text-gray-500 dark:text-[#7d7498]">
+                Podešavanja modula File.
+              </p>
             </div>
-            <p className="text-gray-500">Podešavanja modula File.</p>
-          </div>
-        )}
+          )}
 
-        {activeSection?.startsWith("file-arhiva-") && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#edf7e0" }}
-              >
-                <FolderArchive size={20} style={{ color: ACCENT }} />
+          {activeSection?.startsWith("file-arhiva-") && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#edf7e0] dark:bg-[#1a2c12]">
+                  <FolderArchive size={20} style={{ color: ACCENT }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Arhiva {activeSection.replace("file-arhiva-", "")}
+                </h2>
               </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Arhiva {activeSection.replace("file-arhiva-", "")}
-              </h2>
+              <p className="text-gray-500 dark:text-[#7d7498]">
+                Pregled arhive za godinu{" "}
+                <strong>{activeSection.replace("file-arhiva-", "")}</strong>.
+              </p>
             </div>
-            <p className="text-gray-500">
-              Pregled arhive za godinu{" "}
-              <strong>{activeSection.replace("file-arhiva-", "")}</strong>.
-            </p>
-          </div>
-        )}
+          )}
 
-        {activeSection === "pregledi-racuna" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#ede8f5" }}
-              >
-                <Receipt size={20} style={{ color: PRIMARY }} />
+          {activeSection === "pregledi-racuna" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Receipt size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Pregledi računa
+                </h2>
               </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Pregledi računa
-              </h2>
+              <p className="text-gray-500 dark:text-[#7d7498]">
+                Prikaz i pretraga računa.
+              </p>
             </div>
-            <p className="text-gray-500">Prikaz i pretraga računa.</p>
-          </div>
-        )}
+          )}
 
-        {activeSection === "pregled-kalkulacija" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#ede8f5" }}
-              >
-                <Calculator size={20} style={{ color: PRIMARY }} />
+          {activeSection === "pregled-kalkulacija" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Calculator size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Pregled kalkulacija
+                </h2>
               </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Pregled kalkulacija
-              </h2>
+              <p className="text-gray-500 dark:text-[#7d7498]">
+                Prikaz svih kalkulacija.
+              </p>
             </div>
-            <p className="text-gray-500">Prikaz svih kalkulacija.</p>
-          </div>
-        )}
+          )}
 
-        {activeSection === "narudzbe-pregled" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: "#edf7e0" }}
-              >
-                <ShoppingCart size={20} style={{ color: ACCENT }} />
-              </div>
-              <h2 className="text-xl font-bold text-gray-800">
-                Pregled narudžbi
-              </h2>
-            </div>
-            <p className="text-gray-500">Sve narudžbe.</p>
-          </div>
-        )}
+          {activeSection === "narudzbe-pregled" && <OrdersList />}
 
-        {activeSection === "klise-unos" && <KliseUnosNovog />}
+          {activeSection === "narudzbe-teren" && <NarudzbeUnosTeren />}
 
-        {activeSection === "klise-naplata" && <KliseNaplataOdKupca />}
+          {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
 
-        {activeSection === "klise-dobavljac" && <KliseUnosZaDobavljaca />}
+          {activeSection === "klise-unos" && <KliseUnosNovog />}
 
-        {activeSection === "klise-pregled" && <KlisePregled />}
-      </main>
+          {activeSection === "klise-naplata" && <KliseNaplataOdKupca />}
+
+          {activeSection === "klise-dobavljac" && <KliseUnosZaDobavljaca />}
+
+          {activeSection === "klise-pregled" && <KlisePregled />}
+        </main>
       </BazaContext.Provider>
     </div>
   );

@@ -45,7 +45,7 @@ export function PrintModal({ job, onClose }: Props) {
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{ width: 920, maxWidth: "95vw", height: "88vh" }}>
 
         {/* Header */}
@@ -69,7 +69,7 @@ export function PrintModal({ job, onClose }: Props) {
         <div className="flex flex-1 overflow-hidden">
 
           {/* Preview area */}
-          <div className="flex-1 bg-gray-200 overflow-auto p-8 flex justify-center items-start">
+          <div className="flex-1 bg-gray-200 dark:bg-[#1c1828] overflow-auto p-8 flex justify-center items-start">
             <div
               style={{
                 width: paperW * scale,
@@ -95,39 +95,39 @@ export function PrintModal({ job, onClose }: Props) {
           </div>
 
           {/* Controls */}
-          <div className="w-52 border-l border-gray-100 flex flex-col p-5 gap-5 flex-shrink-0">
+          <div className="w-52 border-l border-gray-100 dark:border-[#2d2648] flex flex-col p-5 gap-5 flex-shrink-0">
 
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-2.5">
                 Zoom preview
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setScale((s) => Math.max(0.3, +(s - 0.1).toFixed(2)))}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-100 transition-all"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#3a3158] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-all"
                 >
-                  <ZoomOut size={14} className="text-gray-500" />
+                  <ZoomOut size={14} className="text-gray-500 dark:text-[#7d7498]" />
                 </button>
-                <span className="flex-1 text-center text-sm font-semibold text-gray-700">
+                <span className="flex-1 text-center text-sm font-semibold text-gray-700 dark:text-[#c5bfd8]">
                   {Math.round(scale * 100)}%
                 </span>
                 <button
                   onClick={() => setScale((s) => Math.min(1.2, +(s + 0.1).toFixed(2)))}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-100 transition-all"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#3a3158] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-all"
                 >
-                  <ZoomIn size={14} className="text-gray-500" />
+                  <ZoomIn size={14} className="text-gray-500 dark:text-[#7d7498]" />
                 </button>
               </div>
             </div>
 
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-2.5">
                 Orijentacija
               </p>
               {(["portrait", "landscape"] as const).map((o) => (
                 <label
                   key={o}
-                  className="flex items-center gap-2 mb-2 cursor-pointer text-sm text-gray-700 select-none"
+                  className="flex items-center gap-2 mb-2 cursor-pointer text-sm text-gray-700 dark:text-[#c5bfd8] select-none"
                 >
                   <input
                     type="radio"
@@ -143,13 +143,13 @@ export function PrintModal({ job, onClose }: Props) {
             </div>
 
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-2.5">
                 Format papira
               </p>
               {(["A4", "A5"] as const).map((f) => (
                 <label
                   key={f}
-                  className="flex items-center gap-2 mb-2 cursor-pointer text-sm text-gray-700 select-none"
+                  className="flex items-center gap-2 mb-2 cursor-pointer text-sm text-gray-700 dark:text-[#c5bfd8] select-none"
                 >
                   <input
                     type="radio"
@@ -175,13 +175,13 @@ export function PrintModal({ job, onClose }: Props) {
               </button>
               <button
                 onClick={onClose}
-                className="w-full px-4 py-2 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all"
+                className="w-full px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-[#7d7498] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
               >
                 Zatvori
               </button>
             </div>
 
-            <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+            <p className="text-[10px] text-gray-400 dark:text-[#5f5878] text-center leading-relaxed">
               Za export u PDF izaberi "Spremi kao PDF" u sistemskom dijalogu
             </p>
           </div>

@@ -3,6 +3,7 @@ import { LoginPanel } from "./components/LoginPanel";
 import { Dashboard } from "./components/Dashboard";
 import { verifyAuth, signOut } from "./utils/auth";
 import { PrintProvider } from "./context/PrintContext";
+import { ThemeProvider } from "./context/ThemeContext";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -48,17 +49,19 @@ function App() {
   }
 
   return (
-    <PrintProvider>
-      {isAuthenticated ? (
-        <Dashboard
-          username={username}
-          vrstaRadnika={vrstaRadnika}
-          onLogout={handleLogout}
-        />
-      ) : (
-        <LoginPanel onLoginSuccess={handleLoginSuccess} />
-      )}
-    </PrintProvider>
+    <ThemeProvider>
+      <PrintProvider>
+        {isAuthenticated ? (
+          <Dashboard
+            username={username}
+            vrstaRadnika={vrstaRadnika}
+            onLogout={handleLogout}
+          />
+        ) : (
+          <LoginPanel onLoginSuccess={handleLoginSuccess} />
+        )}
+      </PrintProvider>
+    </ThemeProvider>
   );
 }
 

@@ -39,3 +39,14 @@
   background-size: 220% 220%;
   animation: softBgShift 18s ease-in-out infinite;
 }
+
+.dark .login-soft-bg {
+  background: linear-gradient(
+    135deg,
+    rgba(28, 24, 40, 1) 0%,
+    rgba(38, 31, 56, 1) 50%,
+    rgba(28, 24, 40, 1) 100%
+  );
+  background-size: 220% 220%;
+  animation: softBgShift 18s ease-in-out infinite;
+}

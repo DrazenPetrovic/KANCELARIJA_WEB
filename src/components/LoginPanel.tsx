@@ -44,7 +44,7 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
   return (
     <div className="min-h-screen login-soft-bg flex items-center justify-center p-4 md:p-6 lg:p-8">
       <div className="w-full max-w-md md:max-w-lg lg:max-w-xl">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-10 lg:p-12 border-2 border-transparent">
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl p-8 md:p-10 lg:p-12 border-2 border-transparent dark:border-[#2d2648]">
           <div className="flex justify-center mb-8">
             <div className="w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
               <img
@@ -63,7 +63,7 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
             </div>
           </div>
 
-          <h1 className="text-center text-2xl font-bold text-gray-800 mb-2">
+          <h1 className="text-center text-2xl font-bold text-gray-800 dark:text-[#ede9f6] mb-2">
             Kancelarija
           </h1>
           <p className="text-center mb-8" style={{ color: primary }}>
@@ -78,7 +78,7 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
             <div>
               <label
                 htmlFor="username"
-                className="block text-base md:text-lg font-medium text-gray-700 mb-3"
+                className="block text-base md:text-lg font-medium text-gray-700 dark:text-[#c5bfd8] mb-3"
               >
                 Korisničko ime
               </label>
@@ -90,16 +90,15 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Unesite korisničko ime"
-                className="w-full px-5 py-4 md:px-6 md:py-5 text-base md:text-lg border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 transition"
+                className="w-full px-5 py-4 md:px-6 md:py-5 text-base md:text-lg border-2 border-gray-300 dark:border-[#3a3158] rounded-xl focus:outline-none focus:ring-4 transition bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
                 style={
                   {
                     "--tw-ring-color": `${primary}55`,
-                    borderColor: "rgb(209 213 219)",
                   } as React.CSSProperties
                 }
                 onFocus={(e) => (e.target.style.borderColor = primary)}
                 onBlur={(e) =>
-                  (e.target.style.borderColor = "rgb(209 213 219)")
+                  (e.target.style.borderColor = "")
                 }
                 required
               />
@@ -108,7 +107,7 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
             <div>
               <label
                 htmlFor="password"
-                className="block text-base md:text-lg font-medium text-gray-700 mb-3"
+                className="block text-base md:text-lg font-medium text-gray-700 dark:text-[#c5bfd8] mb-3"
               >
                 Lozinka
               </label>
@@ -120,23 +119,22 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Unesite lozinku"
-                className="w-full px-5 py-4 md:px-6 md:py-5 text-base md:text-lg border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 transition"
+                className="w-full px-5 py-4 md:px-6 md:py-5 text-base md:text-lg border-2 border-gray-300 dark:border-[#3a3158] rounded-xl focus:outline-none focus:ring-4 transition bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
                 style={
                   {
                     "--tw-ring-color": `${primary}55`,
-                    borderColor: "rgb(209 213 219)",
                   } as React.CSSProperties
                 }
                 onFocus={(e) => (e.target.style.borderColor = primary)}
                 onBlur={(e) =>
-                  (e.target.style.borderColor = "rgb(209 213 219)")
+                  (e.target.style.borderColor = "")
                 }
                 required
               />
             </div>
 
             {error && (
-              <div className="bg-red-50 border-2 border-red-200 text-red-700 px-5 py-4 rounded-xl text-base md:text-lg">
+              <div className="bg-red-50 dark:bg-red-950/50 border-2 border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 px-5 py-4 rounded-xl text-base md:text-lg">
                 {error}
               </div>
             )}

@@ -51,10 +51,10 @@ function formatDecimal(val: string | null | undefined, suffix = ""): string {
 }
 
 const inputClass =
-  "w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 placeholder:text-gray-300";
+  "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
 
 const Label = ({ children }: { children: React.ReactNode }) => (
-  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+  <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-1">
     {children}
     <span className="text-red-400 ml-0.5">*</span>
   </label>
@@ -159,22 +159,20 @@ export function KliseUnosZaDobavljaca() {
       {/* Naslov */}
       <div className="flex items-center gap-3 justify-center">
         <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "#ede8f5" }}
+          className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]"
         >
           <Truck size={20} style={{ color: PRIMARY }} />
         </div>
-        <h2 className="text-xl font-bold text-gray-800">
+        <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
           Unos podataka od dobavljača
         </h2>
       </div>
 
       <div className="flex gap-6 items-start">
         {/* Lijeva kolona — lista klišea sa statusom 2 */}
-        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex-1 min-w-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
-            className="flex items-center gap-2 px-5 py-3 border-b border-gray-100"
-            style={{ background: "#f4f1f9" }}
+            className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#2a2340]"
           >
             <Package size={14} style={{ color: PRIMARY }} />
             <span
@@ -184,7 +182,7 @@ export function KliseUnosZaDobavljaca() {
               Gotovi klišei
             </span>
             {!loading && (
-              <span className="ml-auto text-xs text-gray-400">
+              <span className="ml-auto text-xs text-gray-400 dark:text-[#5f5878]">
                 {lista.length} zapis{lista.length === 1 ? "" : "a"}
               </span>
             )}
@@ -197,12 +195,12 @@ export function KliseUnosZaDobavljaca() {
                 className="animate-spin"
                 style={{ color: PRIMARY }}
               />
-              <span className="text-sm text-gray-400">Učitavanje...</span>
+              <span className="text-sm text-gray-400 dark:text-[#5f5878]">Učitavanje...</span>
             </div>
           )}
 
           {!loading && lista.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-10">
+            <p className="text-sm text-gray-400 dark:text-[#5f5878] text-center py-10">
               Nema klišea u statusu "Gotov".
             </p>
           )}
@@ -232,12 +230,12 @@ export function KliseUnosZaDobavljaca() {
                       <tr
                         key={k.sifra}
                         onClick={() => handleSelect(k)}
-                        className={`cursor-pointer transition-colors border-b border-gray-100 ${
+                        className={`cursor-pointer transition-colors border-b border-gray-100 dark:border-[#2d2648] ${
                           isSelected
-                            ? "bg-purple-100"
+                            ? "bg-purple-100 dark:bg-[#3a2e58]"
                             : isEven
-                              ? "bg-purple-50/40 hover:bg-purple-100/60"
-                              : "bg-white hover:bg-purple-50/50"
+                              ? "bg-purple-50/40 dark:bg-[#271f40]/40 hover:bg-purple-100/60 dark:hover:bg-[#3a2e58]/60"
+                              : "bg-white dark:bg-[#261f38] hover:bg-purple-50/50 dark:hover:bg-[#271f40]/50"
                         }`}
                       >
                         <td className="px-4 py-3">
@@ -248,22 +246,22 @@ export function KliseUnosZaDobavljaca() {
                             {k.sifra}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-semibold text-gray-800">
+                        <td className="px-4 py-3 font-semibold text-gray-800 dark:text-[#ede9f6]">
                           {k.naziv_klisea}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-600 dark:text-[#9e96b8]">
                           {k.lokacija_partnera}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-600 dark:text-[#9e96b8]">
                           {k.dimenzija_za_stampu}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
+                        <td className="px-4 py-3 text-right text-gray-600 dark:text-[#9e96b8]">
                           {formatDecimal(k.povrsina_klisea, "m²")}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
+                        <td className="px-4 py-3 text-right text-gray-600 dark:text-[#9e96b8]">
                           {formatDecimal(k.cijena_klisea, "KM")}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-600 dark:text-[#9e96b8]">
                           {formatDatum(k.datum_narcucivanja)}
                         </td>
                       </tr>
@@ -276,10 +274,9 @@ export function KliseUnosZaDobavljaca() {
         </div>
 
         {/* Desna kolona — forma za unos podataka od dobavljača */}
-        <div className="w-96 flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="w-96 flex-shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
-            className="flex items-center gap-2 px-5 py-3 border-b border-gray-100"
-            style={{ background: "#f4f1f9" }}
+            className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#2a2340]"
           >
             <Truck size={14} style={{ color: PRIMARY }} />
             <span
@@ -293,15 +290,14 @@ export function KliseUnosZaDobavljaca() {
           {!selected && (
             <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-2">
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center mb-1"
-                style={{ background: "#ede8f5" }}
+                className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 bg-[#ede8f5] dark:bg-[#312a50]"
               >
                 <Truck size={18} style={{ color: PRIMARY }} />
               </div>
-              <p className="text-sm font-semibold text-gray-500">
+              <p className="text-sm font-semibold text-gray-500 dark:text-[#7d7498]">
                 Odaberite kliš
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
                 Kliknite na red u tabeli da biste unijeli podatke od dobavljača.
               </p>
             </div>
@@ -310,7 +306,7 @@ export function KliseUnosZaDobavljaca() {
           {selected && (
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               {/* Info o odabranom klišu */}
-              <div className="bg-purple-50 rounded-xl px-4 py-3 space-y-1.5">
+              <div className="bg-purple-50 dark:bg-[#271f40] rounded-xl px-4 py-3 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span
                     className="font-mono text-xs font-bold"
@@ -318,11 +314,11 @@ export function KliseUnosZaDobavljaca() {
                   >
                     {selected.sifra}
                   </span>
-                  <span className="text-sm font-semibold text-gray-800 truncate">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
                     {selected.naziv_klisea}
                   </span>
                 </div>
-                <div className="text-xs text-gray-500 space-y-0.5">
+                <div className="text-xs text-gray-500 dark:text-[#7d7498] space-y-0.5">
                   <div>{selected.lokacija_partnera}</div>
                   <div className="flex flex-wrap gap-3">
                     <span>{selected.dimenzija_za_stampu}</span>
@@ -407,23 +403,23 @@ export function KliseUnosZaDobavljaca() {
                   />
                   <div className="absolute inset-0 px-3 flex items-center pointer-events-none text-sm">
                     {form.datum_racuna ? (
-                      <span className="text-gray-800">
+                      <span className="text-gray-800 dark:text-[#ede9f6]">
                         {form.datum_racuna.split("-").reverse().join(".")}
                       </span>
                     ) : (
-                      <span className="text-gray-300">dd.mm.yyyy</span>
+                      <span className="text-gray-300 dark:text-[#5f5878]">dd.mm.yyyy</span>
                     )}
                   </div>
                 </div>
               </div>
 
               {error && (
-                <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-xl">
+                <p className="text-sm text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-xl">
                   {error}
                 </p>
               )}
               {success && (
-                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-xl">
+                <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-3 py-2 rounded-xl">
                   <CheckCircle2 size={15} />
                   Podaci uspješno uneseni!
                 </div>
@@ -433,7 +429,7 @@ export function KliseUnosZaDobavljaca() {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
                 >
                   Odustani
                 </button>

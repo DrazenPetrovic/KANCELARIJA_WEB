@@ -108,8 +108,8 @@ const TH = ({
   narrow?: boolean;
 }) => (
   <th
-    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap ${center ? "text-center" : "text-left"}`}
-    style={{ color: PRIMARY, background: "#f4f1f9" }}
+    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap ${center ? "text-center" : "text-left"} bg-[#f4f1f9] dark:bg-[#2a2340]`}
+    style={{ color: PRIMARY }}
   >
     {children}
   </th>
@@ -130,8 +130,8 @@ const TD = ({
 }) => (
   <td
     className={`${narrow ? "pl-1 pr-3" : "px-3"} py-2.5 text-sm whitespace-nowrap ${
-      noBorder ? "" : "border-b border-gray-100"
-    } ${pending ? "text-amber-500" : "text-gray-700"} ${center ? "text-center" : ""}`}
+      noBorder ? "" : "border-b border-gray-100 dark:border-[#2d2648]"
+    } ${pending ? "text-amber-500" : "text-gray-700 dark:text-[#c5bfd8]"} ${center ? "text-center" : ""}`}
   >
     {children}
   </td>
@@ -194,15 +194,14 @@ export function KlisePregled() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: "#ede8f5" }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]"
           >
             <Layers size={20} style={{ color: PRIMARY }} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800">Pregled kliša</h2>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">Pregled kliša</h2>
             {!loading && !error && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
                 Ukupno: {filtered.length} / {data.length}
               </p>
             )}
@@ -230,7 +229,7 @@ export function KlisePregled() {
       </div>
 
       {/* Filter zona */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="flex items-center gap-2 mb-3">
           <Filter size={14} style={{ color: PRIMARY }} />
           <span
@@ -244,21 +243,21 @@ export function KlisePregled() {
           <div className="relative">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
             />
             <input
               type="text"
               placeholder="Šifra, naziv, dobavljač..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl w-64 focus:outline-none focus:border-[#785E9E] transition-colors"
+              className="pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-64 focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
             />
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(Number(e.target.value))}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700"
+            className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
           >
             {STATUSI_OPTIONS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -267,9 +266,8 @@ export function KlisePregled() {
             ))}
           </select>
 
-          {/* Prostor za buduće filtere */}
           <div
-            className="flex items-center px-3 py-2 text-xs text-gray-300 border border-dashed border-gray-200 rounded-xl"
+            className="flex items-center px-3 py-2 text-xs text-gray-300 dark:text-[#5f5878] border border-dashed border-gray-200 dark:border-[#3a3158] rounded-xl"
             title="Prostor za dodatne filtere"
           >
             + filteri
@@ -278,7 +276,7 @@ export function KlisePregled() {
       </div>
 
       {/* Tabela */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -286,19 +284,19 @@ export function KlisePregled() {
               className="animate-spin"
               style={{ color: PRIMARY }}
             />
-            <span className="text-sm text-gray-500">Učitavanje...</span>
+            <span className="text-sm text-gray-500 dark:text-[#7d7498]">Učitavanje...</span>
           </div>
         )}
 
         {error && (
           <div className="flex items-center justify-center py-20">
-            <p className="text-sm text-red-500">{error}</p>
+            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
           </div>
         )}
 
         {!loading && !error && filtered.length === 0 && (
           <div className="flex items-center justify-center py-20">
-            <p className="text-sm text-gray-400">Nema podataka za prikaz.</p>
+            <p className="text-sm text-gray-400 dark:text-[#5f5878]">Nema podataka za prikaz.</p>
           </div>
         )}
 
@@ -327,8 +325,8 @@ export function KlisePregled() {
                 {filtered.map((k, i) => {
                   const hasPending = k.broj_nepopunjenih_polja > 0;
                   const rowBg = hasPending
-                    ? "hover:bg-amber-50"
-                    : "hover:bg-purple-50/40";
+                    ? "hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                    : "hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40";
                   return (
                     <Fragment key={k.sifra ?? i}>
                       {/* Red 1 — podaci */}
@@ -410,27 +408,23 @@ export function KlisePregled() {
                       <tr className={`transition-colors ${rowBg}`}>
                         <td
                           colSpan={9}
-                          className="px-4 pb-2.5 pt-0 text-xs border-b border-gray-100"
-                          style={{ color: "#9ca3af" }}
+                          className="px-4 pb-2.5 pt-0 text-xs border-b border-gray-100 dark:border-[#2d2648] text-gray-400 dark:text-[#5f5878]"
                         >
-                          <span
-                            className="font-semibold"
-                            style={{ color: "#6b7280" }}
-                          >
+                          <span className="font-semibold text-gray-500 dark:text-[#7d7498]">
                             Napomena:{" "}
                           </span>
                           {k.napomena}
                         </td>
                         <td
                           colSpan={5}
-                          className="px-3 pb-2.5 pt-0 text-xs border-b border-gray-100 text-center"
+                          className="px-3 pb-2.5 pt-0 text-xs border-b border-gray-100 dark:border-[#2d2648] text-center"
                         >
                           {Number(k.placeno_dobavljacu) > 0 && Number(k.povrsina_kod_dobavljaca) > 0 ? (
                             <span className="font-semibold" style={{ color: PRIMARY }}>
                               {(Number(k.placeno_dobavljacu) / Number(k.povrsina_kod_dobavljaca)).toFixed(3)} KM/dm²
                             </span>
                           ) : (
-                            <span style={{ color: "#9ca3af" }}>–</span>
+                            <span className="text-gray-400 dark:text-[#5f5878]">–</span>
                           )}
                         </td>
                       </tr>

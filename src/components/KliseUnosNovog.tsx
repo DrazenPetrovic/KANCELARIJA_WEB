@@ -43,14 +43,14 @@ function izracunajPovrsinu(dimenzija: string): string {
 }
 
 const Label = ({ children, required }: { children: React.ReactNode; required?: boolean }) => (
-  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+  <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-1">
     {children}
     {required && <span className="text-red-400 ml-0.5">*</span>}
   </label>
 );
 
 const inputClass =
-  "w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 placeholder:text-gray-300";
+  "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
 
 export function KliseUnosNovog() {
   const { isArhiva } = useBaza();
@@ -73,7 +73,6 @@ export function KliseUnosNovog() {
     setForm((prev) => ({ ...prev, povrsina_klisea: povrsina, cijena_klisea: cijena }));
   }, [form.dimenzija_za_stampu]);
 
-  // Učitaj kliše sa statusom 0
   useEffect(() => {
     const fetchLista = async () => {
       setListaLoading(true);
@@ -130,15 +129,14 @@ export function KliseUnosNovog() {
 
   return (
     <div className="space-y-6">
-      {/* Naslov — izvan flex reda */}
+      {/* Naslov */}
       <div className="flex items-center gap-3 justify-center">
         <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: "#ede8f5" }}
+          className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]"
         >
           <FilePlus size={20} style={{ color: PRIMARY }} />
         </div>
-        <h2 className="text-xl font-bold text-gray-800">Unos novog kliša</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">Unos novog kliša</h2>
       </div>
 
       {/* Forma + Lista u istom redu */}
@@ -147,7 +145,7 @@ export function KliseUnosNovog() {
         {/* Forma */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5"
+          className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-6 space-y-5"
         >
         <div>
           <Label required>Naziv kliša</Label>
@@ -194,8 +192,8 @@ export function KliseUnosNovog() {
               type="text"
               className={`${inputClass} ${
                 povrsinaIzracunata
-                  ? "bg-purple-50 border-[#785E9E]/30 text-[#785E9E] font-semibold"
-                  : "bg-gray-50 text-gray-400"
+                  ? "bg-purple-50 dark:bg-[#271f40] border-[#785E9E]/30 text-[#785E9E] font-semibold"
+                  : "bg-gray-50 dark:bg-[#1e1a2d] text-gray-400 dark:text-[#5f5878]"
               } cursor-default`}
               value={povrsinaIzracunata ? `${form.povrsina_klisea} dm²` : "Unesite dimenziju..."}
               readOnly
@@ -209,8 +207,8 @@ export function KliseUnosNovog() {
             type="text"
             className={`${inputClass} ${
               form.cijena_klisea !== ""
-                ? "bg-purple-50 border-[#785E9E]/30 text-[#785E9E] font-semibold"
-                : "bg-gray-50 text-gray-400"
+                ? "bg-purple-50 dark:bg-[#271f40] border-[#785E9E]/30 text-[#785E9E] font-semibold"
+                : "bg-gray-50 dark:bg-[#1e1a2d] text-gray-400 dark:text-[#5f5878]"
             } cursor-default`}
             value={form.cijena_klisea !== "" ? `${form.cijena_klisea} KM` : "Unesite dimenziju..."}
             readOnly
@@ -230,10 +228,10 @@ export function KliseUnosNovog() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>
+          <p className="text-sm text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-xl">{error}</p>
         )}
         {success && (
-          <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-xl">
+          <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-3 py-2 rounded-xl">
             <CheckCircle2 size={15} />
             Kliše uspješno dodat!
           </div>
@@ -254,53 +252,52 @@ export function KliseUnosNovog() {
       </div>
 
       {/* Desna kolona — lista naručenih */}
-      <div className="w-96 flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="w-96 flex-shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         <div
-          className="flex items-center gap-2 px-5 py-3 border-b border-gray-100"
-          style={{ background: "#f4f1f9" }}
+          className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#2a2340]"
         >
           <ClipboardList size={14} style={{ color: PRIMARY }} />
           <span className="text-xs font-bold uppercase tracking-wider" style={{ color: PRIMARY }}>
             Naručeni kliši
           </span>
           {!listaLoading && (
-            <span className="ml-auto text-xs text-gray-400">{lista.length} zapis{lista.length === 1 ? "" : "a"}</span>
+            <span className="ml-auto text-xs text-gray-400 dark:text-[#5f5878]">{lista.length} zapis{lista.length === 1 ? "" : "a"}</span>
           )}
         </div>
 
         {listaLoading && (
           <div className="flex items-center justify-center py-10 gap-2">
             <Loader2 size={18} className="animate-spin" style={{ color: PRIMARY }} />
-            <span className="text-sm text-gray-400">Učitavanje...</span>
+            <span className="text-sm text-gray-400 dark:text-[#5f5878]">Učitavanje...</span>
           </div>
         )}
 
         {!listaLoading && lista.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-10">Nema naručenih kliša.</p>
+          <p className="text-sm text-gray-400 dark:text-[#5f5878] text-center py-10">Nema naručenih kliša.</p>
         )}
 
         {!listaLoading && lista.length > 0 && (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-gray-100 dark:divide-[#2d2648]">
             {lista.map((k) => (
-              <div key={k.sifra} className="px-5 py-3 hover:bg-purple-50/30 transition-colors">
+              <div key={k.sifra} className="px-5 py-3 hover:bg-purple-50/30 dark:hover:bg-[#271f40]/30 transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-mono text-xs font-semibold" style={{ color: PRIMARY }}>
                         {k.sifra}
                       </span>
-                      <span className="text-sm font-semibold text-gray-800 truncate">
+                      <span className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
                         {k.naziv_klisea}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500 dark:text-[#7d7498]">
                       <span>{k.lokacija_partnera}</span>
                       <span>{k.dimenzija_za_stampu}</span>
                       <span>{k.povrsina_klisea}</span>
                       <span>{k.cijena_klisea}</span>
                     </div>
                     {k.napomena && k.napomena !== "-" && (
-                      <p className="text-xs text-gray-400 mt-0.5 truncate">{k.napomena}</p>
+                      <p className="text-xs text-gray-400 dark:text-[#5f5878] mt-0.5 truncate">{k.napomena}</p>
                     )}
                   </div>
                   <span
