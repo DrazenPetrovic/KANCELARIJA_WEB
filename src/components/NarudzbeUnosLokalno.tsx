@@ -5,20 +5,18 @@ import {
   Calendar,
   ShoppingCart,
   Truck,
-  Clock,
-  CheckCircle,
   Plus,
   Trash2,
-  Eye,
-  Pencil,
   Package,
   User,
+  Star,
   PenLine,
   MapPin,
   X,
   Loader2,
   Check,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -71,6 +69,7 @@ interface DodatnaLokacija {
   Naziv_grada?: string;
   sifra_grada?: number;
   naziv_lokacije?: string;
+  adresa_lokacije?: string;
   [key: string]: unknown;
 }
 
@@ -111,69 +110,60 @@ interface StavkaNarudzbe {
 const isValidKolicinaInput = (v: string): boolean =>
   v === "" || /^\d+\.?\d{0,3}$/.test(v) || /^\d*\.$/.test(v);
 
-const narudzbe = [
-  {
-    vrijeme: "08:32",
-    kupac: "Trgovina Marko d.o.o.",
-    artikli: "3 artikla",
-    iznos: "45,00 KM",
-    isporuka: "Danas",
-    status: "Za isporuku",
-    boja: "orange",
-  },
-  {
-    vrijeme: "08:15",
-    kupac: "Kafić Central",
-    artikli: "5 artikala",
-    iznos: "32,50 KM",
-    isporuka: "Danas",
-    status: "U pripremi",
-    boja: "green",
-  },
-  {
-    vrijeme: "07:45",
-    kupac: "Restoran Bella",
-    artikli: "8 artikala",
-    iznos: "120,00 KM",
-    isporuka: "18.03.2025",
-    status: "Za 2 dana",
-    boja: "purple",
-  },
-  {
-    vrijeme: "09:10",
-    kupac: "Market Plus",
-    artikli: "2 artikla",
-    iznos: "18,90 KM",
-    isporuka: "Danas",
-    status: "Za isporuku",
-    boja: "orange",
-  },
-  {
-    vrijeme: "10:05",
-    kupac: "Pekara Ana",
-    artikli: "6 artikala",
-    iznos: "55,20 KM",
-    isporuka: "Danas",
-    status: "Isporučeno",
-    boja: "green",
-  },
-];
+interface ActiveOrder {
+  id: number;
+  order_number: string;
+  partner_id: number;
+  partner_name: string;
+  branch_id: number | null;
+  branch_name: string | null;
+  order_type: string;
+  radnik_id: number;
+  vrsta_placanja: number;
+  created_by: number;
+  order_date: string;
+  requested_delivery_date: string | null;
+  confirmed_delivery_date: string | null;
+  status_id: number;
+  priority: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
-const statusCardClass: Record<string, string> = {
-  orange:
-    "bg-orange-50 dark:bg-orange-900/10 text-orange-600 dark:text-orange-400 border-orange-400",
-  green:
-    "bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 border-green-400",
-  purple:
-    "bg-purple-50 dark:bg-purple-900/10 text-purple-600 dark:text-purple-400 border-purple-400",
+interface OrderItem {
+  id: number;
+  order_id: number;
+  line_number: number;
+  product_id: number;
+  product_name: string;
+  product_uom: string;
+  product_group: string | null;
+  quantity: number;
+  vpc: number;
+  mpc: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const priorityLabel: Record<number, { label: string; cls: string }> = {
+  1: {
+    label: "Normalan",
+    cls: "bg-gray-100 dark:bg-[#2d2648] text-gray-500 dark:text-[#7d7498]",
+  },
+  2: {
+    label: "Hitno",
+    cls: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-2 border-red-400 dark:border-red-500",
+  },
+  3: {
+    label: "Dogovorena",
+    cls: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+  },
 };
 
-const statusBadgeClass: Record<string, string> = {
-  orange:
-    "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400",
-  green: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
-  purple:
-    "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400",
+const paymentLabel: Record<number, string> = {
+  1: "Žirano",
+  2: "Gotovinsko",
 };
 
 const readGrupaNaziv = (g: Record<string, unknown>): string => {
@@ -240,6 +230,19 @@ export function NarudzbeUnosLokalno() {
   // Refs za input polja količine u modalu
   const inputRefsModal = useRef<Record<number, HTMLInputElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── aktivne narudžbe (desna strana) ─────────────────────────
+  const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
+  const [activeOrdersLoading, setActiveOrdersLoading] = useState(true);
+  const [activeOrdersError, setActiveOrdersError] = useState<string | null>(
+    null,
+  );
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [orderItems, setOrderItems] = useState<Record<number, OrderItem[]>>({});
+  const [orderItemsLoading, setOrderItemsLoading] = useState<
+    Record<number, boolean>
+  >({});
   useEffect(() => {
     const fetchKupci = async () => {
       try {
@@ -267,7 +270,56 @@ export function NarudzbeUnosLokalno() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // ── ESC zatvara modal ────────────────────────────────────────
+  // ── aktivne narudžbe: dohvat i polling svakih 30s ───────────
+  const fetchActiveOrders = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/trade-orders/active`, {
+        credentials: "include",
+      });
+      const json = await res.json();
+      if (json.success) {
+        setActiveOrders(json.data);
+        setActiveOrdersError(null);
+        setLastRefreshed(new Date());
+      } else {
+        setActiveOrdersError(json.error || "Greška pri dohvatu narudžbi");
+      }
+    } catch {
+      setActiveOrdersError("Nema veze sa serverom");
+    } finally {
+      setActiveOrdersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveOrders();
+    const interval = setInterval(fetchActiveOrders, 90000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleOrder = async (orderId: number) => {
+    if (expandedOrderId === orderId) {
+      setExpandedOrderId(null);
+      return;
+    }
+    setExpandedOrderId(orderId);
+    if (orderItems[orderId]) return;
+    setOrderItemsLoading((prev) => ({ ...prev, [orderId]: true }));
+    try {
+      const res = await fetch(
+        `${API_URL}/api/trade-orders/active/${orderId}/items`,
+        { credentials: "include" },
+      );
+      const json = await res.json();
+      if (json.success) {
+        setOrderItems((prev) => ({ ...prev, [orderId]: json.data }));
+      }
+    } catch {
+      // greška — items ostaju prazni
+    } finally {
+      setOrderItemsLoading((prev) => ({ ...prev, [orderId]: false }));
+    }
+  };
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -430,6 +482,7 @@ export function NarudzbeUnosLokalno() {
       setNapomena("");
       setDatumIsporuke(new Date().toISOString().slice(0, 10));
       setPrioritet(1);
+      fetchActiveOrders();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Greška pri snimanju");
     } finally {
@@ -608,7 +661,7 @@ export function NarudzbeUnosLokalno() {
   return (
     <div className="space-y-6">
       {/* Zaglavlje */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="relative flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
             <PenLine size={20} style={{ color: PRIMARY }} />
@@ -617,47 +670,47 @@ export function NarudzbeUnosLokalno() {
             Unos narudžbe lokalno
           </h2>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Pretraži kupca, narudžbu, artikal..."
-              className="w-80 pl-10 pr-4 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878]"
-            />
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border border-gray-200 dark:border-[#3a3158] rounded-xl bg-white dark:bg-[#261f38] text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all">
-            <Calendar className="h-4 w-4" /> Danas
-          </button>
-        </div>
-      </div>
 
-      {/* Stat kartice */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={<ShoppingCart size={20} />}
-          broj="24"
-          opis="Unesene danas"
-          type="primary"
-        />
-        <StatCard
-          icon={<Truck size={20} />}
-          broj="18"
-          opis="Za isporuku danas"
-          type="green"
-        />
-        <StatCard
-          icon={<Clock size={20} />}
-          broj="6"
-          opis="Za par dana"
-          type="orange"
-        />
-        <StatCard
-          icon={<CheckCircle size={20} />}
-          broj="12"
-          opis="Isporučeno danas"
-          type="accent"
-        />
+        {/* Pillovi — apsolutno centrirani */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] text-xs font-semibold whitespace-nowrap">
+            <ShoppingCart size={13} style={{ color: PRIMARY }} />
+            <span className="text-gray-500 dark:text-[#7d7498]">Uneseno</span>
+            <span className="font-bold text-gray-800 dark:text-[#ede9f6]">
+              {activeOrders.length}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] text-xs font-semibold whitespace-nowrap">
+            <Truck size={13} className="text-green-500" />
+            <span className="text-gray-500 dark:text-[#7d7498]">Isporuka</span>
+            <span className="font-bold text-green-600 dark:text-green-400">
+              {
+                activeOrders.filter(
+                  (o) =>
+                    o.requested_delivery_date?.slice(0, 10) ===
+                    new Date().toISOString().slice(0, 10),
+                ).length
+              }
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 border-red-400 dark:border-red-500 bg-red-50 dark:bg-red-900/10 text-xs font-semibold whitespace-nowrap">
+            <AlertTriangle size={13} className="text-red-500" />
+            <span className="text-red-500 dark:text-red-400">Hitno</span>
+            <span className="font-bold text-red-600 dark:text-red-400">
+              {activeOrders.filter((o) => o.priority === 2).length}
+            </span>
+          </span>
+        </div>
+
+        {/* Pretraga — desno */}
+        <div className="relative hidden md:block">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Pretraži kupca, narudžbu, artikal..."
+            className="w-80 pl-10 pr-4 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878]"
+          />
+        </div>
       </div>
 
       {/* Glavni grid */}
@@ -830,7 +883,9 @@ export function NarudzbeUnosLokalno() {
                 Datum isporuke <span className="text-red-400 ml-0.5">*</span>
               </label>
               <div className="relative">
-                <div className={`${inputClass} flex items-center justify-between pointer-events-none`}>
+                <div
+                  className={`${inputClass} flex items-center justify-between pointer-events-none`}
+                >
                   <span>{isoToDisplay(datumIsporuke)}</span>
                   <Calendar size={14} className="text-gray-400 flex-shrink-0" />
                 </div>
@@ -848,7 +903,9 @@ export function NarudzbeUnosLokalno() {
               </label>
               <select
                 value={prioritet}
-                onChange={(e) => setPrioritet(Number(e.target.value) as 1 | 2 | 3)}
+                onChange={(e) =>
+                  setPrioritet(Number(e.target.value) as 1 | 2 | 3)
+                }
                 className={inputClass}
               >
                 <option value={1}>Normalan</option>
@@ -865,7 +922,9 @@ export function NarudzbeUnosLokalno() {
                   type="button"
                   onClick={() => setVrstaPlacan(1)}
                   className={`flex-1 text-sm font-semibold transition-all ${vrstaPlacan === 1 ? "text-white" : "text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
-                  style={vrstaPlacan === 1 ? { background: PRIMARY } : undefined}
+                  style={
+                    vrstaPlacan === 1 ? { background: PRIMARY } : undefined
+                  }
                 >
                   Žirano
                 </button>
@@ -874,7 +933,9 @@ export function NarudzbeUnosLokalno() {
                   type="button"
                   onClick={() => setVrstaPlacan(2)}
                   className={`flex-1 text-sm font-semibold transition-all ${vrstaPlacan === 2 ? "text-white" : "text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
-                  style={vrstaPlacan === 2 ? { background: PRIMARY } : undefined}
+                  style={
+                    vrstaPlacan === 2 ? { background: PRIMARY } : undefined
+                  }
                 >
                   Gotovinsko
                 </button>
@@ -946,8 +1007,12 @@ export function NarudzbeUnosLokalno() {
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val === "" || /^\d+\.?\d{0,3}$/.test(val)) {
-                              const novaKolicina = val === "" ? 0 : parseFloat(val);
-                              promijeniKolicinu(s.sifra_proizvoda, novaKolicina - s.kolicina);
+                              const novaKolicina =
+                                val === "" ? 0 : parseFloat(val);
+                              promijeniKolicinu(
+                                s.sifra_proizvoda,
+                                novaKolicina - s.kolicina,
+                              );
                             }
                           }}
                           className="w-full text-center text-sm font-semibold bg-transparent text-gray-800 dark:text-[#ede9f6] outline-none"
@@ -1040,79 +1105,225 @@ export function NarudzbeUnosLokalno() {
           </div>
         </div>
 
-        {/* Lista narudžbi */}
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-6">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6] mb-5">
-            Današnje narudžbe
-          </h3>
-          <div className="flex flex-wrap gap-2 mb-5">
-            {[
-              "Sve (24)",
-              "Primljene (8)",
-              "U pripremi (10)",
-              "Za isporuku (18)",
-              "Isporučene (12)",
-            ].map((item, index) => (
-              <button
-                key={item}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${index === 0 ? "text-white" : "bg-[#f4f1f9] dark:bg-[#2d2648] text-gray-600 dark:text-[#c5bfd8] hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"}`}
-                style={index === 0 ? { background: PRIMARY } : undefined}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          <div className="space-y-3">
-            {narudzbe.map((n, index) => (
+        {/* Aktivne narudžbe */}
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-6 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
               <div
-                key={index}
-                className={`rounded-xl border-l-4 p-4 ${statusCardClass[n.boja]}`}
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: PRIMARY }}
               >
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex gap-4 items-start">
-                    <div className="text-xs font-semibold text-gray-500 dark:text-[#7d7498] pt-0.5">
-                      {n.vrijeme}
-                    </div>
-                    <div>
-                      <div className="font-bold text-gray-800 dark:text-[#ede9f6]">
-                        {n.kupac}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-[#7d7498] mt-0.5">
-                        {n.artikli} · {n.iznos} · Isporuka: {n.isporuka}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold ${statusBadgeClass[n.boja]}`}
-                    >
-                      {n.status}
-                    </span>
-                    <button className="p-2 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all">
-                      <Eye className="h-4 w-4 text-gray-600 dark:text-[#c5bfd8]" />
-                    </button>
-                    <button className="p-2 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all">
-                      <Pencil className="h-4 w-4 text-gray-600 dark:text-[#c5bfd8]" />
-                    </button>
-                    <button
-                      className="p-2 rounded-xl text-white transition-all hover:brightness-110"
-                      style={{ background: PRIMARY }}
-                    >
-                      <Truck className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+                <ShoppingCart size={18} className="text-white" />
               </div>
-            ))}
-          </div>
-          <div className="mt-6 text-center">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Aktivne narudžbe
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+                  {lastRefreshed
+                    ? `Osvježeno u ${lastRefreshed.toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                    : "Učitavanje..."}
+                  {" · auto 90s"}
+                </p>
+              </div>
+            </div>
             <button
-              className="text-sm font-semibold hover:underline transition-all"
-              style={{ color: PRIMARY }}
+              onClick={() => {
+                setActiveOrdersLoading(true);
+                fetchActiveOrders();
+              }}
+              title="Osvježi"
+              className="p-2 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
             >
-              Pogledaj sve narudžbe →
+              <Loader2
+                size={16}
+                className={`text-gray-500 dark:text-[#7d7498] ${activeOrdersLoading ? "animate-spin" : ""}`}
+              />
             </button>
           </div>
+
+          {/* Sadržaj */}
+          {activeOrdersError ? (
+            <div className="flex items-center gap-2 px-3 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+              <AlertTriangle size={15} />
+              {activeOrdersError}
+            </div>
+          ) : activeOrdersLoading && activeOrders.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-sm text-gray-400 dark:text-[#5f5878]">
+              <Loader2 size={18} className="animate-spin mr-2" />
+              Učitavanje narudžbi...
+            </div>
+          ) : activeOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-gray-400 dark:text-[#5f5878]">
+              <ShoppingCart
+                size={28}
+                className="text-gray-300 dark:text-[#3a3158]"
+              />
+              Nema aktivnih narudžbi
+            </div>
+          ) : (
+            <div className="space-y-2 overflow-y-auto flex-1">
+              {activeOrders.map((order) => {
+                const isExpanded = expandedOrderId === order.id;
+                const items = orderItems[order.id] ?? [];
+                const itemsLoading = orderItemsLoading[order.id] ?? false;
+                const prio = priorityLabel[order.priority] ?? priorityLabel[1];
+                const createdTime = new Date(
+                  order.created_at,
+                ).toLocaleTimeString("bs-BA", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const deliveryDate = order.requested_delivery_date
+                  ? isoToDisplay(order.requested_delivery_date.slice(0, 10))
+                  : "—";
+
+                return (
+                  <div
+                    key={order.id}
+                    className={`rounded-xl overflow-hidden ${order.priority === 2 ? "border-2 border-red-400 dark:border-red-500" : "border border-gray-200 dark:border-[#3a3158]"}`}
+                  >
+                    {/* Red narudžbe */}
+                    <button
+                      onClick={() => handleToggleOrder(order.id)}
+                      className="w-full text-left px-4 py-3 bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-3 min-w-0">
+                          {/* Sat */}
+                          <div className="text-xs font-semibold text-gray-400 dark:text-[#5f5878] pt-0.5 flex-shrink-0">
+                            {createdTime}
+                          </div>
+                          {/* Info */}
+                          <div className="min-w-0">
+                            <div className="font-bold text-gray-800 dark:text-[#ede9f6] truncate">
+                              {order.partner_name}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-[#7d7498] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono">
+                                {order.order_number}
+                              </span>
+                              <span>·</span>
+                              <span>
+                                {paymentLabel[order.vrsta_placanja] ?? "—"}
+                              </span>
+                              <span>·</span>
+                              <span>Isporuka: {deliveryDate}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Prioritet + expand ikona */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${prio.cls}`}
+                          >
+                            {prio.label}
+                          </span>
+                          <ChevronDown
+                            size={14}
+                            className={`text-gray-400 dark:text-[#5f5878] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                          />
+                        </div>
+                      </div>
+                      {order.notes && (
+                        <div className="mt-1.5 text-xs text-gray-400 dark:text-[#5f5878] italic truncate pl-10">
+                          {order.notes}
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Stavke narudžbe */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 dark:border-[#2d2648] bg-[#f8f6fc] dark:bg-[#16122a]">
+                        {itemsLoading ? (
+                          <div className="flex items-center justify-center py-4 text-sm text-gray-400 dark:text-[#5f5878]">
+                            <Loader2 size={14} className="animate-spin mr-2" />
+                            Učitavanje stavki...
+                          </div>
+                        ) : items.length === 0 ? (
+                          <div className="py-4 text-center text-xs text-gray-400 dark:text-[#5f5878]">
+                            Nema stavki
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-gray-200 dark:border-[#2d2648]">
+                                  <th className="text-left px-4 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    #
+                                  </th>
+                                  <th className="text-left px-2 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    Artikal
+                                  </th>
+                                  <th className="text-right px-2 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    Kol.
+                                  </th>
+                                  <th className="text-left px-2 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    JM
+                                  </th>
+                                  <th className="text-right px-2 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    VPC
+                                  </th>
+                                  <th className="text-right px-4 py-2 font-bold text-gray-400 dark:text-[#5f5878] uppercase tracking-wider">
+                                    MPC
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map((item) => (
+                                  <tr
+                                    key={item.id}
+                                    className="border-b border-gray-100 dark:border-[#1e1a2d] last:border-b-0"
+                                  >
+                                    <td className="px-4 py-2 text-gray-400 dark:text-[#5f5878]">
+                                      {item.line_number}
+                                    </td>
+                                    <td className="px-2 py-2 font-medium text-gray-800 dark:text-[#ede9f6]">
+                                      {item.product_name}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-semibold text-gray-700 dark:text-[#c5bfd8]">
+                                      {Number(item.quantity) % 1 === 0
+                                        ? Number(item.quantity).toFixed(0)
+                                        : Number(item.quantity).toFixed(3)}
+                                    </td>
+                                    <td className="px-2 py-2 text-gray-500 dark:text-[#7d7498]">
+                                      {item.product_uom}
+                                    </td>
+                                    <td className="px-2 py-2 text-right text-gray-500 dark:text-[#7d7498]">
+                                      {Number(item.vpc).toFixed(2)}
+                                    </td>
+                                    <td
+                                      className="px-4 py-2 text-right font-semibold"
+                                      style={{ color: PRIMARY }}
+                                    >
+                                      {Number(item.mpc).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Footer sa brojem */}
+          {activeOrders.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#2d2648] flex items-center justify-between text-xs text-gray-400 dark:text-[#5f5878]">
+              <span>
+                Ukupno aktivnih:{" "}
+                <strong className="text-gray-700 dark:text-[#c5bfd8]">
+                  {activeOrders.length}
+                </strong>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1505,10 +1716,10 @@ export function NarudzbeUnosLokalno() {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-800 dark:text-[#ede9f6]">
-                      Odabir kupca
+                      Odabir partnera
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-[#7d7498]">
-                      Odaberite kupca iz liste
+                      Odaberite partnera iz liste
                     </p>
                   </div>
                 </div>
@@ -1557,13 +1768,18 @@ export function NarudzbeUnosLokalno() {
                           pretragaKupci.toLowerCase(),
                         ),
                       )
+                      .sort((a, b) =>
+                        a.Naziv_partnera.localeCompare(b.Naziv_partnera, "bs"),
+                      )
                       .map((k) => (
                         <div
                           key={k.sifra_kup}
                           className={`rounded-xl border-2 p-1 ${
-                            k.dodatna_lokacija
-                              ? "border-[#8FC74A] dark:border-[#8FC74A]"
-                              : "border-transparent"
+                            k.sifra_kup >= 10000
+                              ? "border-[#785E9E] dark:border-[#785E9E]"
+                              : k.dodatna_lokacija
+                                ? "border-[#8FC74A] dark:border-[#8FC74A]"
+                                : "border-transparent"
                           }`}
                         >
                           {/* Glavni kupac */}
@@ -1576,7 +1792,9 @@ export function NarudzbeUnosLokalno() {
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                                <User size={13} style={{ color: PRIMARY }} />
+                                {k.sifra_kup >= 10000
+                                  ? <Star size={13} fill="#8FC74A" color="#8FC74A" />
+                                  : <User size={13} style={{ color: PRIMARY }} />}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
@@ -1612,11 +1830,10 @@ export function NarudzbeUnosLokalno() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="text-sm font-semibold text-gray-700 dark:text-[#c5bfd8] truncate">
-                                    {k.dodatna_lokacija.Naziv_grada ??
-                                      `Lokacija ${k.dodatna_lokacija.sifra_partnera}`}
+                                    {k.dodatna_lokacija.naziv_lokacije ?? k.dodatna_lokacija.Naziv_grada ?? `Lokacija ${k.dodatna_lokacija.sifra_partnera}`}
                                   </div>
-                                  <div className="text-xs text-gray-500 dark:text-[#7d7498]">
-                                    Dodatna lokacija
+                                  <div className="text-xs text-gray-500 dark:text-[#7d7498] truncate">
+                                    {k.dodatna_lokacija.adresa_lokacije ?? "Dodatna lokacija"}
                                   </div>
                                 </div>
                               </div>
@@ -1678,46 +1895,6 @@ export function NarudzbeUnosLokalno() {
           </div>,
           document.body,
         )}
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  broj,
-  opis,
-  type,
-}: {
-  icon: React.ReactNode;
-  broj: string;
-  opis: string;
-  type: "primary" | "green" | "orange" | "accent";
-}) {
-  const styles = {
-    primary: { bg: "bg-[#ede8f5] dark:bg-[#312a50]", color: PRIMARY },
-    green: { bg: "bg-green-100 dark:bg-green-900/30", color: "#16a34a" },
-    orange: { bg: "bg-orange-100 dark:bg-orange-900/30", color: "#ea580c" },
-    accent: { bg: "bg-[#edf7e0] dark:bg-[#1a2c12]", color: ACCENT },
-  };
-  const s = styles[type];
-  return (
-    <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5">
-      <div className="flex items-center gap-4">
-        <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center ${s.bg}`}
-          style={{ color: s.color }}
-        >
-          {icon}
-        </div>
-        <div>
-          <div className="text-2xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            {broj}
-          </div>
-          <div className="text-xs text-gray-500 dark:text-[#7d7498]">
-            {opis}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

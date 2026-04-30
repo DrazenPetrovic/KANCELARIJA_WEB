@@ -1,5 +1,26 @@
 import * as TradeOrdersService from "../services/trade-orders.service.js";
 
+export const getActiveOrders = async (req, res) => {
+  try {
+    const data = await TradeOrdersService.getActiveOrders();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu aktivnih narudžbi:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getActiveOrderItems = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const data = await TradeOrdersService.getActiveOrderItems(orderId);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu stavki narudžbe:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const createTradeOrder = async (req, res) => {
   try {
     const {

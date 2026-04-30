@@ -5,5 +5,11 @@ import * as TradeOrdersController from "../controllers/trade-orders.controller.j
 const router = Router();
 
 router.post("/create", verifyToken, TradeOrdersController.createTradeOrder);
+router.get("/active", verifyToken, TradeOrdersController.getActiveOrders);
+router.get(
+  "/active/:orderId/items",
+  verifyToken,
+  TradeOrdersController.getActiveOrderItems,
+);
 
 export default router;

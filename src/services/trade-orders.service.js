@@ -1,5 +1,22 @@
 import { withConnection } from "./db.service.js";
 
+export const getActiveOrders = async () => {
+  return withConnection(async (conn) => {
+    const [rows] = await conn.execute("CALL erp.sp_get_active_orders()");
+    return rows[0];
+  });
+};
+
+export const getActiveOrderItems = async (orderId) => {
+  return withConnection(async (conn) => {
+    const [rows] = await conn.execute(
+      "CALL erp.sp_get_active_order_items(?)",
+      [Number(orderId)],
+    );
+    return rows[0];
+  });
+};
+
 const pad = (n) => String(n).padStart(2, "0");
 
 const generateOrderNumber = () => {
