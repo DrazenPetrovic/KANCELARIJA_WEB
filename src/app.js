@@ -13,6 +13,7 @@ import narudzbeRoutes from "./routes/narudzbe.routes.js";
 import terenRoutes from "./routes/teren.routes.js";
 import artikliRoutes from "./routes/artikli.routes.js";
 import partneriRoutes from "./routes/partneri.routes.js";
+import tradeOrdersRoutes from "./routes/trade-orders.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,7 @@ export const createApp = () => {
   app.use("/api/teren", terenRoutes);
   app.use("/api/artikli", artikliRoutes);
   app.use("/api/partneri", partneriRoutes);
+  app.use("/api/trade-orders", tradeOrdersRoutes);
 
   // Serviranje frontenda u produkciji
   if (env.NODE_ENV === "production") {

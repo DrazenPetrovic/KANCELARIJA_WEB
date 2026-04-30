@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(xargs grep *)",
+      "Bash(xargs ls *)",
+      "Bash(ls -la \"d:\\\\WEB_KOMERCIJALA\\\\KANCELARIJA_WEB\\\\src\\\\routes\\\\\\\\\")",
+      "Bash(grep -r \"radnik\" \"d:\\\\WEB_KOMERCIJALA\\\\KANCELARIJA_WEB\\\\src\\\\routes\\\\\\\\\")",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(grep -E \"\\\\.js$\")"
     ]
   }
 }

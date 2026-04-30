@@ -11,7 +11,7 @@ export const login = async (username, password) => {
 
     const row = rows?.[0]?.[0] || null;
 
-    const sifraRadnika = row?.lozinka ?? null;
+    const sifraRadnika = row?.id_eksterni ?? null;
     const vrstaRadnika = row?.vrsta_radnika ?? null;
 
     if (sifraRadnika == null) return { success: false };

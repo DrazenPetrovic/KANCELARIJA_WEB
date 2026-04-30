@@ -48,6 +48,12 @@ const Label = ({
   </label>
 );
 
+const isoToDisplay = (iso: string): string => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+};
+
 const parseCijena = (v: number | string | undefined | null): number => {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return isNaN(v) ? 0 : v;
@@ -96,7 +102,9 @@ interface StavkaNarudzbe {
   naziv_proizvoda: string;
   jm: string;
   kolicina: number;
-  cijena: number;
+  vpc: number;
+  cijena: number; // mpc — za prikaz
+  naziv_grupe?: string;
 }
 
 // Validacija: dozvoljava prazan string, cijele brojeve i decimale do 3 mjesta
@@ -191,6 +199,19 @@ export function NarudzbeUnosLokalno() {
   // ── stavke narudžbe ──────────────────────────────────────────
   const [stavke, setStavke] = useState<StavkaNarudzbe[]>([]);
 
+  // ── vrsta plaćanja (1 = žirano, 2 = gotovinsko) ─────────────
+  const [vrstaPlacan, setVrstaPlacan] = useState<1 | 2>(1);
+
+  // ── ostali podaci o narudžbi ─────────────────────────────────
+  const [datumIsporuke, setDatumIsporuke] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const [prioritet, setPrioritet] = useState<1 | 2 | 3>(1);
+  const [napomena, setNapomena] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   // ── artikli + modal ──────────────────────────────────────────
   const [artikli, setArtikli] = useState<Artikal[]>([]);
   const [artikliGrupe, setArtikliGrupe] = useState<Record<string, unknown>[]>(
@@ -212,8 +233,13 @@ export function NarudzbeUnosLokalno() {
   const [upozorenjeArtikalSifra, setUpozorenjeArtikalSifra] = useState<
     number | null
   >(null);
+  // Upozorenje za narudžbu
+  const [upozorenjeNarudzbe, setUpozorenjeNarudzbe] = useState<string | null>(
+    null,
+  );
   // Refs za input polja količine u modalu
   const inputRefsModal = useRef<Record<number, HTMLInputElement | null>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const fetchKupci = async () => {
       try {
@@ -264,15 +290,27 @@ export function NarudzbeUnosLokalno() {
     if (keys.length === 0) return;
     const lastAdded = keys[keys.length - 1];
 
+    // Samo focusiraj input ako modal je već bio otvoren prije nego što se odabrao novi artikal
+    // To znači da fokusiramo samo kada korisnik dodaje novi artikal, ne pri inicijalnom otvaranju
     if (inputRefsModal.current[lastAdded]) {
       setTimeout(() => {
         const input = inputRefsModal.current[lastAdded];
-        if (input) {
+        // Ako search input nema fokusa, onda focusiraj input za količinu
+        if (input && document.activeElement !== searchInputRef.current) {
           input.focus();
         }
       }, 50);
     }
   }, [modalOdabrani, pokaziModalArtikli]);
+
+  // ── Fokus na search input kada se otvori modal ──────────────
+  useEffect(() => {
+    if (pokaziModalArtikli && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  }, [pokaziModalArtikli]);
   useEffect(() => {
     if (!artikliGrupe.length) return;
     const rec = artikliGrupe[0];
@@ -349,10 +387,54 @@ export function NarudzbeUnosLokalno() {
     setStavke([]);
   };
 
-  const handleSacuvaj = () => {
-    setOdabraniKupac(null);
-    setPretraga("");
-    setStavke([]);
+  const handleSacuvaj = async () => {
+    if (!odabraniKupac) {
+      setUpozorenjeNarudzbe("Molimo odaberite kupca");
+      return;
+    }
+    if (stavke.length === 0) {
+      setUpozorenjeNarudzbe("Molimo dodajte najmanje jedan artikal");
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/trade-orders/create`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partnerId: odabraniKupac.sifra_kup,
+          partnerName: odabraniKupac.Naziv_partnera,
+          vrstaPlacanja: vrstaPlacan,
+          datumIsporuke,
+          prioritet,
+          napomena,
+          stavke: stavke.map((s) => ({
+            sifraProizvoda: s.sifra_proizvoda,
+            nazivProizvoda: s.naziv_proizvoda,
+            jm: s.jm,
+            kolicina: s.kolicina,
+            vpc: s.vpc,
+            mpc: s.cijena,
+            grupaProizvoda: s.naziv_grupe ?? null,
+          })),
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Greška pri snimanju");
+      setOdabraniKupac(null);
+      setPretraga("");
+      setStavke([]);
+      setNapomena("");
+      setDatumIsporuke(new Date().toISOString().slice(0, 10));
+      setPrioritet(1);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Greška pri snimanju");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── modal artikli ────────────────────────────────────────────
@@ -410,11 +492,30 @@ export function NarudzbeUnosLokalno() {
           naziv_proizvoda: a.naziv_proizvoda,
           jm: a.jm,
           kolicina,
+          vpc: parseCijena(a.vpc),
           cijena: parseCijena(a.mpc),
+          naziv_grupe: a.naziv_grupe,
         });
       }
     });
-    setStavke(novaStavke);
+
+    // Merge sa postojećim stavkama
+    setStavke((prev) => {
+      const updated = [...prev];
+      novaStavke.forEach((nova) => {
+        const idx = updated.findIndex(
+          (s) => s.sifra_proizvoda === nova.sifra_proizvoda,
+        );
+        if (idx >= 0) {
+          // Zamijeni postojeću stavku
+          updated[idx] = nova;
+        } else {
+          // Dodaj novu stavku
+          updated.push(nova);
+        }
+      });
+      return updated;
+    });
     zatvoriModal();
   };
 
@@ -463,7 +564,6 @@ export function NarudzbeUnosLokalno() {
   };
 
   // ── stavke u listi narudžbe ──────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const promijeniKolicinu = (sifra: number, delta: number) => {
     setStavke((prev) =>
       prev.map((s) =>
@@ -724,26 +824,61 @@ export function NarudzbeUnosLokalno() {
           )}
 
           {/* Datum i prioritet */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <Label required>Datum isporuke</Label>
-              <input
-                type="text"
-                defaultValue={new Date().toLocaleDateString("hr-HR", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                })}
-                className={inputClass}
-              />
+              <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-1 text-center">
+                Datum isporuke <span className="text-red-400 ml-0.5">*</span>
+              </label>
+              <div className="relative">
+                <div className={`${inputClass} flex items-center justify-between pointer-events-none`}>
+                  <span>{isoToDisplay(datumIsporuke)}</span>
+                  <Calendar size={14} className="text-gray-400 flex-shrink-0" />
+                </div>
+                <input
+                  type="date"
+                  value={datumIsporuke}
+                  onChange={(e) => setDatumIsporuke(e.target.value)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
             </div>
             <div>
-              <Label>Prioritet</Label>
-              <select className={inputClass}>
-                <option>Normalan</option>
-                <option>Hitno</option>
-                <option>Dogovorena isporuka</option>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-1 text-center">
+                Prioritet
+              </label>
+              <select
+                value={prioritet}
+                onChange={(e) => setPrioritet(Number(e.target.value) as 1 | 2 | 3)}
+                className={inputClass}
+              >
+                <option value={1}>Normalan</option>
+                <option value={2}>Hitno</option>
+                <option value={3}>Dogovorena isporuka</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-1 text-center">
+                Način plaćanja
+              </label>
+              <div className="flex rounded-xl border border-gray-200 dark:border-[#3a3158] overflow-hidden h-[42px]">
+                <button
+                  type="button"
+                  onClick={() => setVrstaPlacan(1)}
+                  className={`flex-1 text-sm font-semibold transition-all ${vrstaPlacan === 1 ? "text-white" : "text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
+                  style={vrstaPlacan === 1 ? { background: PRIMARY } : undefined}
+                >
+                  Žirano
+                </button>
+                <div className="w-px bg-gray-200 dark:bg-[#3a3158]" />
+                <button
+                  type="button"
+                  onClick={() => setVrstaPlacan(2)}
+                  className={`flex-1 text-sm font-semibold transition-all ${vrstaPlacan === 2 ? "text-white" : "text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
+                  style={vrstaPlacan === 2 ? { background: PRIMARY } : undefined}
+                >
+                  Gotovinsko
+                </button>
+              </div>
             </div>
           </div>
 
@@ -804,9 +939,19 @@ export function NarudzbeUnosLokalno() {
                         </div>
                       </div>
                       <div className="flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#3a3158] px-1.5 py-1">
-                        <span className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] min-w-[20px] text-center">
-                          {s.kolicina}
-                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={s.kolicina}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || /^\d+\.?\d{0,3}$/.test(val)) {
+                              const novaKolicina = val === "" ? 0 : parseFloat(val);
+                              promijeniKolicinu(s.sifra_proizvoda, novaKolicina - s.kolicina);
+                            }
+                          }}
+                          className="w-full text-center text-sm font-semibold bg-transparent text-gray-800 dark:text-[#ede9f6] outline-none"
+                        />
                       </div>
                       <div className="text-sm text-gray-700 dark:text-[#c5bfd8]">
                         {s.cijena.toFixed(2)} KM
@@ -852,26 +997,46 @@ export function NarudzbeUnosLokalno() {
           <div>
             <Label optional>Napomena</Label>
             <textarea
+              value={napomena}
+              onChange={(e) => setNapomena(e.target.value)}
               placeholder="Unesite napomenu..."
               className={`${inputClass} h-24 resize-none`}
             />
           </div>
 
           {/* Akcije */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handlePoništi}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
-            >
-              Poništi
-            </button>
-            <button
-              onClick={handleSacuvaj}
-              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white hover:brightness-110 transition-all"
-              style={{ background: PRIMARY }}
-            >
-              ✓ Sačuvaj narudžbu
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handlePoništi}
+                disabled={saving}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
+              >
+                Poništi
+              </button>
+              <button
+                onClick={handleSacuvaj}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white hover:brightness-110 transition-all disabled:opacity-70"
+                style={{ background: PRIMARY }}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" /> Snimanje...
+                  </>
+                ) : (
+                  <>
+                    <Check size={15} /> Sačuvaj narudžbu
+                  </>
+                )}
+              </button>
+            </div>
+            {saveError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+                <AlertTriangle size={14} />
+                {saveError}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1055,6 +1220,7 @@ export function NarudzbeUnosLokalno() {
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <input
+                        ref={searchInputRef}
                         autoFocus
                         value={modalPretraga}
                         onChange={(e) => setModalPretraga(e.target.value)}
@@ -1469,6 +1635,43 @@ export function NarudzbeUnosLokalno() {
                   className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
                 >
                   Odustani
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Modal upozorenja za narudžbu */}
+      {upozorenjeNarudzbe &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.55)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setUpozorenjeNarudzbe(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] p-6 max-w-sm w-full">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-orange-100 dark:bg-orange-900/30">
+                  <AlertTriangle size={22} className="text-orange-500" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-800 dark:text-[#ede9f6]">
+                    Nepotpuna narudžba
+                  </h4>
+                  <p className="text-sm text-gray-600 dark:text-[#c5bfd8] mt-1">
+                    {upozorenjeNarudzbe}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setUpozorenjeNarudzbe(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
+                >
+                  Razumijem
                 </button>
               </div>
             </div>
