@@ -106,6 +106,14 @@ interface StavkaNarudzbe {
   naziv_grupe?: string;
 }
 
+interface HistorijaProizvoda {
+  product_id: number;
+  product_name: string;
+  product_uom: string;
+  product_group: string | null;
+  sumirana_kolicina: number;
+}
+
 // Validacija: dozvoljava prazan string, cijele brojeve i decimale do 3 mjesta
 const isValidKolicinaInput = (v: string): boolean =>
   v === "" || /^\d+\.?\d{0,3}$/.test(v) || /^\d*\.$/.test(v);
@@ -113,6 +121,7 @@ const isValidKolicinaInput = (v: string): boolean =>
 interface ActiveOrder {
   id: number;
   order_number: string;
+  referent_number: string | null;
   partner_id: number;
   partner_name: string;
   branch_id: number | null;
@@ -227,6 +236,10 @@ export function NarudzbeUnosLokalno() {
   const [upozorenjeNarudzbe, setUpozorenjeNarudzbe] = useState<string | null>(
     null,
   );
+  // ── istorija narudžbi partnera ───────────────────────────────
+  const [historijaPartnera, setHistorijaPartnera] = useState<HistorijaProizvoda[]>([]);
+  const [historijaLoading, setHistorijaLoading] = useState(false);
+
   // Refs za input polja količine u modalu
   const inputRefsModal = useRef<Record<number, HTMLInputElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -449,6 +462,11 @@ export function NarudzbeUnosLokalno() {
       return;
     }
 
+    const referentNumber = Array.from(crypto.getRandomValues(new Uint8Array(10)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .toUpperCase();
+
     setSaving(true);
     setSaveError(null);
     try {
@@ -463,6 +481,7 @@ export function NarudzbeUnosLokalno() {
           datumIsporuke,
           prioritet,
           napomena,
+          referentNumber,
           stavke: stavke.map((s) => ({
             sifraProizvoda: s.sifra_proizvoda,
             nazivProizvoda: s.naziv_proizvoda,
@@ -499,6 +518,19 @@ export function NarudzbeUnosLokalno() {
     const init = new Map<number, string>();
     stavke.forEach((s) => init.set(s.sifra_proizvoda, String(s.kolicina)));
     setModalOdabrani(init);
+
+    if (odabraniKupac) {
+      setHistorijaLoading(true);
+      setHistorijaPartnera([]);
+      fetch(
+        `${API_URL}/api/trade-orders/partner-history?partnerId=${odabraniKupac.sifra_kup}&partnerName=${encodeURIComponent(odabraniKupac.Naziv_partnera)}`,
+        { credentials: "include" },
+      )
+        .then((r) => r.json())
+        .then((json) => { if (json.success) setHistorijaPartnera(json.data); })
+        .catch(() => {})
+        .finally(() => setHistorijaLoading(false));
+    }
 
     if (!artikliDohvaceni) {
       setArtikliLoading(true);
@@ -1204,17 +1236,24 @@ export function NarudzbeUnosLokalno() {
                               <span className="font-mono">
                                 {order.order_number}
                               </span>
-                              <span>·</span>
-                              <span>
-                                {paymentLabel[order.vrsta_placanja] ?? "—"}
-                              </span>
+                              {order.referent_number && (
+                                <span className="text-gray-400 dark:text-[#5f5878]">
+                                  ({order.referent_number.slice(0, 8)})
+                                </span>
+                              )}
                               <span>·</span>
                               <span>Isporuka: {deliveryDate}</span>
                             </div>
                           </div>
                         </div>
-                        {/* Prioritet + expand ikona */}
+                        {/* Vrsta plaćanja + prioritet + expand ikona */}
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          <span
+                            className="text-[10px] font-bold"
+                            style={{ color: PRIMARY }}
+                          >
+                            {paymentLabel[order.vrsta_placanja] ?? "—"}
+                          </span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${prio.cls}`}
                           >
@@ -1580,6 +1619,75 @@ export function NarudzbeUnosLokalno() {
                               />
                             </div>
                           </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Istorija partnera */}
+                <div className="w-56 flex-shrink-0 border-l border-gray-100 dark:border-[#2d2648] flex flex-col">
+                  <div className="px-3 py-3 border-b border-gray-100 dark:border-[#2d2648]">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
+                      Ranije naručivano
+                    </p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {historijaLoading ? (
+                      <div className="flex items-center justify-center py-8 gap-2 text-gray-400 dark:text-[#5f5878]">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span className="text-xs">Učitavanje...</span>
+                      </div>
+                    ) : !odabraniKupac ? (
+                      <div className="px-3 py-6 text-center text-xs text-gray-400 dark:text-[#5f5878]">
+                        Odaberite kupca
+                      </div>
+                    ) : historijaPartnera.length === 0 ? (
+                      <div className="px-3 py-6 text-center text-xs text-gray-400 dark:text-[#5f5878]">
+                        Nema istorije
+                      </div>
+                    ) : (
+                      historijaPartnera.map((h) => {
+                        const odabran = modalOdabrani.has(h.product_id);
+                        const artikal = artikli.find(
+                          (a) => Number(a.sifra_proizvoda) === h.product_id,
+                        );
+                        return (
+                          <button
+                            key={h.product_id}
+                            onClick={() => artikal && toggleArtikalOdabir(artikal)}
+                            disabled={!artikal}
+                            className={`w-full text-left px-3 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all ${
+                              !artikal
+                                ? "opacity-35 cursor-not-allowed"
+                                : odabran
+                                  ? "bg-[#ede8f5] dark:bg-[#2a2043]"
+                                  : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                            }`}
+                          >
+                            <div className="flex items-start gap-1.5">
+                              <div
+                                className="w-4 h-4 mt-0.5 rounded flex-shrink-0 flex items-center justify-center"
+                                style={{
+                                  background: odabran ? PRIMARY : "transparent",
+                                  border: `2px solid ${odabran ? PRIMARY : "#d1d5db"}`,
+                                }}
+                              >
+                                {odabran && <Check size={9} className="text-white" strokeWidth={3} />}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-medium text-gray-800 dark:text-[#ede9f6] leading-tight truncate">
+                                  {h.product_name}
+                                </div>
+                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-0.5">
+                                  {Number(h.sumirana_kolicina) % 1 === 0
+                                    ? Number(h.sumirana_kolicina).toFixed(0)
+                                    : Number(h.sumirana_kolicina).toFixed(2)}{" "}
+                                  {h.product_uom}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
                         );
                       })
                     )}

@@ -21,6 +21,20 @@ export const getActiveOrderItems = async (req, res) => {
   }
 };
 
+export const getPartnerOrderHistory = async (req, res) => {
+  try {
+    const { partnerId, partnerName } = req.query;
+    const data = await TradeOrdersService.getPartnerOrderHistory(
+      partnerId ?? 0,
+      partnerName ?? "",
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu istorije partnera:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const createTradeOrder = async (req, res) => {
   try {
     const {
@@ -30,6 +44,7 @@ export const createTradeOrder = async (req, res) => {
       datumIsporuke,
       prioritet,
       napomena,
+      referentNumber,
       stavke,
     } = req.body;
 
@@ -51,6 +66,7 @@ export const createTradeOrder = async (req, res) => {
       datumIsporuke,
       prioritet,
       napomena,
+      referentNumber,
       stavke,
     });
 

@@ -11,5 +11,10 @@ router.get(
   verifyToken,
   TradeOrdersController.getActiveOrderItems,
 );
+router.get(
+  "/partner-history",
+  verifyToken,
+  TradeOrdersController.getPartnerOrderHistory,
+);
 
 export default router;
