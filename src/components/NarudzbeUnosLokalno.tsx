@@ -237,7 +237,9 @@ export function NarudzbeUnosLokalno() {
     null,
   );
   // ── istorija narudžbi partnera ───────────────────────────────
-  const [historijaPartnera, setHistorijaPartnera] = useState<HistorijaProizvoda[]>([]);
+  const [historijaPartnera, setHistorijaPartnera] = useState<
+    HistorijaProizvoda[]
+  >([]);
   const [historijaLoading, setHistorijaLoading] = useState(false);
 
   // Refs za input polja količine u modalu
@@ -462,7 +464,9 @@ export function NarudzbeUnosLokalno() {
       return;
     }
 
-    const referentNumber = Array.from(crypto.getRandomValues(new Uint8Array(10)))
+    const referentNumber = Array.from(
+      crypto.getRandomValues(new Uint8Array(10)),
+    )
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
       .toUpperCase();
@@ -527,7 +531,9 @@ export function NarudzbeUnosLokalno() {
         { credentials: "include" },
       )
         .then((r) => r.json())
-        .then((json) => { if (json.success) setHistorijaPartnera(json.data); })
+        .then((json) => {
+          if (json.success) setHistorijaPartnera(json.data);
+        })
         .catch(() => {})
         .finally(() => setHistorijaLoading(false));
     }
@@ -1378,7 +1384,7 @@ export function NarudzbeUnosLokalno() {
           >
             <div
               className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
-              style={{ width: "min(1200px, 92vw)", height: "min(760px, 88vh)" }}
+              style={{ width: "80vw", height: "min(760px, 88vh)" }}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-[#2d2648]">
@@ -1409,7 +1415,7 @@ export function NarudzbeUnosLokalno() {
               {/* Body */}
               <div className="flex flex-1 min-h-0">
                 {/* Grupe sidebar */}
-                <div className="w-80 flex-shrink-0 border-r border-gray-100 dark:border-[#2d2648] overflow-y-auto">
+                <div className="w-64 flex-shrink-0 border-r border-gray-100 dark:border-[#2d2648] overflow-y-auto">
                   <div className="p-3">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] px-2 mb-2">
                       Grupe
@@ -1481,7 +1487,7 @@ export function NarudzbeUnosLokalno() {
                   </div>
 
                   {/* Zaglavlje kolona */}
-                  <div className="grid grid-cols-[32px_1fr_70px_100px_90px_120px] items-center gap-3 px-4 py-2 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#1e1a2d]">
+                  <div className="grid grid-cols-[28px_1fr_58px_90px_80px_108px] items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#1e1a2d]">
                     <span />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
                       Naziv artikla
@@ -1527,7 +1533,7 @@ export function NarudzbeUnosLokalno() {
                         return (
                           <div
                             key={a.sifra_proizvoda}
-                            className={`grid grid-cols-[32px_1fr_70px_100px_90px_120px] items-center gap-3 px-4 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all cursor-pointer ${
+                            className={`grid grid-cols-[28px_1fr_58px_90px_80px_108px] items-center gap-2 px-4 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all cursor-pointer ${
                               bezStanja
                                 ? odabran
                                   ? "bg-gray-200 dark:bg-gray-700"
@@ -1626,7 +1632,7 @@ export function NarudzbeUnosLokalno() {
                 </div>
 
                 {/* Istorija partnera */}
-                <div className="w-56 flex-shrink-0 border-l border-gray-100 dark:border-[#2d2648] flex flex-col">
+                <div className="w-80 flex-shrink-0 border-l border-gray-100 dark:border-[#2d2648] flex flex-col">
                   <div className="px-3 py-3 border-b border-gray-100 dark:border-[#2d2648]">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
                       Ranije naručivano
@@ -1655,7 +1661,9 @@ export function NarudzbeUnosLokalno() {
                         return (
                           <button
                             key={h.product_id}
-                            onClick={() => artikal && toggleArtikalOdabir(artikal)}
+                            onClick={() =>
+                              artikal && toggleArtikalOdabir(artikal)
+                            }
                             disabled={!artikal}
                             className={`w-full text-left px-3 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all ${
                               !artikal
@@ -1673,7 +1681,13 @@ export function NarudzbeUnosLokalno() {
                                   border: `2px solid ${odabran ? PRIMARY : "#d1d5db"}`,
                                 }}
                               >
-                                {odabran && <Check size={9} className="text-white" strokeWidth={3} />}
+                                {odabran && (
+                                  <Check
+                                    size={9}
+                                    className="text-white"
+                                    strokeWidth={3}
+                                  />
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-medium text-gray-800 dark:text-[#ede9f6] leading-tight truncate">
@@ -1682,7 +1696,9 @@ export function NarudzbeUnosLokalno() {
                                 <div className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-0.5">
                                   {Number(h.sumirana_kolicina) % 1 === 0
                                     ? Number(h.sumirana_kolicina).toFixed(0)
-                                    : Number(h.sumirana_kolicina).toFixed(2)}{" "}
+                                    : Number(h.sumirana_kolicina).toFixed(
+                                        2,
+                                      )}{" "}
                                   {h.product_uom}
                                 </div>
                               </div>
@@ -1900,9 +1916,15 @@ export function NarudzbeUnosLokalno() {
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                                {k.sifra_kup >= 10000
-                                  ? <Star size={13} fill="#8FC74A" color="#8FC74A" />
-                                  : <User size={13} style={{ color: PRIMARY }} />}
+                                {k.sifra_kup >= 10000 ? (
+                                  <Star
+                                    size={13}
+                                    fill="#8FC74A"
+                                    color="#8FC74A"
+                                  />
+                                ) : (
+                                  <User size={13} style={{ color: PRIMARY }} />
+                                )}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
@@ -1938,10 +1960,13 @@ export function NarudzbeUnosLokalno() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="text-sm font-semibold text-gray-700 dark:text-[#c5bfd8] truncate">
-                                    {k.dodatna_lokacija.naziv_lokacije ?? k.dodatna_lokacija.Naziv_grada ?? `Lokacija ${k.dodatna_lokacija.sifra_partnera}`}
+                                    {k.dodatna_lokacija.naziv_lokacije ??
+                                      k.dodatna_lokacija.Naziv_grada ??
+                                      `Lokacija ${k.dodatna_lokacija.sifra_partnera}`}
                                   </div>
                                   <div className="text-xs text-gray-500 dark:text-[#7d7498] truncate">
-                                    {k.dodatna_lokacija.adresa_lokacije ?? "Dodatna lokacija"}
+                                    {k.dodatna_lokacija.adresa_lokacije ??
+                                      "Dodatna lokacija"}
                                   </div>
                                 </div>
                               </div>

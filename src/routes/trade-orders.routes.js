@@ -11,6 +11,17 @@ router.get(
   verifyToken,
   TradeOrdersController.getActiveOrderItems,
 );
+router.get("/finished", verifyToken, TradeOrdersController.getFinishedOrders);
+router.get(
+  "/finished/items",
+  verifyToken,
+  TradeOrdersController.getFinishedOrderItems,
+);
+router.get(
+  "/zavrsene-lokalno",
+  verifyToken,
+  TradeOrdersController.getZavrseneLokalneNarudzbe,
+);
 router.get(
   "/partner-history",
   verifyToken,

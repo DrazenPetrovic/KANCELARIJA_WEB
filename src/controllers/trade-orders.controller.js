@@ -21,6 +21,36 @@ export const getActiveOrderItems = async (req, res) => {
   }
 };
 
+export const getFinishedOrders = async (req, res) => {
+  try {
+    const data = await TradeOrdersService.getFinishedOrders();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu završenih narudžbi:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getFinishedOrderItems = async (req, res) => {
+  try {
+    const data = await TradeOrdersService.getFinishedOrderItems();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu stavki završene narudžbe:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getZavrseneLokalneNarudzbe = async (req, res) => {
+  try {
+    const data = await TradeOrdersService.getZavrseneLokalneNarudzbe();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Greška pri dohvatu završenih narudžbi:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const getPartnerOrderHistory = async (req, res) => {
   try {
     const { partnerId, partnerName } = req.query;
@@ -77,11 +107,9 @@ export const createTradeOrder = async (req, res) => {
     });
   } catch (error) {
     console.error("Greška pri kreiranju trade narudžbe:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        error: "Greška pri snimanju narudžbe: " + error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri snimanju narudžbe: " + error.message,
+    });
   }
 };

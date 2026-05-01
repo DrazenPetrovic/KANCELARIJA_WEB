@@ -6,6 +6,7 @@ import { KliseUnosZaDobavljaca } from "./KliseUnosZaDobavljaca";
 import { OrdersList } from "./OrdersList.tsx";
 import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
 import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
+import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -13,6 +14,7 @@ import {
   BarChart2,
   Calculator,
   Calendar,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -56,6 +58,7 @@ type MenuSection =
   | "narudzbe-pregled"
   | "narudzbe-teren"
   | "narudzbe-lokalno"
+  | "narudzbe-zavrsene-lokalno"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -695,6 +698,40 @@ export function Dashboard({
                           </span>
                           Unos narudžbe lokalno
                         </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("narudzbe-zavrsene-lokalno")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "narudzbe-zavrsene-lokalno",
+                          )}
+                          style={
+                            activeSection === "narudzbe-zavrsene-lokalno"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "narudzbe-zavrsene-lokalno" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "narudzbe-zavrsene-lokalno"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <CheckCheck
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "narudzbe-zavrsene-lokalno"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Završene lokalne narudžbe
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -906,6 +943,8 @@ export function Dashboard({
           {activeSection === "narudzbe-teren" && <NarudzbeUnosTeren />}
 
           {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
+
+          {activeSection === "narudzbe-zavrsene-lokalno" && <NarudzbeZavrseneLokalno />}
 
           {activeSection === "klise-unos" && <KliseUnosNovog />}
 

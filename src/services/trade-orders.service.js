@@ -9,11 +9,41 @@ export const getActiveOrders = async () => {
 
 export const getActiveOrderItems = async (orderId) => {
   return withConnection(async (conn) => {
-    const [rows] = await conn.execute(
-      "CALL erp.sp_get_active_order_items(?)",
-      [Number(orderId)],
-    );
+    const [rows] = await conn.execute("CALL erp.sp_get_active_order_items(?)", [
+      Number(orderId),
+    ]);
     return rows[0];
+  });
+};
+
+export const getFinishedOrders = async () => {
+  return withConnection(async (conn) => {
+    const [rows] = await conn.execute("CALL erp.sp_get_finished_orders()");
+    return rows[0];
+  });
+};
+
+export const getFinishedOrderItems = async () => {
+  return withConnection(async (conn) => {
+    const [rows] = await conn.execute("CALL erp.sp_get_finished_order_items()");
+    return rows[0];
+  });
+};
+
+export const getZavrseneLokalneNarudzbe = async () => {
+  return withConnection(async (conn) => {
+    const [rows] = await conn.execute(
+      `SELECT id, order_number, referent_number, partner_id, partner_name,
+              vrsta_placanja, order_date, requested_delivery_date,
+              confirmed_delivery_date, priority, notes, created_at
+       FROM erp.trade_orders
+       WHERE order_type = 'local'
+         AND status_id = 2
+         AND deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 200`,
+    );
+    return rows;
   });
 };
 
