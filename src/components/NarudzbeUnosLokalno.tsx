@@ -114,6 +114,27 @@ interface HistorijaProizvoda {
   sumirana_kolicina: number;
 }
 
+const normalizeHistorijaProizvoda = (
+  row: Record<string, unknown>,
+): HistorijaProizvoda => {
+  const productId = Number(row.product_id ?? row.sifra_proizvoda ?? 0);
+  const productName = String(
+    row.product_name ?? row.naziv_proizvoda ?? row.naziv ?? "",
+  );
+  const productUom = String(row.product_uom ?? row.jm ?? "");
+  const sumiranaKolicina = Number(
+    row.sumirana_kolicina ?? row.ukupna_kolicina ?? 0,
+  );
+
+  return {
+    product_id: Number.isFinite(productId) ? productId : 0,
+    product_name: productName,
+    product_uom: productUom,
+    product_group: row.product_group != null ? String(row.product_group) : null,
+    sumirana_kolicina: Number.isFinite(sumiranaKolicina) ? sumiranaKolicina : 0,
+  };
+};
+
 // Validacija: dozvoljava prazan string, cijele brojeve i decimale do 3 mjesta
 const isValidKolicinaInput = (v: string): boolean =>
   v === "" || /^\d+\.?\d{0,3}$/.test(v) || /^\d*\.$/.test(v);
@@ -526,13 +547,25 @@ export function NarudzbeUnosLokalno() {
     if (odabraniKupac) {
       setHistorijaLoading(true);
       setHistorijaPartnera([]);
+      const sifraZaUpit =
+        odabraniKupac.sifra_kup >= 10000 ? 300 : odabraniKupac.sifra_kup;
       fetch(
-        `${API_URL}/api/trade-orders/partner-history?partnerId=${odabraniKupac.sifra_kup}&partnerName=${encodeURIComponent(odabraniKupac.Naziv_partnera)}`,
+        `${API_URL}/api/trade-orders/partner-history?partnerId=${sifraZaUpit}&partnerName=${encodeURIComponent(odabraniKupac.Naziv_partnera)}`,
         { credentials: "include" },
       )
         .then((r) => r.json())
         .then((json) => {
-          if (json.success) setHistorijaPartnera(json.data);
+          if (json.success) {
+            const mapped = (Array.isArray(json.data) ? json.data : [])
+              .map((row: Record<string, unknown>) =>
+                normalizeHistorijaProizvoda(row),
+              )
+              .filter(
+                (row: HistorijaProizvoda) =>
+                  Number.isFinite(row.product_id) && row.product_id > 0,
+              );
+            setHistorijaPartnera(mapped);
+          }
         })
         .catch(() => {})
         .finally(() => setHistorijaLoading(false));

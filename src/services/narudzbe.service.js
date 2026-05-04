@@ -23,7 +23,7 @@ export const getAktivneNarudzbe = async (sifraTerena) => {
 export const getRanijeUzimano = async (sifraPartnera, nazivPartnera) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL komercijala.dostava_provjera_uzimanih_artikala_grupisano(?, ?)",
+      "CALL erp.sp_get_partner_order_history(?, ?)",
       [sifraPartnera, nazivPartnera],
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];

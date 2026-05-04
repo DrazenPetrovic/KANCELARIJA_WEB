@@ -739,7 +739,9 @@ export function NarudzbeUnosTeren() {
 
   useEffect(() => {
     if (showKupacModal && selectedKupac?.sifra_kupca) {
-      fetchRanijeUzimano(selectedKupac.sifra_kupca, selectedKupac.naziv_kupca);
+      const sifraZaUpit =
+        selectedKupac.sifra_kupca >= 10000 ? 300 : selectedKupac.sifra_kupca;
+      fetchRanijeUzimano(sifraZaUpit, selectedKupac.naziv_kupca);
       setSearchArtikli("");
     } else {
       setRecentProducts([]);
@@ -896,14 +898,13 @@ export function NarudzbeUnosTeren() {
       const params = new URLSearchParams();
       params.set("sifraPartnera", String(sifraPartnera));
       if (nazivPartnera) params.set("nazivPartnera", nazivPartnera);
-      const res = await fetch(
-        `${API_URL}/api/narudzbe/ranije-uzimano?${params.toString()}`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      const queryString = params.toString();
+      const requestUrl = `${API_URL}/api/narudzbe/ranije-uzimano?${queryString}`;
+      const res = await fetch(requestUrl, {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
       const json = await res.json();
       if (!res.ok || !json?.success)
         throw new Error(json?.error || `HTTP greška: ${res.status}`);
