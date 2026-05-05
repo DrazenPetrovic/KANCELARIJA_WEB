@@ -182,12 +182,12 @@ const priorityLabel: Record<number, { label: string; cls: string }> = {
     cls: "bg-gray-100 dark:bg-[#2d2648] text-gray-500 dark:text-[#7d7498]",
   },
   2: {
-    label: "Hitno",
-    cls: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-2 border-red-400 dark:border-red-500",
-  },
-  3: {
     label: "Dogovorena",
     cls: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+  },
+  3: {
+    label: "Hitno",
+    cls: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-2 border-red-400 dark:border-red-500",
   },
 };
 
@@ -768,7 +768,7 @@ export function NarudzbeUnosLokalno() {
             <AlertTriangle size={13} className="text-red-500" />
             <span className="text-red-500 dark:text-red-400">Hitno</span>
             <span className="font-bold text-red-600 dark:text-red-400">
-              {activeOrders.filter((o) => o.priority === 2).length}
+              {activeOrders.filter((o) => o.priority === 3).length}
             </span>
           </span>
         </div>
@@ -980,8 +980,8 @@ export function NarudzbeUnosLokalno() {
                 className={inputClass}
               >
                 <option value={1}>Normalan</option>
-                <option value={2}>Hitno</option>
-                <option value={3}>Dogovorena isporuka</option>
+                <option value={2}>Dogovorena isporuka</option>
+                <option value={3}>Hitno</option>
               </select>
             </div>
             <div>
@@ -1253,7 +1253,7 @@ export function NarudzbeUnosLokalno() {
                 return (
                   <div
                     key={order.id}
-                    className={`rounded-xl overflow-hidden ${order.priority === 2 ? "border-2 border-red-400 dark:border-red-500" : "border border-gray-200 dark:border-[#3a3158]"}`}
+                    className={`rounded-xl overflow-hidden ${order.priority === 3 ? "border-2 border-red-400 dark:border-red-500" : "border border-gray-200 dark:border-[#3a3158]"}`}
                   >
                     {/* Red narudžbe */}
                     <button
