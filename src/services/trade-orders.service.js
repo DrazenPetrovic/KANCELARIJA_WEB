@@ -67,11 +67,13 @@ export const createTradeOrder = async ({
   prioritet,
   napomena,
   referentNumber,
+  partnerOrderNumber,
+  partnerOrderDate,
   stavke,
 }) => {
   return withConnection(async (conn) => {
     const [rows] = await conn.execute(
-      "CALL erp.sp_create_trade_order(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "CALL erp.sp_create_trade_order(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         Number(partnerId),
         String(partnerName),
@@ -83,6 +85,8 @@ export const createTradeOrder = async ({
         napomena || null,
         referentNumber || null,
         JSON.stringify(stavke),
+        partnerOrderNumber || null,
+        partnerOrderDate || null,
       ],
     );
     return rows[0][0];

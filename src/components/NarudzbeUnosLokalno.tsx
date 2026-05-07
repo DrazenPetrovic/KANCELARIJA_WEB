@@ -157,6 +157,7 @@ interface ActiveOrder {
   status_id: number;
   priority: number;
   notes: string | null;
+  partner_order_number: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -229,6 +230,8 @@ export function NarudzbeUnosLokalno() {
 
   const [prioritet, setPrioritet] = useState<1 | 2 | 3>(1);
   const [napomena, setNapomena] = useState("");
+  const [partnerOrderNumber, setPartnerOrderNumber] = useState("");
+  const [partnerOrderDate, setPartnerOrderDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -507,6 +510,8 @@ export function NarudzbeUnosLokalno() {
           prioritet,
           napomena,
           referentNumber,
+          partnerOrderNumber: partnerOrderNumber || null,
+          partnerOrderDate: partnerOrderDate || null,
           stavke: stavke.map((s) => ({
             sifraProizvoda: s.sifra_proizvoda,
             nazivProizvoda: s.naziv_proizvoda,
@@ -526,6 +531,8 @@ export function NarudzbeUnosLokalno() {
       setNapomena("");
       setDatumIsporuke(new Date().toISOString().slice(0, 10));
       setPrioritet(1);
+      setPartnerOrderNumber("");
+      setPartnerOrderDate("");
       fetchActiveOrders();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Greška pri snimanju");
@@ -1014,6 +1021,40 @@ export function NarudzbeUnosLokalno() {
             </div>
           </div>
 
+          {/* Broj i datum narudžbe od partnera */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label optional>Broj narudžbe partnera</Label>
+              <input
+                type="text"
+                value={partnerOrderNumber}
+                onChange={(e) => setPartnerOrderNumber(e.target.value)}
+                placeholder="npr. PN-2025-001"
+                className={inputClass}
+                maxLength={50}
+              />
+            </div>
+            <div>
+              <Label optional>Datum narudžbe partnera</Label>
+              <div className="relative">
+                <div
+                  className={`${inputClass} flex items-center justify-between pointer-events-none`}
+                >
+                  <span className={partnerOrderDate ? "" : "text-gray-300 dark:text-[#5f5878]"}>
+                    {partnerOrderDate ? isoToDisplay(partnerOrderDate) : "dd.mm.yyyy"}
+                  </span>
+                  <Calendar size={14} className="text-gray-400 flex-shrink-0" />
+                </div>
+                <input
+                  type="date"
+                  value={partnerOrderDate}
+                  onChange={(e) => setPartnerOrderDate(e.target.value)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Artikli */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1235,17 +1276,17 @@ export function NarudzbeUnosLokalno() {
             </div>
           ) : (
             <div className="space-y-2 overflow-y-auto flex-1">
-              {activeOrders.map((order) => {
+              {activeOrders.map((order, index) => {
                 const isExpanded = expandedOrderId === order.id;
                 const items = orderItems[order.id] ?? [];
                 const itemsLoading = orderItemsLoading[order.id] ?? false;
                 const prio = priorityLabel[order.priority] ?? priorityLabel[1];
-                const createdTime = new Date(
-                  order.created_at,
-                ).toLocaleTimeString("bs-BA", {
+                const createdDate = new Date(order.created_at);
+                const createdTime = createdDate.toLocaleTimeString("bs-BA", {
                   hour: "2-digit",
                   minute: "2-digit",
                 });
+                const createdDay = isoToDisplay(order.created_at.slice(0, 10));
                 const deliveryDate = order.requested_delivery_date
                   ? isoToDisplay(order.requested_delivery_date.slice(0, 10))
                   : "—";
@@ -1253,27 +1294,59 @@ export function NarudzbeUnosLokalno() {
                 return (
                   <div
                     key={order.id}
-                    className={`rounded-xl overflow-hidden ${order.priority === 3 ? "border-2 border-red-400 dark:border-red-500" : "border border-gray-200 dark:border-[#3a3158]"}`}
+                    className={`relative rounded-xl overflow-hidden ${
+                      order.priority === 3
+                        ? "border-2 border-red-400 dark:border-red-500"
+                        : index === 0
+                          ? "border border-[#785E9E]/50 dark:border-[#785E9E]/40"
+                          : "border border-gray-200 dark:border-[#3a3158]"
+                    }`}
                   >
+                    {/* Akcentna linija za zadnji unos */}
+                    {index === 0 && (
+                      <>
+                        <div
+                          className="absolute left-0 inset-y-0 w-[3px] pointer-events-none z-10"
+                          style={{ background: PRIMARY }}
+                        />
+                        <div
+                          className="absolute top-0 left-0 h-[5px] w-2/3 pointer-events-none z-10"
+                          style={{
+                            background: `linear-gradient(to right, ${PRIMARY}, transparent)`,
+                          }}
+                        />
+                      </>
+                    )}
                     {/* Red narudžbe */}
                     <button
                       onClick={() => handleToggleOrder(order.id)}
-                      className="w-full text-left px-4 py-3 bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
+                      className={`w-full text-left px-4 py-3 transition-all ${
+                        index === 0
+                          ? "bg-[#f9f7fd] dark:bg-[#221c35] hover:bg-[#f4f0fb] dark:hover:bg-[#2a2242]"
+                          : "bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-3 min-w-0">
-                          {/* Sat */}
-                          <div className="text-xs font-semibold text-gray-400 dark:text-[#5f5878] pt-0.5 flex-shrink-0">
-                            {createdTime}
+                        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+                          {/* Red 1: vrijeme + datum */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-gray-400 dark:text-[#5f5878]">
+                              {createdTime}
+                            </span>
+                            <span className="text-[10px] text-gray-300 dark:text-[#3a3158]">
+                              {createdDay}
+                            </span>
                           </div>
-                          {/* Info */}
-                          <div className="min-w-0">
+                          {/* Redovi 2-4: uvučeni do desne ivice vremena */}
+                          <div className="flex flex-col gap-0.5 min-w-0 pl-9">
+                            {/* Red 2: naziv partnera */}
                             <div className="font-bold text-gray-800 dark:text-[#ede9f6] truncate">
                               {order.partner_name}
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-[#7d7498] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {/* Red 3: broj narudžbe + isporuka */}
+                            <div className="text-xs text-gray-500 dark:text-[#7d7498] flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono">
-                                {order.order_number}
+                                {order.partner_order_number ?? order.order_number}
                               </span>
                               {order.referent_number && (
                                 <span className="text-gray-400 dark:text-[#5f5878]">
@@ -1283,6 +1356,12 @@ export function NarudzbeUnosLokalno() {
                               <span>·</span>
                               <span>Isporuka: {deliveryDate}</span>
                             </div>
+                            {/* Red 4: napomena */}
+                            {order.notes && (
+                              <div className="text-xs text-gray-400 dark:text-[#5f5878] italic truncate">
+                                {order.notes}
+                              </div>
+                            )}
                           </div>
                         </div>
                         {/* Vrsta plaćanja + prioritet + expand ikona */}
@@ -1304,11 +1383,6 @@ export function NarudzbeUnosLokalno() {
                           />
                         </div>
                       </div>
-                      {order.notes && (
-                        <div className="mt-1.5 text-xs text-gray-400 dark:text-[#5f5878] italic truncate pl-10">
-                          {order.notes}
-                        </div>
-                      )}
                     </button>
 
                     {/* Stavke narudžbe */}

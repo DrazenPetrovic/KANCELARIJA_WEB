@@ -75,6 +75,8 @@ export const createTradeOrder = async (req, res) => {
       prioritet,
       napomena,
       referentNumber,
+      partnerOrderNumber,
+      partnerOrderDate,
       stavke,
     } = req.body;
 
@@ -97,6 +99,8 @@ export const createTradeOrder = async (req, res) => {
       prioritet,
       napomena,
       referentNumber,
+      partnerOrderNumber,
+      partnerOrderDate,
       stavke,
     });
 
