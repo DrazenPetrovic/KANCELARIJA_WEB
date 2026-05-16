@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "../utils/auth";
+import { CheckCircle } from "lucide-react";
 
 interface LoginPanelProps {
   onLoginSuccess: () => void;
@@ -11,27 +12,40 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const [loggedName, setLoggedName] = useState("");
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (!loginSuccess) return;
+    const t1 = setTimeout(() => setProgress(100), 50);
+    const t2 = setTimeout(() => onLoginSuccess(), 5300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [loginSuccess, onLoginSuccess]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const { error: signInError } = await signIn(
+      const { error: signInError, data } = await signIn(
         username.trim(),
         password.trim(),
       );
 
       if (signInError) {
         setError(signInError.message || "Pogrešno korisničko ime ili lozinka");
+        setLoading(false);
       } else {
-        onLoginSuccess();
+        setLoggedName(data?.username ?? username);
+        setLoading(false);
+        setLoginSuccess(true);
+        setProgress(0);
       }
     } catch (err) {
-      console.error("Login error:", err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       setError(`Greška: ${errorMsg}`);
-    } finally {
       setLoading(false);
     }
   };
@@ -40,6 +54,47 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
   const primaryHover = "#684f8a";
   const primaryActive = "#574176";
   const accent = "#8FC74A";
+
+  if (loginSuccess) {
+    return (
+      <div className="min-h-screen login-soft-bg flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-8 pt-8 pb-7 text-center">
+              <div className="flex justify-center mb-4">
+                <img
+                  src="/foto/karpas_logo_software.png"
+                  alt="Karpas Logo"
+                  className="h-24 object-contain"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              </div>
+              <CheckCircle className="w-14 h-14 mx-auto mb-3" style={{ color: accent }} />
+              <p className="text-xl font-bold mb-1 dark:text-[#ede9f6]" style={{ color: primary }}>
+                Pristup odobren
+              </p>
+              {loggedName && (
+                <p className="text-base font-semibold mb-1 uppercase" style={{ color: accent }}>
+                  {loggedName}
+                </p>
+              )}
+              <p className="text-sm text-gray-400 dark:text-[#5f5878] mb-6">Učitavanje aplikacije...</p>
+              <div className="w-full bg-gray-100 dark:bg-[#1e1a2d] rounded-full h-3 overflow-hidden">
+                <div
+                  className="h-3 rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    transition: "width 5s cubic-bezier(0.4, 0, 0.2, 1)",
+                    background: `linear-gradient(90deg, ${primary}, ${accent})`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen login-soft-bg flex items-center justify-center p-4 md:p-6 lg:p-8">
