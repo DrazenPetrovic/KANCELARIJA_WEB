@@ -1,5 +1,14 @@
 import ReactDOM from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { FixedSizeList } from "react-window";
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Search,
   Calendar,
@@ -83,6 +92,16 @@ interface Kupac {
   dodatna_lokacija?: DodatnaLokacija;
 }
 
+interface HistorijaStavka {
+  sifra_proizvoda: string | number;
+  naziv_proizvoda: string;
+  jm?: string;
+  kolicina?: number | string;
+  vpc?: number | string;
+  mpc?: number | string;
+  [key: string]: unknown;
+}
+
 interface Artikal {
   sifra_proizvoda: string;
   naziv_proizvoda: string;
@@ -105,39 +124,6 @@ interface StavkaNarudzbe {
   cijena: number; // mpc — za prikaz
   naziv_grupe?: string;
 }
-
-interface HistorijaProizvoda {
-  product_id: number;
-  product_name: string;
-  product_uom: string;
-  product_group: string | null;
-  sumirana_kolicina: number;
-}
-
-const normalizeHistorijaProizvoda = (
-  row: Record<string, unknown>,
-): HistorijaProizvoda => {
-  const productId = Number(row.product_id ?? row.sifra_proizvoda ?? 0);
-  const productName = String(
-    row.product_name ?? row.naziv_proizvoda ?? row.naziv ?? "",
-  );
-  const productUom = String(row.product_uom ?? row.jm ?? "");
-  const sumiranaKolicina = Number(
-    row.sumirana_kolicina ?? row.ukupna_kolicina ?? 0,
-  );
-
-  return {
-    product_id: Number.isFinite(productId) ? productId : 0,
-    product_name: productName,
-    product_uom: productUom,
-    product_group: row.product_group != null ? String(row.product_group) : null,
-    sumirana_kolicina: Number.isFinite(sumiranaKolicina) ? sumiranaKolicina : 0,
-  };
-};
-
-// Validacija: dozvoljava prazan string, cijele brojeve i decimale do 3 mjesta
-const isValidKolicinaInput = (v: string): boolean =>
-  v === "" || /^\d+\.?\d{0,3}$/.test(v) || /^\d*\.$/.test(v);
 
 interface ActiveOrder {
   id: number;
@@ -197,14 +183,47 @@ const paymentLabel: Record<number, string> = {
   2: "Gotovinsko",
 };
 
-const readGrupaNaziv = (g: Record<string, unknown>): string => {
-  // Prioritet: naziv_grupe, naziv, name, title
-  const keys = ["naziv_grupe", "naziv", "name", "title"];
-  for (const key of keys) {
-    if (g[key] && typeof g[key] === "string") return g[key] as string;
-  }
-  return "Grupa";
-};
+const fmtKolicina = (v: number) =>
+  v.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+
+const ArtikalKartica = memo(
+  ({ artikal, onKlik }: { artikal: Artikal; onKlik: (a: Artikal) => void }) => {
+    const handleClick = useCallback(() => onKlik(artikal), [onKlik, artikal]);
+    return (
+    <div
+      className={`bg-white dark:bg-[#1e1a2d] rounded-xl p-3 cursor-pointer hover:shadow-md transition-shadow${artikal.kolicinaNaStanju > 0 ? " border-2" : ""}`}
+      style={artikal.kolicinaNaStanju > 0 ? { borderColor: PRIMARY } : undefined}
+      onClick={handleClick}
+    >
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[11px] font-semibold" style={{ color: PRIMARY }}>
+          {artikal.sifra_proizvoda}
+        </span>
+        <span className="text-[11px] font-bold" style={{ color: PRIMARY }}>
+          {fmtKolicina(artikal.kolicinaNaStanju)} ({artikal.jm})
+        </span>
+      </div>
+      <div className="text-xs font-semibold text-gray-800 dark:text-[#ede9f6] leading-tight mb-2 line-clamp-2">
+        {artikal.naziv_proizvoda}
+      </div>
+      <div className="space-y-1">
+        <div className="rounded px-2 py-1 flex items-center justify-between bg-[#f0f4ff] dark:bg-[#1a1f35]">
+          <span className="text-[10px] font-semibold" style={{ color: PRIMARY }}>VPC</span>
+          <span className="text-[11px] font-bold" style={{ color: ACCENT }}>
+            {parseCijena(artikal.vpc).toFixed(2)} KM
+          </span>
+        </div>
+        <div className="rounded px-2 py-1 flex items-center justify-between bg-[#f0fff4] dark:bg-[#0f2d1a]">
+          <span className="text-[10px] font-semibold" style={{ color: PRIMARY }}>MPC</span>
+          <span className="text-[11px] font-bold" style={{ color: ACCENT }}>
+            {parseCijena(artikal.mpc).toFixed(2)} KM
+          </span>
+        </div>
+      </div>
+    </div>
+    );
+  },
+);
 
 export function NarudzbeUnosLokalno() {
   // ── kupac ────────────────────────────────────────────────────
@@ -237,37 +256,46 @@ export function NarudzbeUnosLokalno() {
 
   // ── artikli + modal ──────────────────────────────────────────
   const [artikli, setArtikli] = useState<Artikal[]>([]);
-  const [artikliGrupe, setArtikliGrupe] = useState<Record<string, unknown>[]>(
-    [],
-  );
   const [artikliLoading, setArtikliLoading] = useState(false);
   const [artikliDohvaceni, setArtikliDohvaceni] = useState(false);
-  // Auto-detektovani nazivi polja (ovise o tome šta procedura vraća)
-  const [grupaIdKey, setGrupaIdKey] = useState<string | null>(null);
-  const [artikalGrupaKey, setArtikalGrupaKey] = useState<string | null>(null);
   const [pokaziModalArtikli, setPokazuiModalArtikli] = useState(false);
   const [modalPretraga, setModalPretraga] = useState("");
-  const [odabranaGrupa, setOdabranaGrupa] = useState<number | null>(null);
+  const [pregledArtikla, setPregledArtikla] = useState<Artikal | null>(null);
+  const [unosKolicina, setUnosKolicina] = useState("");
+  const unosInputRef = useRef<HTMLInputElement>(null);
+  const handleArtikalKlik = useCallback((a: Artikal) => setPregledArtikla(a), []);
+  const centerPanelRef = useRef<HTMLDivElement>(null);
+  const [centerPanelHeight, setCenterPanelHeight] = useState(500);
+  useEffect(() => {
+    const el = centerPanelRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setCenterPanelHeight(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pokaziModalArtikli]);
+
+  const [historijaArtikala, setHistorijaArtikala] = useState<HistorijaStavka[]>([]);
+  const [historijaLoading, setHistorijaLoading] = useState(false);
+  const [historijaPartnerId, setHistorijaPartnerId] = useState<number | null>(null);
+  const artikalListRef = useRef<HTMLDivElement>(null);
+  const [artikalListHeight, setArtikalListHeight] = useState(500);
+  useEffect(() => {
+    const el = artikalListRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setArtikalListHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pokaziModalArtikli]);
   // Map: sifra_proizvoda → string količina ("" = odabran ali bez unosa)
   const [modalOdabrani, setModalOdabrani] = useState<Map<number, string>>(
     new Map(),
   );
-  // Upozorenje za artikal bez stanja
-  const [upozorenjeArtikalSifra, setUpozorenjeArtikalSifra] = useState<
-    number | null
-  >(null);
   // Upozorenje za narudžbu
   const [upozorenjeNarudzbe, setUpozorenjeNarudzbe] = useState<string | null>(
     null,
   );
-  // ── istorija narudžbi partnera ───────────────────────────────
-  const [historijaPartnera, setHistorijaPartnera] = useState<
-    HistorijaProizvoda[]
-  >([]);
-  const [historijaLoading, setHistorijaLoading] = useState(false);
-
-  // Refs za input polja količine u modalu
-  const inputRefsModal = useRef<Record<number, HTMLInputElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── aktivne narudžbe (desna strana) ─────────────────────────
@@ -317,9 +345,11 @@ export function NarudzbeUnosLokalno() {
       });
       const json = await res.json();
       if (json.success) {
-        setActiveOrders(json.data);
-        setActiveOrdersError(null);
-        setLastRefreshed(new Date());
+        startTransition(() => {
+          setActiveOrders(json.data);
+          setActiveOrdersError(null);
+          setLastRefreshed(new Date());
+        });
       } else {
         setActiveOrdersError(json.error || "Greška pri dohvatu narudžbi");
       }
@@ -361,93 +391,27 @@ export function NarudzbeUnosLokalno() {
   };
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (upozorenjeArtikalSifra !== null) {
-          setUpozorenjeArtikalSifra(null);
-          return;
-        }
-        if (pokaziModalArtikli) zatvoriModal();
-      }
+      if (e.key === "Escape" && pokaziModalArtikli) zatvoriModal();
     };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
-  }, [pokaziModalArtikli, upozorenjeArtikalSifra]);
+  }, [pokaziModalArtikli]);
 
-  // ── Autofokus na input polje kada se odabere artikal ──────────
-  useEffect(() => {
-    if (!pokaziModalArtikli) return;
-    // Pronađi poslednjeg dodanog artikla
-    const keys = Array.from(modalOdabrani.keys());
-    if (keys.length === 0) return;
-    const lastAdded = keys[keys.length - 1];
-
-    // Samo focusiraj input ako modal je već bio otvoren prije nego što se odabrao novi artikal
-    // To znači da fokusiramo samo kada korisnik dodaje novi artikal, ne pri inicijalnom otvaranju
-    if (inputRefsModal.current[lastAdded]) {
-      setTimeout(() => {
-        const input = inputRefsModal.current[lastAdded];
-        // Ako search input nema fokusa, onda focusiraj input za količinu
-        if (input && document.activeElement !== searchInputRef.current) {
-          input.focus();
-        }
-      }, 50);
-    }
-  }, [modalOdabrani, pokaziModalArtikli]);
 
   // ── Fokus na search input kada se otvori modal ──────────────
   useEffect(() => {
     if (pokaziModalArtikli && searchInputRef.current) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
     }
   }, [pokaziModalArtikli]);
-  useEffect(() => {
-    if (!artikliGrupe.length) return;
-    const rec = artikliGrupe[0];
-    // Preferiramo numerička polja čiji naziv sadrži 'sifra', 'id' ili 'kod'
-    for (const key of Object.keys(rec)) {
-      if (
-        rec[key] != null &&
-        typeof rec[key] === "number" &&
-        /sifra|id|kod/i.test(key)
-      ) {
-        setGrupaIdKey(key);
-        return;
-      }
-    }
-    // Fallback: prvi numerički ključ
-    for (const key of Object.keys(rec)) {
-      if (typeof rec[key] === "number") {
-        setGrupaIdKey(key);
-        return;
-      }
-    }
-  }, [artikliGrupe]);
 
-  // ── auto-detekcija polja grupe na artiklima ──────────────────
+  // ── Kad se odabere artikal: prefill količine i fokus na input ─
   useEffect(() => {
-    if (!artikli.length || !artikliGrupe.length || !grupaIdKey) return;
-    const groupIds = new Set(
-      artikliGrupe
-        .map((g) => Number(g[grupaIdKey]))
-        .filter((n) => !isNaN(n) && n !== 0),
-    );
-    if (!groupIds.size) return;
-    const sample = artikli.slice(0, Math.min(50, artikli.length));
-    const score: Record<string, number> = {};
-    for (const a of sample) {
-      const rec = a as Record<string, unknown>;
-      for (const key of Object.keys(rec)) {
-        const val = Number(rec[key]);
-        if (!isNaN(val) && groupIds.has(val))
-          score[key] = (score[key] ?? 0) + 1;
-      }
-    }
-    const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0];
-    if (best) setArtikalGrupaKey(best[0]);
-  }, [artikli, artikliGrupe, grupaIdKey]);
-
+    if (!pregledArtikla) return;
+    const postojeca = modalOdabrani.get(Number(pregledArtikla.sifra_proizvoda));
+    setUnosKolicina(postojeca ?? "");
+    setTimeout(() => unosInputRef.current?.focus(), 50);
+  }, [pregledArtikla]);
   // ── kupac helpers ────────────────────────────────────────────
   const filtrirani =
     pretraga.length >= 1
@@ -543,65 +507,53 @@ export function NarudzbeUnosLokalno() {
 
   // ── modal artikli ────────────────────────────────────────────
   const otvoriModalArtikli = async () => {
-    setPokazuiModalArtikli(true);
-    setModalPretraga("");
-    setOdabranaGrupa(null);
-
     const init = new Map<number, string>();
     stavke.forEach((s) => init.set(s.sifra_proizvoda, String(s.kolicina)));
     setModalOdabrani(init);
-
-    if (odabraniKupac) {
-      setHistorijaLoading(true);
-      setHistorijaPartnera([]);
-      const sifraZaUpit =
-        odabraniKupac.sifra_kup >= 10000 ? 300 : odabraniKupac.sifra_kup;
-      fetch(
-        `${API_URL}/api/trade-orders/partner-history?partnerId=${sifraZaUpit}&partnerName=${encodeURIComponent(odabraniKupac.Naziv_partnera)}`,
-        { credentials: "include" },
-      )
-        .then((r) => r.json())
-        .then((json) => {
-          if (json.success) {
-            const mapped = (Array.isArray(json.data) ? json.data : [])
-              .map((row: Record<string, unknown>) =>
-                normalizeHistorijaProizvoda(row),
-              )
-              .filter(
-                (row: HistorijaProizvoda) =>
-                  Number.isFinite(row.product_id) && row.product_id > 0,
-              );
-            setHistorijaPartnera(mapped);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setHistorijaLoading(false));
-    }
+    setPokazuiModalArtikli(true);
 
     if (!artikliDohvaceni) {
       setArtikliLoading(true);
       try {
-        const [resA, resG] = await Promise.all([
-          fetch(`${API_URL}/api/artikli`, { credentials: "include" }),
-          fetch(`${API_URL}/api/artikli/grupe`, { credentials: "include" }),
-        ]);
-        const [jsonA, jsonG] = await Promise.all([resA.json(), resG.json()]);
-        if (jsonA.success) {
-          const mappedArtikli = jsonA.data.map((a: Artikal) => ({
-            ...a,
-            kolicinaNaStanju:
-              a.kolicina_proizvoda != null
-                ? Number(String(a.kolicina_proizvoda).replace(",", "."))
-                : 0,
-          }));
-          setArtikli(mappedArtikli);
+        const res = await fetch(`${API_URL}/api/artikli`, {
+          credentials: "include",
+        });
+        const json = await res.json();
+        if (json.success) {
+          setArtikli(
+            (json.data as Artikal[]).map((a) => ({
+              ...a,
+              kolicinaNaStanju:
+                a.kolicina_proizvoda != null
+                  ? Number(String(a.kolicina_proizvoda).replace(",", "."))
+                  : 0,
+            })),
+          );
+          setArtikliDohvaceni(true);
         }
-        if (jsonG.success) setArtikliGrupe(jsonG.data);
-        setArtikliDohvaceni(true);
       } catch {
         /* tiho */
       } finally {
         setArtikliLoading(false);
+      }
+    }
+
+    if (odabraniKupac && historijaPartnerId !== odabraniKupac.sifra_kup) {
+      setHistorijaLoading(true);
+      try {
+        const res = await fetch(
+          `${API_URL}/api/narudzbe/ranije-uzimano?sifraPartnera=${odabraniKupac.sifra_kup}&nazivPartnera=${encodeURIComponent(odabraniKupac.Naziv_partnera)}`,
+          { credentials: "include" },
+        );
+        const json = await res.json();
+        if (json.success) {
+          setHistorijaArtikala(json.data);
+          setHistorijaPartnerId(odabraniKupac.sifra_kup);
+        }
+      } catch {
+        /* tiho */
+      } finally {
+        setHistorijaLoading(false);
       }
     }
   };
@@ -609,14 +561,16 @@ export function NarudzbeUnosLokalno() {
   const zatvoriModal = () => {
     setPokazuiModalArtikli(false);
     setModalPretraga("");
+    setPregledArtikla(null);
   };
 
   const potvrdiOdabirArtikala = () => {
+    const bySifra = new Map(artikli.map((a) => [Number(a.sifra_proizvoda), a]));
     const novaStavke: StavkaNarudzbe[] = [];
     modalOdabrani.forEach((kolicinaStr, sifra) => {
       const kolicina = parseFloat(kolicinaStr);
       if (!kolicinaStr || isNaN(kolicina) || kolicina <= 0) return;
-      const a = artikli.find((x) => Number(x.sifra_proizvoda) === sifra);
+      const a = bySifra.get(sifra);
       if (a) {
         novaStavke.push({
           sifra_proizvoda: Number(a.sifra_proizvoda),
@@ -629,69 +583,18 @@ export function NarudzbeUnosLokalno() {
         });
       }
     });
-
-    // Merge sa postojećim stavkama
     setStavke((prev) => {
       const updated = [...prev];
       novaStavke.forEach((nova) => {
         const idx = updated.findIndex(
           (s) => s.sifra_proizvoda === nova.sifra_proizvoda,
         );
-        if (idx >= 0) {
-          // Zamijeni postojeću stavku
-          updated[idx] = nova;
-        } else {
-          // Dodaj novu stavku
-          updated.push(nova);
-        }
+        if (idx >= 0) updated[idx] = nova;
+        else updated.push(nova);
       });
       return updated;
     });
     zatvoriModal();
-  };
-
-  // Klik na red artikla — provjeri stanje na lageru
-  const toggleArtikalOdabir = (a: Artikal) => {
-    const sifra = Number(a.sifra_proizvoda);
-    // Deselect uvijek radi bez upozorenja
-    if (modalOdabrani.has(sifra)) {
-      setModalOdabrani((prev) => {
-        const next = new Map(prev);
-        next.delete(sifra);
-        return next;
-      });
-      return;
-    }
-    // Odabir artikla bez stanja → upozorenje
-    if (a.kolicinaNaStanju <= 0) {
-      setUpozorenjeArtikalSifra(sifra);
-      return;
-    }
-    setModalOdabrani((prev) => {
-      const next = new Map(prev);
-      next.set(sifra, "");
-      return next;
-    });
-  };
-
-  const handleUpozorenjeConfirm = () => {
-    if (upozorenjeArtikalSifra !== null) {
-      setModalOdabrani((prev) => {
-        const next = new Map(prev);
-        next.set(upozorenjeArtikalSifra, "");
-        return next;
-      });
-      setUpozorenjeArtikalSifra(null);
-    }
-  };
-
-  const setKolicinaUModalu = (sifra: number, val: string) => {
-    if (!isValidKolicinaInput(val)) return;
-    setModalOdabrani((prev) => {
-      const next = new Map(prev);
-      next.set(sifra, val);
-      return next;
-    });
   };
 
   // ── stavke u listi narudžbe ──────────────────────────────────
@@ -714,27 +617,49 @@ export function NarudzbeUnosLokalno() {
   const ukloniStavku = (sifra: number) =>
     setStavke((prev) => prev.filter((s) => s.sifra_proizvoda !== sifra));
 
-  // ── filtriranje u modalu ──────────────────────────────────────
-  const artikliFiltrirani = artikli.filter((a) => {
-    const rec = a as Record<string, unknown>;
-    const matchGrupa =
-      odabranaGrupa === null ||
-      (artikalGrupaKey !== null &&
-        Number(rec[artikalGrupaKey]) === odabranaGrupa);
-    const q = modalPretraga.toLowerCase();
-    const matchPretraga =
-      !q ||
-      a.naziv_proizvoda.toLowerCase().includes(q) ||
-      String(a.sifra_proizvoda).includes(q);
-    return matchGrupa && matchPretraga;
-  });
-
   const ukupnoIznos = stavke.reduce((s, x) => s + x.kolicina * x.cijena, 0);
 
+  // Filtrirani artikli za modal
+  const artikliFiltrirani = useMemo(() => {
+    if (!modalPretraga.trim()) return artikli;
+    const q = modalPretraga.toLowerCase();
+    return artikli.filter(
+      (a) =>
+        a.naziv_proizvoda.toLowerCase().includes(q) ||
+        String(a.sifra_proizvoda).includes(q),
+    );
+  }, [artikli, modalPretraga]);
+
   // Broj stavki u modalu koje imaju validnu količinu
-  const validniOdabraniCount = Array.from(modalOdabrani.values()).filter(
-    (v) => v !== "" && !isNaN(parseFloat(v)) && parseFloat(v) > 0,
-  ).length;
+  const ukupnoModal = useMemo(() => {
+    let suma = 0;
+    modalOdabrani.forEach((kolStr, sifra) => {
+      const kol = parseFloat(kolStr);
+      if (isNaN(kol) || kol <= 0) return;
+      const a = artikli.find((x) => Number(x.sifra_proizvoda) === sifra);
+      if (a) suma += kol * parseCijena(a.mpc);
+    });
+    return suma;
+  }, [modalOdabrani, artikli]);
+
+  const odabraniCardHeight = useMemo(() => {
+    const count = modalOdabrani.size;
+    if (count === 0) return 168;
+    const stickyH = 48;
+    const padV = 16;
+    const gap = 8;
+    const available = centerPanelHeight - stickyH - padV * 2;
+    const ideal = Math.floor((available - gap * (count - 1)) / count);
+    return Math.min(168, Math.max(82, ideal));
+  }, [modalOdabrani.size, centerPanelHeight]);
+
+  const validniOdabraniCount = useMemo(
+    () =>
+      Array.from(modalOdabrani.values()).filter(
+        (v) => v !== "" && !isNaN(parseFloat(v)) && parseFloat(v) > 0,
+      ).length,
+    [modalOdabrani],
+  );
 
   return (
     <div className="space-y-6">
@@ -1040,8 +965,16 @@ export function NarudzbeUnosLokalno() {
                 <div
                   className={`${inputClass} flex items-center justify-between pointer-events-none`}
                 >
-                  <span className={partnerOrderDate ? "" : "text-gray-300 dark:text-[#5f5878]"}>
-                    {partnerOrderDate ? isoToDisplay(partnerOrderDate) : "dd.mm.yyyy"}
+                  <span
+                    className={
+                      partnerOrderDate
+                        ? ""
+                        : "text-gray-300 dark:text-[#5f5878]"
+                    }
+                  >
+                    {partnerOrderDate
+                      ? isoToDisplay(partnerOrderDate)
+                      : "dd.mm.yyyy"}
                   </span>
                   <Calendar size={14} className="text-gray-400 flex-shrink-0" />
                 </div>
@@ -1346,7 +1279,8 @@ export function NarudzbeUnosLokalno() {
                             {/* Red 3: broj narudžbe + isporuka */}
                             <div className="text-xs text-gray-500 dark:text-[#7d7498] flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono">
-                                {order.partner_order_number ?? order.order_number}
+                                {order.partner_order_number ??
+                                  order.order_number}
                               </span>
                               {order.referent_number && (
                                 <span className="text-gray-400 dark:text-[#5f5878]">
@@ -1479,446 +1413,436 @@ export function NarudzbeUnosLokalno() {
         </div>
       </div>
 
-      {/* ── Modal za odabir artikala ─────────────────────────── */}
+      {/* ── Modal za odabir artikala ── */}
       {pokaziModalArtikli &&
         ReactDOM.createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-            style={{ background: "rgba(0,0,0,0.55)" }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) zatvoriModal();
-            }}
-          >
+          <>
             <div
-              className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
-              style={{ width: "80vw", height: "min(760px, 88vh)" }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.55)" }}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-[#2d2648]">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center"
-                    style={{ background: PRIMARY }}
-                  >
-                    <Package size={16} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-800 dark:text-[#ede9f6]">
-                      Odabir artikala
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-[#7d7498]">
-                      Označite artikle i unesite količine, zatim kliknite OK
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={zatvoriModal}
-                  className="p-2 rounded-xl text-gray-500 dark:text-[#7d7498] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="flex flex-1 min-h-0">
-                {/* Grupe sidebar */}
-                <div className="w-64 flex-shrink-0 border-r border-gray-100 dark:border-[#2d2648] overflow-y-auto">
-                  <div className="p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] px-2 mb-2">
-                      Grupe
-                    </p>
-                    <button
-                      onClick={() => setOdabranaGrupa(null)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all mb-0.5 ${odabranaGrupa === null ? "text-white" : "text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
-                      style={
-                        odabranaGrupa === null
-                          ? { background: PRIMARY }
-                          : undefined
-                      }
+              <div
+                className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
+                style={{
+                  width: "calc(100vw - 20px)",
+                  height: "calc(100vh - 20px)",
+                  margin: "10px",
+                }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0 gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: PRIMARY }}
                     >
-                      <span className="flex-1 text-left">Sve grupe</span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${odabranaGrupa === null ? "bg-white/20 text-white" : "bg-gray-100 dark:bg-[#2d2648] text-gray-500 dark:text-[#7d7498]"}`}
-                      >
-                        {artikli.length}
-                      </span>
-                    </button>
-                    {artikliGrupe.map((g, i) => {
-                      const gId = grupaIdKey ? Number(g[grupaIdKey]) : 0;
-                      const gNaziv = readGrupaNaziv(g);
-                      const count = artikalGrupaKey
-                        ? artikli.filter(
-                            (a) =>
-                              Number(
-                                (a as Record<string, unknown>)[artikalGrupaKey],
-                              ) === gId,
-                          ).length
-                        : 0;
-                      const active = odabranaGrupa === gId;
-                      return (
-                        <button
-                          key={i}
-                          onClick={() => setOdabranaGrupa(gId)}
-                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all mb-0.5 ${active ? "text-white" : "text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"}`}
-                          style={active ? { background: PRIMARY } : undefined}
-                        >
-                          <span className="flex-1 text-left">{gNaziv}</span>
-                          {count > 0 && (
-                            <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${active ? "bg-white/20 text-white" : "bg-gray-100 dark:bg-[#2d2648] text-gray-500 dark:text-[#7d7498]"}`}
-                            >
-                              {count}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Artikli */}
-                <div className="flex-1 flex flex-col min-w-0">
-                  {/* Search */}
-                  <div className="px-4 py-3 border-b border-gray-100 dark:border-[#2d2648]">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <input
-                        ref={searchInputRef}
-                        autoFocus
-                        value={modalPretraga}
-                        onChange={(e) => setModalPretraga(e.target.value)}
-                        placeholder="Pretraži po nazivu ili šifri..."
-                        className={`${inputClass} pl-10`}
-                      />
+                      <Package size={16} className="text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-800 dark:text-[#ede9f6]">
+                        Odabir artikala
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-[#7d7498]">
+                        {modalOdabrani.size > 0
+                          ? `${modalOdabrani.size} odabrano`
+                          : "Odaberite artikle iz liste"}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Zaglavlje kolona */}
-                  <div className="grid grid-cols-[28px_1fr_58px_90px_80px_108px] items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#1e1a2d]">
-                    <span />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
-                      Naziv artikla
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
-                      JM
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] text-right">
-                      Cijena (KM)
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] text-right">
-                      Na stanju
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] text-center">
-                      Količina
-                    </span>
-                  </div>
-
-                  {/* Lista */}
-                  <div className="flex-1 overflow-y-auto">
-                    {artikliLoading ? (
-                      <div className="flex items-center justify-center h-full gap-3 text-gray-400 dark:text-[#5f5878]">
-                        <Loader2 size={20} className="animate-spin" />
-                        <span className="text-sm">Učitavanje artikala...</span>
-                      </div>
-                    ) : artikliFiltrirani.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400 dark:text-[#5f5878]">
-                        <Package
-                          size={28}
-                          className="text-gray-300 dark:text-[#3a3158]"
-                        />
-                        <span className="text-sm">
-                          Nema artikala za prikazati
-                        </span>
-                      </div>
-                    ) : (
-                      artikliFiltrirani.map((a) => {
-                        const sifraNum = Number(a.sifra_proizvoda);
-                        const odabran = modalOdabrani.has(sifraNum);
-                        const kolicinaStr = modalOdabrani.get(sifraNum) ?? "";
-                        const bezStanja = a.kolicinaNaStanju <= 0;
-
-                        return (
-                          <div
-                            key={a.sifra_proizvoda}
-                            className={`grid grid-cols-[28px_1fr_58px_90px_80px_108px] items-center gap-2 px-4 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all cursor-pointer ${
-                              bezStanja
-                                ? odabran
-                                  ? "bg-gray-200 dark:bg-gray-700"
-                                  : "opacity-50 hover:opacity-60 hover:bg-gray-100 dark:hover:bg-gray-800"
-                                : odabran
-                                  ? "bg-[#ede8f5] dark:bg-[#2a2043]"
-                                  : "bg-[#f2fae9] dark:bg-[#1c2d10] hover:bg-[#ede8f5] dark:hover:bg-[#2a2043]"
-                            }`}
-                            onClick={() => toggleArtikalOdabir(a)}
-                          >
-                            {/* Checkbox */}
-                            <div
-                              className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all"
-                              style={{
-                                borderColor: odabran
-                                  ? bezStanja
-                                    ? "#9ca3af"
-                                    : PRIMARY
-                                  : bezStanja
-                                    ? "#d1d5db"
-                                    : ACCENT,
-                                background: odabran
-                                  ? bezStanja
-                                    ? "#9ca3af"
-                                    : PRIMARY
-                                  : "transparent",
-                              }}
-                            >
-                              {odabran && (
-                                <Check
-                                  size={11}
-                                  className="text-white"
-                                  strokeWidth={3}
-                                />
-                              )}
-                            </div>
-
-                            {/* Naziv */}
-                            <div className="min-w-0">
-                              <div
-                                className={`text-sm truncate ${odabran ? "font-semibold text-gray-900 dark:text-[#ede9f6]" : "font-medium text-gray-700 dark:text-[#c5bfd8]"}`}
-                              >
-                                {a.naziv_proizvoda}
-                              </div>
-                            </div>
-
-                            {/* JM */}
-                            <div className="text-xs text-gray-500 dark:text-[#7d7498]">
-                              {a.jm}
-                            </div>
-
-                            {/* Cijena */}
-                            <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] text-right">
-                              {parseCijena(a.mpc).toFixed(2)} KM
-                            </div>
-
-                            {/* Na stanju */}
-                            <div
-                              className={`text-sm text-right font-semibold ${bezStanja ? "text-gray-400 dark:text-gray-500" : "text-green-600 dark:text-green-400"}`}
-                            >
-                              {a.kolicinaNaStanju.toFixed(3)}
-                            </div>
-
-                            {/* Količina — samo unos putem tastature */}
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <input
-                                ref={(el) => {
-                                  if (el) inputRefsModal.current[sifraNum] = el;
-                                }}
-                                type="text"
-                                inputMode="decimal"
-                                value={kolicinaStr}
-                                disabled={!odabran}
-                                placeholder={odabran ? "0.000" : "—"}
-                                onFocus={(e) => {
-                                  setKolicinaUModalu(sifraNum, "");
-                                  e.target.select();
-                                }}
-                                onChange={(e) =>
-                                  setKolicinaUModalu(sifraNum, e.target.value)
-                                }
-                                className={`w-full text-center text-sm font-semibold px-2 py-1.5 rounded-lg border outline-none transition-all ${
-                                  odabran
-                                    ? bezStanja
-                                      ? "border-red-300 dark:border-red-700 bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] focus:border-red-400"
-                                      : "border-[#785E9E]/50 bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] focus:border-[#785E9E]"
-                                    : "border-gray-200 dark:border-[#3a3158] bg-gray-50 dark:bg-[#1e1a2d] text-gray-300 dark:text-[#3a3158] cursor-not-allowed"
-                                }`}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
-                {/* Istorija partnera */}
-                <div className="w-80 flex-shrink-0 border-l border-gray-100 dark:border-[#2d2648] flex flex-col">
-                  <div className="px-3 py-3 border-b border-gray-100 dark:border-[#2d2648]">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">
-                      Ranije naručivano
-                    </p>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {historijaLoading ? (
-                      <div className="flex items-center justify-center py-8 gap-2 text-gray-400 dark:text-[#5f5878]">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span className="text-xs">Učitavanje...</span>
-                      </div>
-                    ) : !odabraniKupac ? (
-                      <div className="px-3 py-6 text-center text-xs text-gray-400 dark:text-[#5f5878]">
-                        Odaberite kupca
-                      </div>
-                    ) : historijaPartnera.length === 0 ? (
-                      <div className="px-3 py-6 text-center text-xs text-gray-400 dark:text-[#5f5878]">
-                        Nema istorije
-                      </div>
-                    ) : (
-                      historijaPartnera.map((h) => {
-                        const odabran = modalOdabrani.has(h.product_id);
-                        const artikal = artikli.find(
-                          (a) => Number(a.sifra_proizvoda) === h.product_id,
-                        );
-                        return (
-                          <button
-                            key={h.product_id}
-                            onClick={() =>
-                              artikal && toggleArtikalOdabir(artikal)
-                            }
-                            disabled={!artikal}
-                            className={`w-full text-left px-3 py-2.5 border-b border-gray-50 dark:border-[#2a2043] transition-all ${
-                              !artikal
-                                ? "opacity-35 cursor-not-allowed"
-                                : odabran
-                                  ? "bg-[#ede8f5] dark:bg-[#2a2043]"
-                                  : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
-                            }`}
-                          >
-                            <div className="flex items-start gap-1.5">
-                              <div
-                                className="w-4 h-4 mt-0.5 rounded flex-shrink-0 flex items-center justify-center"
-                                style={{
-                                  background: odabran ? PRIMARY : "transparent",
-                                  border: `2px solid ${odabran ? PRIMARY : "#d1d5db"}`,
-                                }}
-                              >
-                                {odabran && (
-                                  <Check
-                                    size={9}
-                                    className="text-white"
-                                    strokeWidth={3}
-                                  />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium text-gray-800 dark:text-[#ede9f6] leading-tight truncate">
-                                  {h.product_name}
-                                </div>
-                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-0.5">
-                                  {Number(h.sumirana_kolicina) % 1 === 0
-                                    ? Number(h.sumirana_kolicina).toFixed(0)
-                                    : Number(h.sumirana_kolicina).toFixed(
-                                        2,
-                                      )}{" "}
-                                  {h.product_uom}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#1e1a2d] rounded-b-2xl">
-                <div className="flex items-center gap-2">
-                  {validniOdabraniCount > 0 ? (
-                    <>
-                      <span
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  {odabraniKupac && (
+                    <div className="flex items-center gap-3 px-4 py-2 rounded-xl flex-1 min-w-0" style={{ background: "#f4f1f9" }}>
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{ background: PRIMARY }}
                       >
-                        {validniOdabraniCount}
-                      </span>
-                      <span className="text-sm text-gray-600 dark:text-[#c5bfd8]">
-                        {validniOdabraniCount === 1
-                          ? "artikal spreman"
-                          : validniOdabraniCount < 5
-                            ? "artikla spremna"
-                            : "artikala spremno"}
-                      </span>
-                    </>
-                  ) : modalOdabrani.size > 0 ? (
-                    <span className="text-sm text-amber-500 dark:text-amber-400">
-                      Unesite količine za označene artikle
-                    </span>
-                  ) : (
-                    <span className="text-sm text-gray-400 dark:text-[#5f5878]">
-                      Nije odabran nijedan artikal
-                    </span>
+                        <User size={14} className="text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold truncate text-gray-800 dark:text-[#ede9f6]">
+                          {odabraniKupac.Naziv_partnera}
+                        </p>
+                        <p className="text-[11px] text-gray-500 dark:text-[#7d7498] truncate">
+                          {odabraniKupac.Naziv_grada}
+                          {odabraniKupac.dodatna_lokacija?.naziv_lokacije
+                            ? ` · ${odabraniKupac.dodatna_lokacija.naziv_lokacije}`
+                            : ""}
+                          <span className="ml-2 font-mono opacity-60">#{odabraniKupac.sifra_kup}</span>
+                        </p>
+                      </div>
+                    </div>
                   )}
-                </div>
-                <div className="flex items-center gap-3">
+
                   <button
                     onClick={zatvoriModal}
-                    className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                    className="p-2 rounded-xl text-gray-500 dark:text-[#7d7498] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all flex-shrink-0"
                   >
-                    Odustani
+                    <X size={18} />
                   </button>
+                </div>
+
+                {/* Tijelo — lijevo 260px | centar prazan | desno 260px */}
+                <div className="flex-1 overflow-hidden flex">
+                  {/* Lijeva kolona — lista artikala */}
+                  <div className="w-[260px] border-r border-gray-100 dark:border-[#2d2648] flex flex-col flex-shrink-0">
+                    {/* Pretraga */}
+                    <div className="p-3 border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder="Pretraži artikle..."
+                          value={modalPretraga}
+                          onChange={(e) => setModalPretraga(e.target.value)}
+                          className={`${inputClass} pl-10`}
+                        />
+                      </div>
+                      {!artikliLoading && (
+                        <p className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-1 px-1">
+                          {modalPretraga
+                            ? `${artikliFiltrirani.length} rezultata`
+                            : `${artikli.length} artikala`}
+                        </p>
+                      )}
+                    </div>
+                    {/* Lista — virtualizovana */}
+                    <div ref={artikalListRef} className="flex-1">
+                      {artikliLoading ? (
+                        <div className="flex items-center justify-center h-40 gap-3 text-gray-400 dark:text-[#5f5878]">
+                          <Loader2 size={20} className="animate-spin" />
+                          <span className="text-sm">Učitavanje...</span>
+                        </div>
+                      ) : (
+                        <FixedSizeList
+                          height={artikalListHeight}
+                          width="100%"
+                          itemCount={artikliFiltrirani.length}
+                          itemSize={138}
+                          overscanCount={5}
+                        >
+                          {({ index, style }) => (
+                            <div style={{ ...style, paddingLeft: 8, paddingRight: 8, paddingBottom: 4 }}>
+                              <ArtikalKartica
+                                artikal={artikliFiltrirani[index]}
+                                onKlik={handleArtikalKlik}
+                              />
+                            </div>
+                          )}
+                        </FixedSizeList>
+                      )}
+                    </div>
+                  </div>
+                  {/* Centralni dio — odabrane stavke / unos količine */}
+                  <div ref={centerPanelRef} className="flex-1 overflow-y-auto min-h-0">
+                    {!pregledArtikla ? (
+                      /* ── Lista odabranih stavki ── */
+                      modalOdabrani.size === 0 ? (
+                        <div className="h-full flex items-center justify-center text-center text-gray-300 dark:text-[#3a3158] select-none p-8">
+                          <div>
+                            <Package size={40} className="mx-auto mb-3 opacity-40" />
+                            <p className="text-sm">Odaberite artikal iz liste</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="px-5 py-3 border-b border-gray-100 dark:border-[#2d2648] flex items-center justify-between sticky top-0 bg-white dark:bg-[#261f38] z-10">
+                            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#7d7498]">
+                              Odabrani artikli
+                            </h4>
+                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full text-white" style={{ background: PRIMARY }}>
+                              {modalOdabrani.size}
+                            </span>
+                          </div>
+                          <div className="px-4 pb-4 pt-2 flex flex-col" style={{ gap: odabraniCardHeight < 110 ? 4 : 8 }}>
+                            {Array.from(modalOdabrani.entries()).reverse().map(([sifra, kolStr]) => {
+                              const a = artikli.find((x) => Number(x.sifra_proizvoda) === sifra);
+                              const vpc = a ? parseCijena(a.vpc) : 0;
+                              const mpc = a ? parseCijena(a.mpc) : 0;
+                              const kol = parseFloat(kolStr);
+                              const ukupno = !isNaN(kol) && kol > 0 ? kol * mpc : null;
+                              return (
+                                <div
+                                  key={sifra}
+                                  className="rounded-2xl border-2 bg-white dark:bg-[#1e1a2d] overflow-hidden flex-shrink-0 flex flex-col"
+                                  style={{ borderColor: PRIMARY + "33", height: odabraniCardHeight }}
+                                >
+                                  {/* Gornji dio — kompresuje se kad nema mjesta */}
+                                  <div className="px-4 pt-2 pb-1 flex items-start justify-between gap-3 flex-1 min-h-0 overflow-hidden" style={{ background: PRIMARY + "0d" }}>
+                                    <div className="min-w-0 overflow-hidden flex-1">
+                                      <span className="text-[10px] font-bold font-mono block truncate" style={{ color: PRIMARY }}>{sifra}</span>
+                                      <p className="text-sm font-bold text-gray-800 dark:text-[#ede9f6] leading-snug line-clamp-2">{a?.naziv_proizvoda ?? "—"}</p>
+                                    </div>
+                                    <button
+                                      onClick={() =>
+                                        setModalOdabrani((prev) => {
+                                          const m = new Map(prev);
+                                          m.delete(sifra);
+                                          return m;
+                                        })
+                                      }
+                                      className="flex-shrink-0 p-1.5 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  </div>
+
+                                  {/* Donji dio — uvijek vidljiv */}
+                                  <div className="px-4 py-2 flex items-center gap-3 flex-shrink-0 relative">
+                                    <div className="flex gap-2 text-[11px]">
+                                      <div className="rounded-lg px-2 py-1 bg-[#f0f4ff] dark:bg-[#1a1f35]">
+                                        <span className="text-gray-400 dark:text-[#5f5878]">VPC </span>
+                                        <span className="font-bold" style={{ color: PRIMARY }}>{vpc.toFixed(2)}</span>
+                                      </div>
+                                      <div className="rounded-lg px-2 py-1 bg-[#f0fff4] dark:bg-[#0f2d1a]">
+                                        <span className="text-gray-400 dark:text-[#5f5878]">MPC </span>
+                                        <span className="font-bold" style={{ color: ACCENT }}>{mpc.toFixed(2)}</span>
+                                      </div>
+                                    </div>
+                                    {ukupno !== null && odabraniCardHeight < 130 && (
+                                      <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+                                        <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-[#5f5878] leading-none mb-0.5">Ukupno</span>
+                                        <span className="text-[11px] font-bold" style={{ color: ACCENT }}>{ukupno.toFixed(2)} KM</span>
+                                      </div>
+                                    )}
+                                    <div className="flex-1 flex items-center gap-2 justify-end">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="0.000"
+                                        value={kolStr}
+                                        onChange={(e) =>
+                                          setModalOdabrani((prev) => {
+                                            const m = new Map(prev);
+                                            m.set(sifra, e.target.value);
+                                            return m;
+                                          })
+                                        }
+                                        onBlur={() => {
+                                          const n = parseFloat(kolStr.replace(",", "."));
+                                          if (!isNaN(n) && n > 0)
+                                            setModalOdabrani((prev) => {
+                                              const m = new Map(prev);
+                                              m.set(sifra, n.toFixed(3));
+                                              return m;
+                                            });
+                                        }}
+                                        className="w-24 px-3 py-1.5 text-right text-sm font-bold border-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-[#785E9E]/20 bg-white dark:bg-[#261f38] text-gray-800 dark:text-[#ede9f6] transition-colors"
+                                        style={{ borderColor: PRIMARY + "55" }}
+                                      />
+                                      <span className="text-xs font-bold w-10 text-center" style={{ color: PRIMARY }}>
+                                        ({a?.jm ?? ""})
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {ukupno !== null && odabraniCardHeight >= 130 && (
+                                    <div className="px-4 pb-2 flex justify-center flex-shrink-0">
+                                      <span className="text-[11px] text-gray-400 dark:text-[#5f5878]">
+                                        Ukupno: <span className="font-bold text-sm" style={{ color: ACCENT }}>{ukupno.toFixed(2)} KM</span>
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )
+                    ) : (
+                      <div className="flex items-center justify-center p-8">
+                      <div className="w-full max-w-sm">
+                        {/* Info o artiklu */}
+                        <div className="mb-5">
+                          <p className="text-[11px] font-semibold mb-1" style={{ color: PRIMARY }}>
+                            {pregledArtikla.sifra_proizvoda}
+                          </p>
+                          <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6] leading-snug mb-3">
+                            {pregledArtikla.naziv_proizvoda}
+                          </h3>
+                          <div className="flex gap-2">
+                            <div className="flex-1 rounded-xl px-3 py-2 bg-[#f0fff4] dark:bg-[#0f2d1a] flex flex-col items-center">
+                              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] mb-0.5">Na stanju</span>
+                              <span className="text-sm font-bold" style={{ color: pregledArtikla.kolicinaNaStanju > 0 ? ACCENT : "#f87171" }}>
+                                {fmtKolicina(pregledArtikla.kolicinaNaStanju)}
+                              </span>
+                              <span className="text-[10px] text-gray-400">({pregledArtikla.jm})</span>
+                            </div>
+                            <div className="flex-1 rounded-xl px-3 py-2 bg-[#f0f4ff] dark:bg-[#1a1f35] flex flex-col items-center">
+                              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] mb-0.5">VPC</span>
+                              <span className="text-sm font-bold" style={{ color: PRIMARY }}>
+                                {parseCijena(pregledArtikla.vpc).toFixed(2)} KM
+                              </span>
+                            </div>
+                            <div className="flex-1 rounded-xl px-3 py-2 bg-[#f0f4ff] dark:bg-[#1a1f35] flex flex-col items-center">
+                              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] mb-0.5">MPC</span>
+                              <span className="text-sm font-bold" style={{ color: PRIMARY }}>
+                                {parseCijena(pregledArtikla.mpc).toFixed(2)} KM
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Unos količine */}
+                        <div className="mb-4">
+                          <label className="block text-xs font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wider mb-2">
+                            Količina ({pregledArtikla.jm})
+                          </label>
+                          <input
+                            ref={unosInputRef}
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            placeholder="0.000"
+                            value={unosKolicina}
+                            onChange={(e) => setUnosKolicina(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const k = parseFloat(unosKolicina);
+                                if (!isNaN(k) && k > 0) {
+                                  setModalOdabrani((prev) => {
+                                    const m = new Map(prev);
+                                    m.set(Number(pregledArtikla.sifra_proizvoda), unosKolicina);
+                                    return m;
+                                  });
+                                  setPregledArtikla(null);
+                                }
+                              }
+                              if (e.key === "Escape") setPregledArtikla(null);
+                            }}
+                            className={`${inputClass} text-center text-lg font-bold`}
+                          />
+                        </div>
+
+                        {/* Dugmad */}
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setPregledArtikla(null)}
+                            className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                          >
+                            Odustani
+                          </button>
+                          <button
+                            onClick={() => {
+                              const k = parseFloat(unosKolicina);
+                              if (!isNaN(k) && k > 0) {
+                                setModalOdabrani((prev) => {
+                                  const m = new Map(prev);
+                                  m.set(Number(pregledArtikla.sifra_proizvoda), unosKolicina);
+                                  return m;
+                                });
+                              }
+                              setPregledArtikla(null);
+                            }}
+                            className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white transition-all"
+                            style={{ background: PRIMARY }}
+                          >
+                            Dodaj u narudžbu
+                          </button>
+                        </div>
+                      </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Desna kolona — historija partnera, ista širina kao lijevo */}
+                  <div className="w-[260px] border-l border-gray-100 dark:border-[#2d2648] flex flex-col flex-shrink-0">
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#7d7498]">
+                        Ranije uzimano
+                      </h4>
+                    </div>
+
+                    {!odabraniKupac ? (
+                      <div className="flex-1 flex items-center justify-center text-gray-300 dark:text-[#3a3158] px-4 text-center">
+                        <span className="text-xs">Odaberite partnera</span>
+                      </div>
+                    ) : historijaLoading ? (
+                      <div className="flex-1 flex items-center justify-center gap-2 text-gray-400 dark:text-[#5f5878]">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span className="text-xs">Učitavanje...</span>
+                      </div>
+                    ) : historijaArtikala.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center text-gray-300 dark:text-[#3a3158] px-4 text-center">
+                        <span className="text-xs">Nema historije narudžbi</span>
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto">
+                        {historijaArtikala.map((s, i) => {
+                          const matching = artikli.find(
+                            (a) => String(a.sifra_proizvoda) === String(s.sifra_proizvoda),
+                          );
+                          const nemaStanja = matching !== undefined && matching.kolicinaNaStanju === 0;
+                          return (
+                          <div
+                            key={`${s.sifra_proizvoda}-${i}`}
+                            className={`px-4 py-2 border-b border-gray-50 dark:border-[#2d2648] cursor-pointer transition-colors ${
+                              nemaStanja
+                                ? "bg-gray-50 dark:bg-[#1a1730] hover:bg-gray-100 dark:hover:bg-[#211d35] opacity-60"
+                                : "hover:bg-[#f9f7fd] dark:hover:bg-[#2d2648]"
+                            }`}
+                            onClick={() => matching && setPregledArtikla(matching)}
+                          >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span
+                                className={`text-[10px] font-semibold font-mono ${nemaStanja ? "text-gray-400 dark:text-[#5f5878]" : ""}`}
+                                style={nemaStanja ? undefined : { color: PRIMARY }}
+                              >
+                                {s.sifra_proizvoda}
+                              </span>
+                              <span
+                                className="text-[10px] font-bold"
+                                style={{ color: nemaStanja ? "#f87171" : PRIMARY }}
+                              >
+                                {matching
+                                  ? `${fmtKolicina(matching.kolicinaNaStanju)} (${matching.jm})`
+                                  : (s.jm ?? "")}
+                              </span>
+                            </div>
+                            <p className={`text-[11px] font-medium leading-snug line-clamp-2 ${nemaStanja ? "text-gray-400 dark:text-[#5f5878]" : "text-gray-800 dark:text-[#ede9f6]"}`}>
+                              {s.naziv_proizvoda}
+                            </p>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center gap-4 px-6 py-4 flex-shrink-0" style={{ borderTop: `2px solid ${PRIMARY}` }}>
+                  <button
+                    onClick={zatvoriModal}
+                    className="px-6 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                  >
+                    Odbaci
+                  </button>
+
+                  {/* Ukupno */}
+                  <div className="flex-1 flex flex-col items-center">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#5f5878]">Ukupno</span>
+                    <span className="text-xl font-bold" style={{ color: ukupnoModal > 0 ? ACCENT : "inherit" }}>
+                      {ukupnoModal > 0
+                        ? ukupnoModal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " KM"
+                        : "—"}
+                    </span>
+                  </div>
+
                   <button
                     onClick={potvrdiOdabirArtikala}
                     disabled={validniOdabraniCount === 0}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-8 py-2.5 text-sm font-semibold rounded-xl text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: PRIMARY }}
                   >
-                    <Check size={15} /> OK — Dodaj u narudžbu
+                    Dodaj
+                    {validniOdabraniCount > 0 ? ` (${validniOdabraniCount})` : ""}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* ── Upozorenje: nema na stanju ──────────────────── */}
-            {upozorenjeArtikalSifra !== null &&
-              (() => {
-                const a = artikli.find(
-                  (x) => Number(x.sifra_proizvoda) === upozorenjeArtikalSifra,
-                );
-                return (
-                  <div
-                    className="absolute inset-0 flex items-center justify-center"
-                    style={{ background: "rgba(0,0,0,0.45)" }}
-                  >
-                    <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] p-7 max-w-sm w-full mx-4">
-                      <div className="flex items-start gap-4 mb-5">
-                        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 bg-red-100 dark:bg-red-900/30">
-                          <AlertTriangle size={22} className="text-red-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-gray-800 dark:text-[#ede9f6] mb-1">
-                            Roba nije na stanju
-                          </h4>
-                          <p className="text-sm text-gray-600 dark:text-[#c5bfd8]">
-                            <span className="font-semibold">
-                              {a?.naziv_proizvoda}
-                            </span>{" "}
-                            trenutno ima{" "}
-                            <span className="font-bold text-red-500">0</span>{" "}
-                            jedinica na stanju.
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-[#7d7498] mt-2">
-                            Da li svejedno želite dodati ovaj artikal u
-                            narudžbu?
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setUpozorenjeArtikalSifra(null)}
-                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
-                        >
-                          Odustani
-                        </button>
-                        <button
-                          onClick={handleUpozorenjeConfirm}
-                          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-all"
-                        >
-                          Dodaj svejedno
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-          </div>,
+          </>,
           document.body,
         )}
 
