@@ -263,7 +263,15 @@ export function NarudzbeUnosLokalno() {
   const [pregledArtikla, setPregledArtikla] = useState<Artikal | null>(null);
   const [unosKolicina, setUnosKolicina] = useState("");
   const unosInputRef = useRef<HTMLInputElement>(null);
-  const handleArtikalKlik = useCallback((a: Artikal) => setPregledArtikla(a), []);
+  const [upozorenjeNulaStanje, setUpozorenjeNulaStanje] = useState<Artikal | null>(null);
+  const [pokaziUpozorenjePrekStanja, setPokazuiUpozorenjePrekStanja] = useState(false);
+  const handleArtikalKlik = useCallback((a: Artikal) => {
+    if (a.kolicinaNaStanju === 0) {
+      setUpozorenjeNulaStanje(a);
+    } else {
+      setPregledArtikla(a);
+    }
+  }, []);
   const centerPanelRef = useRef<HTMLDivElement>(null);
   const [centerPanelHeight, setCenterPanelHeight] = useState(500);
   useEffect(() => {
@@ -508,7 +516,7 @@ export function NarudzbeUnosLokalno() {
   // ── modal artikli ────────────────────────────────────────────
   const otvoriModalArtikli = async () => {
     const init = new Map<number, string>();
-    stavke.forEach((s) => init.set(s.sifra_proizvoda, String(s.kolicina)));
+    stavke.forEach((s) => init.set(s.sifra_proizvoda, Number(s.kolicina).toFixed(3)));
     setModalOdabrani(init);
     setPokazuiModalArtikli(true);
 
@@ -720,16 +728,24 @@ export function NarudzbeUnosLokalno() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.15fr]">
         {/* Forma za unos */}
         <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-6 space-y-5">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: PRIMARY }}
+              >
+                <Plus size={18} className="text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
+                Unos nove narudžbe
+              </h3>
+            </div>
+            <button
+              className="px-3 py-2 rounded-xl text-sm font-semibold text-white transition-all whitespace-nowrap hover:brightness-110"
               style={{ background: PRIMARY }}
             >
-              <Plus size={18} className="text-white" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
-              Unos nove narudžbe
-            </h3>
+              + Novi kupac
+            </button>
           </div>
 
           {/* Kupac */}
@@ -803,19 +819,10 @@ export function NarudzbeUnosLokalno() {
               <button
                 onClick={handleOcisti}
                 title="Detaljan pregled partnera"
-                className="px-3 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] text-gray-500 dark:text-[#7d7498] hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 transition-all"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] text-gray-600 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] hover:border-[#785E9E] dark:hover:border-[#785E9E] transition-all whitespace-nowrap text-xs font-semibold"
               >
-                {odabraniKupac ? (
-                  <X className="h-4 w-4" />
-                ) : (
-                  <User className="h-4 w-4" />
-                )}
-              </button>
-              <button
-                className="px-3 py-2 rounded-xl text-sm font-semibold text-white transition-all whitespace-nowrap hover:brightness-110"
-                style={{ background: PRIMARY }}
-              >
-                + Novi kupac
+                <User className="h-4 w-4 flex-shrink-0" style={{ color: PRIMARY }} />
+                <span>Pregled partnera</span>
               </button>
             </div>
           </div>
@@ -1422,7 +1429,7 @@ export function NarudzbeUnosLokalno() {
               style={{ background: "rgba(0,0,0,0.55)" }}
             >
               <div
-                className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
+                className="relative bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
                 style={{
                   width: "calc(100vw - 20px)",
                   height: "calc(100vh - 20px)",
@@ -1555,23 +1562,21 @@ export function NarudzbeUnosLokalno() {
                             </span>
                           </div>
                           <div className="px-4 pb-4 pt-2 flex flex-col" style={{ gap: odabraniCardHeight < 110 ? 4 : 8 }}>
-                            {Array.from(modalOdabrani.entries()).reverse().map(([sifra, kolStr]) => {
+                            {Array.from(modalOdabrani.entries()).reverse().map(([sifra, kolStr], index) => {
                               const a = artikli.find((x) => Number(x.sifra_proizvoda) === sifra);
                               const vpc = a ? parseCijena(a.vpc) : 0;
                               const mpc = a ? parseCijena(a.mpc) : 0;
                               const kol = parseFloat(kolStr);
                               const ukupno = !isNaN(kol) && kol > 0 ? kol * mpc : null;
-                              return (
-                                <div
-                                  key={sifra}
-                                  className="rounded-2xl border-2 bg-white dark:bg-[#1e1a2d] overflow-hidden flex-shrink-0 flex flex-col"
-                                  style={{ borderColor: PRIMARY + "33", height: odabraniCardHeight }}
-                                >
+                              const isLatest = index === 0;
+
+                              const cardBody = (
+                                <>
                                   {/* Gornji dio — kompresuje se kad nema mjesta */}
                                   <div className="px-4 pt-2 pb-1 flex items-start justify-between gap-3 flex-1 min-h-0 overflow-hidden" style={{ background: PRIMARY + "0d" }}>
                                     <div className="min-w-0 overflow-hidden flex-1">
                                       <span className="text-[10px] font-bold font-mono block truncate" style={{ color: PRIMARY }}>{sifra}</span>
-                                      <p className="text-sm font-bold text-gray-800 dark:text-[#ede9f6] leading-snug line-clamp-2">{a?.naziv_proizvoda ?? "—"}</p>
+                                      <p className="text-sm font-bold leading-snug line-clamp-2" style={{ color: isLatest ? "#111827" : PRIMARY }}>{a?.naziv_proizvoda ?? "—"}</p>
                                     </div>
                                     <button
                                       onClick={() =>
@@ -1643,6 +1648,26 @@ export function NarudzbeUnosLokalno() {
                                       </span>
                                     </div>
                                   )}
+                                </>
+                              );
+
+                              return isLatest ? (
+                                <div
+                                  key={sifra}
+                                  className="relative flex-shrink-0 rounded-2xl overflow-hidden p-[2px]"
+                                  style={{ height: odabraniCardHeight, background: `linear-gradient(135deg, ${PRIMARY}, ${ACCENT})` }}
+                                >
+                                  <div className="relative rounded-[14px] bg-white dark:bg-[#1e1a2d] overflow-hidden flex flex-col w-full h-full">
+                                    {cardBody}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  key={sifra}
+                                  className="rounded-2xl border-2 bg-white dark:bg-[#1e1a2d] overflow-hidden flex-shrink-0 flex flex-col"
+                                  style={{ borderColor: PRIMARY + "33", height: odabraniCardHeight }}
+                                >
+                                  {cardBody}
                                 </div>
                               );
                             })}
@@ -1700,12 +1725,16 @@ export function NarudzbeUnosLokalno() {
                               if (e.key === "Enter") {
                                 const k = parseFloat(unosKolicina);
                                 if (!isNaN(k) && k > 0) {
-                                  setModalOdabrani((prev) => {
-                                    const m = new Map(prev);
-                                    m.set(Number(pregledArtikla.sifra_proizvoda), unosKolicina);
-                                    return m;
-                                  });
-                                  setPregledArtikla(null);
+                                  if (pregledArtikla.kolicinaNaStanju > 0 && k > pregledArtikla.kolicinaNaStanju) {
+                                    setPokazuiUpozorenjePrekStanja(true);
+                                  } else {
+                                    setModalOdabrani((prev) => {
+                                      const m = new Map(prev);
+                                      m.set(Number(pregledArtikla.sifra_proizvoda), k.toFixed(3));
+                                      return m;
+                                    });
+                                    setPregledArtikla(null);
+                                  }
                                 }
                               }
                               if (e.key === "Escape") setPregledArtikla(null);
@@ -1726,13 +1755,19 @@ export function NarudzbeUnosLokalno() {
                             onClick={() => {
                               const k = parseFloat(unosKolicina);
                               if (!isNaN(k) && k > 0) {
-                                setModalOdabrani((prev) => {
-                                  const m = new Map(prev);
-                                  m.set(Number(pregledArtikla.sifra_proizvoda), unosKolicina);
-                                  return m;
-                                });
+                                if (pregledArtikla.kolicinaNaStanju > 0 && k > pregledArtikla.kolicinaNaStanju) {
+                                  setPokazuiUpozorenjePrekStanja(true);
+                                } else {
+                                  setModalOdabrani((prev) => {
+                                    const m = new Map(prev);
+                                    m.set(Number(pregledArtikla.sifra_proizvoda), k.toFixed(3));
+                                    return m;
+                                  });
+                                  setPregledArtikla(null);
+                                }
+                              } else {
+                                setPregledArtikla(null);
                               }
-                              setPregledArtikla(null);
                             }}
                             className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white transition-all"
                             style={{ background: PRIMARY }}
@@ -1781,7 +1816,14 @@ export function NarudzbeUnosLokalno() {
                                 ? "bg-gray-50 dark:bg-[#1a1730] hover:bg-gray-100 dark:hover:bg-[#211d35] opacity-60"
                                 : "hover:bg-[#f9f7fd] dark:hover:bg-[#2d2648]"
                             }`}
-                            onClick={() => matching && setPregledArtikla(matching)}
+                            onClick={() => {
+                              if (!matching) return;
+                              if (matching.kolicinaNaStanju === 0) {
+                                setUpozorenjeNulaStanje(matching);
+                              } else {
+                                setPregledArtikla(matching);
+                              }
+                            }}
                           >
                             <div className="flex items-center justify-between gap-1 mb-0.5">
                               <span
@@ -1839,6 +1881,123 @@ export function NarudzbeUnosLokalno() {
                     {validniOdabraniCount > 0 ? ` (${validniOdabraniCount})` : ""}
                   </button>
                 </div>
+
+                {/* Upozorenje — artikal bez stanja */}
+                {upozorenjeNulaStanje && (
+                  <div
+                    className="absolute inset-0 rounded-2xl flex items-center justify-center z-20"
+                    style={{ background: "rgba(0,0,0,0.5)" }}
+                  >
+                    <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] p-6 w-full max-w-sm mx-4">
+                      <div className="flex items-start gap-4 mb-5">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-orange-100 dark:bg-orange-900/30">
+                          <AlertTriangle size={24} className="text-orange-500" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-800 dark:text-[#ede9f6] mb-1">
+                            Artikal nije na stanju
+                          </h4>
+                          <p className="text-[11px] font-semibold mb-1" style={{ color: PRIMARY }}>
+                            {upozorenjeNulaStanje.sifra_proizvoda}
+                          </p>
+                          <p className="text-sm font-medium text-gray-700 dark:text-[#c5bfd8] leading-snug">
+                            {upozorenjeNulaStanje.naziv_proizvoda}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-[#7d7498] mt-2">
+                            Trenutno stanje: <span className="font-bold text-red-500">0.000 ({upozorenjeNulaStanje.jm})</span>
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-[#5f5878] mt-1">
+                            Možete svejedno unijeti ovaj artikal u narudžbu.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setUpozorenjeNulaStanje(null)}
+                          className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          Odustani
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPregledArtikla(upozorenjeNulaStanje);
+                            setUpozorenjeNulaStanje(null);
+                          }}
+                          className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white transition-all hover:brightness-110"
+                          style={{ background: PRIMARY }}
+                        >
+                          Ipak unesi
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Upozorenje — količina veća od stanja */}
+                {pokaziUpozorenjePrekStanja && pregledArtikla && (
+                  <div
+                    className="absolute inset-0 rounded-2xl flex items-center justify-center z-20"
+                    style={{ background: "rgba(0,0,0,0.5)" }}
+                  >
+                    <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] p-6 w-full max-w-sm mx-4">
+                      <div className="flex items-start gap-4 mb-5">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-orange-100 dark:bg-orange-900/30">
+                          <AlertTriangle size={24} className="text-orange-500" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-800 dark:text-[#ede9f6] mb-1">
+                            Količina premašuje stanje
+                          </h4>
+                          <p className="text-[11px] font-semibold mb-1" style={{ color: PRIMARY }}>
+                            {pregledArtikla.sifra_proizvoda}
+                          </p>
+                          <p className="text-sm font-medium text-gray-700 dark:text-[#c5bfd8] leading-snug">
+                            {pregledArtikla.naziv_proizvoda}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-[#7d7498] mt-2">
+                            Na stanju:{" "}
+                            <span className="font-bold" style={{ color: PRIMARY }}>
+                              {fmtKolicina(pregledArtikla.kolicinaNaStanju)} ({pregledArtikla.jm})
+                            </span>
+                            , unosite:{" "}
+                            <span className="font-bold text-orange-500">
+                              {parseFloat(unosKolicina) > 0 ? parseFloat(unosKolicina).toFixed(3) : unosKolicina} ({pregledArtikla.jm})
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-[#5f5878] mt-1">
+                            Možete svejedno nastaviti sa unosom.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setPokazuiUpozorenjePrekStanja(false)}
+                          className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          Odustani
+                        </button>
+                        <button
+                          onClick={() => {
+                            const k = parseFloat(unosKolicina);
+                            if (!isNaN(k) && k > 0) {
+                              setModalOdabrani((prev) => {
+                                const m = new Map(prev);
+                                m.set(Number(pregledArtikla.sifra_proizvoda), k.toFixed(3));
+                                return m;
+                              });
+                            }
+                            setPregledArtikla(null);
+                            setPokazuiUpozorenjePrekStanja(false);
+                          }}
+                          className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white transition-all hover:brightness-110"
+                          style={{ background: PRIMARY }}
+                        >
+                          Ipak unesi
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1858,7 +2017,7 @@ export function NarudzbeUnosLokalno() {
           >
             <div
               className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] flex flex-col"
-              style={{ width: "min(720px, 90vw)", height: "min(600px, 90vh)" }}
+              style={{ width: "min(864px, 92vw)", height: "min(780px, 92vh)" }}
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-[#2d2648]">

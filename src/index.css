@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 @keyframes softBgShift {
   0% {
     background-position: 0% 50%;
