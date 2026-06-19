@@ -63,8 +63,8 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
             <div className="px-8 pt-8 pb-7 text-center">
               <div className="flex justify-center mb-4">
                 <img
-                  src="/foto/karpas_logo_software.png"
-                  alt="Karpas Logo"
+                  src="/foto/LOGO_APLIKACIJE.png"
+                  alt="Logo aplikacije"
                   className="h-24 object-contain"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
@@ -101,10 +101,10 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
       <div className="w-full max-w-md md:max-w-lg lg:max-w-xl">
         <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl p-8 md:p-10 lg:p-12 border-2 border-transparent dark:border-[#2d2648]">
           <div className="flex justify-center mb-8">
-            <div className="w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
+            <div className="w-40 h-40 md:w-52 md:h-52 flex items-center justify-center">
               <img
-                src="/foto/karpas_logo_software.png"
-                alt="Karpas Logo"
+                src="/foto/LOGO_APLIKACIJE.png"
+                alt="Logo aplikacije"
                 className="w-full h-full object-contain"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
@@ -118,12 +118,6 @@ export function LoginPanel({ onLoginSuccess }: LoginPanelProps) {
             </div>
           </div>
 
-          <h1 className="text-center text-2xl font-bold text-gray-800 dark:text-[#ede9f6] mb-2">
-            Kancelarija
-          </h1>
-          <p className="text-center mb-8" style={{ color: primary }}>
-            Karpas Ambalaže
-          </p>
 
           <form
             onSubmit={handleLogin}
