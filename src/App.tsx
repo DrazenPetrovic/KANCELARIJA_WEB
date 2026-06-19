@@ -50,7 +50,7 @@ function App() {
 
   return (
     <ThemeProvider>
-      <PrintProvider>
+      <PrintProvider username={username}>
         {isAuthenticated ? (
           <Dashboard
             username={username}

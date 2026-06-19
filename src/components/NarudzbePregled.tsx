@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import {
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Trash2,
+  Circle,
   Loader,
   Printer,
   Search,
+  Trash2,
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
 import {
@@ -18,12 +20,6 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 type RecentProduct = {
   sifra: string;
   naziv: string;
-};
-
-type ZadnjiDanNarudzbe = {
-  sifra_partnera: number;
-  zadnji_datum_dostave: string;
-  broj_dana: number;
 };
 
 const CUSTOMER_CODE_THRESHOLD = 10000;
@@ -87,6 +83,7 @@ interface NarudzbaProizvod {
   kolicina: number;
   napomena?: string;
   sifra_kupca: number;
+  verifikovano: number;
 }
 
 interface NarudzbaKupac {
@@ -192,18 +189,14 @@ const getLokacijaLabel = (lok: DodatnaLokacija, index: number): string => {
   return fallback || `Lokacija ${index + 1}`;
 };
 
-export function NarudzbeUnosTeren() {
+export function NarudzbePregled() {
   const { openPrint } = usePrint();
   const [tereniData, setTereniData] = useState<TerenoData[]>([]);
   const [terenGradData, setTerenGradData] = useState<TerenGrad[]>([]);
-  const [kupciData, setKupciData] = useState<Kupac[]>([]);
   const [loading, setLoading] = useState(true);
   const [terenGradLoading, setTerenGradLoading] = useState(true);
   const [kupciLoading, setKupciLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedTerenaSifra, setSelectedTerenaSifra] = useState<number | null>(
-    null,
-  );
   const [selectedTerenInfo, setSelectedTerenInfo] =
     useState<TerenDostaveInfo | null>(null);
   const [selectedKupac, setSelectedKupac] = useState<Kupac | null>(null);
@@ -213,7 +206,6 @@ export function NarudzbeUnosTeren() {
   const [loadingNarudzbe, setLoadingNarudzbe] = useState(false);
   const [terenGradError, setTerenGradError] = useState<string | null>(null);
   const [kupciError, setKupciError] = useState<string | null>(null);
-  const [expandedGrad, setExpandedGrad] = useState<number | null>(null);
   const [searchKupac, setSearchKupac] = useState<string>("");
   const [artikli, setArtikli] = useState<Artikal[]>([]);
   const [searchArtikli, setSearchArtikli] = useState("");
@@ -244,8 +236,6 @@ export function NarudzbeUnosTeren() {
     useState<boolean>(false);
   const outOfStockConfirmActionRef = useRef<(() => void) | null>(null);
   const kolicinaInputRef = useRef<HTMLInputElement | null>(null);
-  const [zadnjiDanMap, setZadnjiDanMap] = useState<Record<number, number>>({});
-  const sifraRadnika = 0;
 
   const [errorModal, setErrorModal] = useState<string | null>(null);
   const [showDeletePartnerConfirm, setShowDeletePartnerConfirm] =
@@ -611,11 +601,9 @@ export function NarudzbeUnosTeren() {
 
         if (initialDay) {
           setSelectedDay(initialDay.sifraTerenaDostava);
-          setSelectedTerenaSifra(initialDay.sifraTerena);
           fetchAktivneNarudzbe(initialDay.sifraTerenaDostava);
         } else {
           setSelectedDay(null);
-          setSelectedTerenaSifra(null);
           setNarudzbePoKupcu([]);
         }
       }
@@ -668,9 +656,6 @@ export function NarudzbeUnosTeren() {
         setKupciError("Kupci se nisu mogli učitati");
         return;
       }
-      const kupciResult = await response.json();
-      if (kupciResult.success && kupciResult.data)
-        setKupciData(kupciResult.data);
     } catch {
       setKupciError("Greška pri učitavanju kupaca");
     } finally {
@@ -706,46 +691,6 @@ export function NarudzbeUnosTeren() {
   const getPartnerDodatneLokacije = (sifraKupca: number): DodatnaLokacija[] =>
     dodatneLokacijeByPartner[Number(sifraKupca)] || [];
 
-  const hasPartnerDodatneLokacije = (sifraKupca: number): boolean =>
-    getPartnerDodatneLokacije(sifraKupca).length > 0;
-
-  const getPartnerPjZaGrad = (
-    sifraKupca: number,
-    sifraGrada: number,
-  ): DodatnaLokacija[] => {
-    const sveLokacije = getPartnerDodatneLokacije(sifraKupca);
-    if (sveLokacije.length === 0) return [];
-    const lokacijePoSifriGrada = sveLokacije.filter((lok) => {
-      const sifra = Number(lok?.sifra_grada);
-      return Number.isFinite(sifra) && sifra === sifraGrada;
-    });
-    if (lokacijePoSifriGrada.length > 0) return lokacijePoSifriGrada;
-    const nazivGrada = (
-      terenGradData.find((grad) => grad.sifra_grada === sifraGrada)
-        ?.naziv_grada || ""
-    )
-      .toString()
-      .trim()
-      .toLowerCase();
-    if (!nazivGrada) return sveLokacije;
-    const lokacijePoNazivuGrada = sveLokacije.filter((lok) => {
-      const naziv =
-        String(lok?.naziv_grada || "")
-          .trim()
-          .toLowerCase() ||
-        String(lok?.grad || "")
-          .trim()
-          .toLowerCase() ||
-        String(lok?.mjesto || "")
-          .trim()
-          .toLowerCase();
-      return naziv === nazivGrada;
-    });
-    return lokacijePoNazivuGrada.length > 0
-      ? lokacijePoNazivuGrada
-      : sveLokacije;
-  };
-
   useEffect(() => {
     fetchPartnerDodatneLokacije();
   }, []);
@@ -780,120 +725,60 @@ export function NarudzbeUnosTeren() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedArtiklModal, selectedVrstaPlacanja]);
 
-  useEffect(() => {
-    const fetchZadnjiDan = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/narudzbe/zadnji-dan-narudzbe`, {
-          method: "GET",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        });
-        const json = await res.json();
-        if (!res.ok || !json?.success) return;
-        const map: Record<number, number> = {};
-        (json.data as ZadnjiDanNarudzbe[]).forEach((r) => {
-          map[Number(r.sifra_partnera)] = Number(r.broj_dana);
-        });
-        setZadnjiDanMap(map);
-      } catch {
-        setZadnjiDanMap({});
-      }
-    };
-    fetchZadnjiDan();
-  }, []);
-
   const fetchAktivneNarudzbe = async (sifraTerena: number) => {
     try {
       setLoadingNarudzbe(true);
       setNarudzbePoKupcu([]);
-      const [grupisaneResponse, aktivneResponse] = await Promise.all([
-        fetch(
-          `${API_URL}/api/narudzbe/narudzbe-grupisane?sifraTerena=${sifraTerena}`,
-          {
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          },
-        ),
-        fetch(
-          `${API_URL}/api/narudzbe/narudzbe-aktivne?sifraTerena=${sifraTerena}`,
-          {
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-          },
-        ),
-      ]);
-      if (!grupisaneResponse.ok || !aktivneResponse.ok) return;
-      const grupisaneResult = await grupisaneResponse.json();
-      const aktivneResult = await aktivneResponse.json();
-      if (grupisaneResult.success && aktivneResult.success) {
-        const grupisaneData = grupisaneResult.data || [];
-        const aktivneData = aktivneResult.data || [];
-        const kupciMap = new Map<string, NarudzbaKupac>();
-        grupisaneData.forEach(
-          (item: {
-            sifra_partnera: number;
-            naziv_partnera: string;
-            partnera: string;
-            referentni_broj: string;
-            pripada_radniku?: string;
-          }) => {
-            const referentniBroj = normalizeReferentniBroj(
-              item.referentni_broj,
-            );
-            const kupacKey = getKupacGroupingKey(
-              item.sifra_partnera,
-              referentniBroj,
-            );
-            if (!kupciMap.has(kupacKey)) {
-              kupciMap.set(kupacKey, {
-                sifra_kupca: item.sifra_partnera,
-                naziv_kupca:
-                  item.naziv_partnera || item.partnera || "Nepoznat kupac",
-                referentni_broj: referentniBroj,
-                pripada_radniku: String(item.pripada_radniku || "").trim(),
-                proizvodi: [],
-              });
-            }
-          },
-        );
-        aktivneData.forEach(
-          (item: {
-            sifra_patnera: number;
-            sifra_partnera: number;
-            sifra_proizvoda: string;
-            naziv_proizvoda: string;
-            jm: string;
-            kolicina_proizvoda: number;
-            napomena: string;
-            referentni_broj?: string;
-            pripada_radniku?: string;
-          }) => {
-            const sifraKupca = item.sifra_patnera || item.sifra_partnera;
-            const referentniBroj = normalizeReferentniBroj(
-              item.referentni_broj,
-            );
-            const pripadaRadniku = String(item.pripada_radniku || "").trim();
-            const kupacKey = getKupacGroupingKey(sifraKupca, referentniBroj);
-            let kupac = kupciMap.get(kupacKey);
-            if (!kupac) kupac = kupciMap.get(String(sifraKupca));
-            if (kupac) {
-              if (!kupac.referentni_broj && referentniBroj)
-                kupac.referentni_broj = referentniBroj;
-              if (!kupac.pripada_radniku && pripadaRadniku)
-                kupac.pripada_radniku = pripadaRadniku;
-              kupac.proizvodi.push({
-                sif: item.sifra_proizvoda,
-                naziv_proizvoda: item.naziv_proizvoda,
-                jm: item.jm,
-                kolicina: item.kolicina_proizvoda,
-                napomena: item.napomena || " ",
-                sifra_kupca: sifraKupca,
-              });
-            }
-          },
-        );
-        setNarudzbePoKupcu(Array.from(kupciMap.values()));
-      }
+      const response = await fetch(
+        `${API_URL}/api/narudzbe/dostava-tereni-proizvodi?sifraTerena=${sifraTerena}`,
+        {
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+      if (!response.ok) return;
+      const result = await response.json();
+      if (!result.success) return;
+
+      const rows = (result.data || []) as Array<{
+        sifra_partnera: number;
+        sifra_proizvoda: number;
+        naziv_proizvoda: string;
+        jm: string;
+        kolicina_proizvoda: number;
+        napomena: string;
+        referentni_broj?: string;
+        verifikovano?: number;
+        naziv_partnera: string;
+      }>;
+
+      const kupciMap = new Map<string, NarudzbaKupac>();
+      rows.forEach((row) => {
+        const referentniBroj = normalizeReferentniBroj(row.referentni_broj);
+        const kupacKey = getKupacGroupingKey(row.sifra_partnera, referentniBroj);
+        let kupac = kupciMap.get(kupacKey);
+        if (!kupac) {
+          kupac = {
+            sifra_kupca: row.sifra_partnera,
+            naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
+            referentni_broj: referentniBroj,
+            pripada_radniku: "",
+            proizvodi: [],
+          };
+          kupciMap.set(kupacKey, kupac);
+        }
+        kupac.proizvodi.push({
+          sif: String(row.sifra_proizvoda),
+          naziv_proizvoda: row.naziv_proizvoda,
+          jm: row.jm,
+          kolicina: row.kolicina_proizvoda,
+          napomena: row.napomena || " ",
+          sifra_kupca: row.sifra_partnera,
+          verifikovano: Number(row.verifikovano) === 1 ? 1 : 0,
+        });
+      });
+
+      setNarudzbePoKupcu(Array.from(kupciMap.values()));
     } catch (error) {
       console.error("Error fetching aktivne narudžbe:", error);
     } finally {
@@ -952,41 +837,6 @@ export function NarudzbeUnosTeren() {
     }
   };
 
-  const getGradesForSelectedTeren = (): TerenGrad[] => {
-    if (!selectedTerenaSifra) return [];
-    return terenGradData
-      .filter((tg) => tg.sifra_terena === selectedTerenaSifra)
-      .sort((a, b) =>
-        String(a.naziv_grada || "").localeCompare(
-          String(b.naziv_grada || ""),
-          "sr-Latn",
-          { sensitivity: "base" },
-        ),
-      );
-  };
-
-  const getKupciForGrad = (sifraGrada: number): Kupac[] => {
-    const kupciZaGrad = kupciData.filter((k) => {
-      const osnovniGradMatch =
-        Number(k.sifra_grada) === Number(sifraGrada) ||
-        Number(k.sifra_grada) === 0;
-      const imaPoslovnicuUGradu = getPartnerDodatneLokacije(k.sifra_kupca).some(
-        (lok) => Number(lok?.sifra_grada) === Number(sifraGrada),
-      );
-      if (!osnovniGradMatch && !imaPoslovnicuUGradu) return false;
-      if (sifraRadnika > 0)
-        return Number(k.pripada_radniku) === Number(sifraRadnika);
-      return true;
-    });
-    if (!searchKupac.trim()) return kupciZaGrad;
-    const searchLower = searchKupac.toLowerCase();
-    return kupciZaGrad.filter(
-      (kupac) =>
-        kupac.naziv_kupca.toLowerCase().includes(searchLower) ||
-        kupac.sifra_kupca.toString().includes(searchKupac),
-    );
-  };
-
   const uniqueDays = Array.from(
     new Map(
       tereniData.map((t) => [
@@ -1030,21 +880,8 @@ export function NarudzbeUnosTeren() {
     setExpandedCities(newExpanded);
   };
 
-  const getSelectedTerenInfo = (): TerenDostaveInfo | null => {
-    if (selectedDay === null) return null;
-    const d = uniqueDays.find((x) => x.sifraTerenaDostava === selectedDay);
-    if (!d) return null;
-    return {
-      sifraTerenaDostava: d.sifraTerenaDostava,
-      datum_dostave: d.date,
-      dan_dostave: d.day,
-    };
-  };
-
   const handleDayClick = (day: DayOption) => {
     setSelectedDay(day.sifraTerenaDostava);
-    setSelectedTerenaSifra(day.sifraTerena);
-    setExpandedGrad(null);
     setSelectedKupac(null);
     setSelectedDodatnaLokacija(null);
     setSelectedOrderGradSifra(null);
@@ -1054,26 +891,6 @@ export function NarudzbeUnosTeren() {
     setExpandedCities(new Set());
     setSearchKupac("");
     if (day.sifraTerena) fetchAktivneNarudzbe(day.sifraTerenaDostava);
-  };
-
-  const handleGradClick = (grad: TerenGrad) => {
-    if (expandedGrad === grad.sifra_grada) {
-      setExpandedGrad(null);
-      setSelectedKupac(null);
-      setSelectedDodatnaLokacija(null);
-      setSelectedOrderGradSifra(null);
-      setPendingKupacSelection(null);
-      setShowDodatnaLokacijaModal(false);
-      setShowKupacModal(false);
-    } else {
-      setExpandedGrad(grad.sifra_grada);
-      setSelectedKupac(null);
-      setSelectedDodatnaLokacija(null);
-      setSelectedOrderGradSifra(null);
-      setPendingKupacSelection(null);
-      setShowDodatnaLokacijaModal(false);
-      setShowKupacModal(false);
-    }
   };
 
   const openKupacOrderModal = (
@@ -1089,74 +906,6 @@ export function NarudzbeUnosTeren() {
     setShowKupacModal(true);
     setShowDodatnaLokacijaModal(false);
     setPendingKupacSelection(null);
-  };
-
-  const completedKupciSet = new Set(
-    narudzbePoKupcu.map((k) => Number(k.sifra_kupca)),
-  );
-
-  const handleDeletePartnerFromTeren = async (kupac: NarudzbaKupac) => {
-    if (!selectedTerenaSifra) {
-      alert("Nedostaje šifra terena.");
-      return;
-    }
-    deletePartnerConfirmActionRef.current = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/narudzbe/obrisi-partnera`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sifraTerenaDostava: Number(selectedDay),
-            sifraKupca: Number(kupac.sifra_kupca),
-            referentniBroj: kupac.referentni_broj || "-",
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok || !json?.success)
-          throw new Error(json?.error || `HTTP greška: ${res.status}`);
-        if (selectedDay) fetchAktivneNarudzbe(selectedDay);
-      } catch (e) {
-        setErrorModal(e instanceof Error ? e.message : String(e));
-      }
-    };
-    setShowDeletePartnerConfirm(true);
-  };
-
-  const handleDeleteProductFromPartner = async (
-    kupac: NarudzbaKupac,
-    proizvod: NarudzbaProizvod,
-  ) => {
-    if (!selectedTerenaSifra) {
-      alert("Nedostaje šifra terena.");
-      return;
-    }
-    if (kupac.proizvodi.length <= 1) {
-      await handleDeletePartnerFromTeren(kupac);
-      return;
-    }
-    deleteProizvodConfirmActionRef.current = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/narudzbe/obrisi-stavku`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sifraTerenaDostava: Number(selectedDay),
-            sifraKupca: Number(kupac.sifra_kupca),
-            sifraProizvoda: parseInt(String(proizvod.sif).trim(), 10),
-            referentniBroj: kupac.referentni_broj || "-",
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok || !json?.success)
-          throw new Error(json?.error || `HTTP greška: ${res.status}`);
-        if (selectedDay) fetchAktivneNarudzbe(selectedDay);
-      } catch (e) {
-        setErrorModal(e instanceof Error ? e.message : String(e));
-      }
-    };
-    setShowDeleteProizvodConfirm(true);
   };
 
   const handleRecentProductClick = (p: RecentProduct) => {
@@ -1250,6 +999,16 @@ export function NarudzbeUnosTeren() {
     }
   };
 
+  const ukupnoProizvoda = narudzbePoKupcu.reduce(
+    (sum, kupac) => sum + kupac.proizvodi.length,
+    0,
+  );
+  const ukupnoVerifikovano = narudzbePoKupcu.reduce(
+    (sum, kupac) =>
+      sum + kupac.proizvodi.filter((p) => p.verifikovano === 1).length,
+    0,
+  );
+
   return (
     <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-xl overflow-hidden">
       {/* HEADER - KOLAPSIBILAN */}
@@ -1261,25 +1020,48 @@ export function NarudzbeUnosTeren() {
         <div className="flex items-center justify-between gap-3 px-6 md:px-8 py-2 md:py-4">
           {!headerCollapsed && (
             <h2
-              className="text-2xl md:text-3xl font-bold text-left"
+              className="text-lg md:text-xl font-bold text-left"
               style={{ color: "#785E9E" }}
             >
-              UNOS NARUDŽBI za{" "}
+              PREGLED NARUDŽBI
               {uniqueDays.find((d) => d.sifraTerenaDostava === selectedDay)
-                ?.date || "—"}
+                ?.date && (
+                <span className="ml-2 font-semibold" style={{ color: "#8FC74A" }}>
+                  —{" "}
+                  {
+                    uniqueDays.find(
+                      (d) => d.sifraTerenaDostava === selectedDay,
+                    )?.date
+                  }
+                </span>
+              )}
             </h2>
           )}
           {!headerCollapsed && (
-            <button
-              type="button"
-              title="Štampaj"
-              onClick={() => void handleStampajTeren()}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl text-base font-semibold transition-all hover:brightness-110"
-              style={{ background: "#785E9E" }}
-            >
-              <Printer className="w-6 h-6 text-white" />
-              <span className="text-white">Štampaj</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2"
+                style={{ borderColor: "#8FC74A" }}
+              >
+                <CheckCircle2 className="w-4 h-4" style={{ color: "#8FC74A" }} />
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: "#785E9E" }}
+                >
+                  Verifikovano: {ukupnoVerifikovano}/{ukupnoProizvoda}
+                </span>
+              </div>
+              <button
+                type="button"
+                title="Štampaj"
+                onClick={() => void handleStampajTeren()}
+                className="flex items-center gap-2 px-5 py-3 rounded-xl text-base font-semibold transition-all hover:brightness-110"
+                style={{ background: "#785E9E" }}
+              >
+                <Printer className="w-6 h-6 text-white" />
+                <span className="text-white">Štampaj</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1290,7 +1072,7 @@ export function NarudzbeUnosTeren() {
           <div className="w-full md:w-96 border-r-2 border-gray-200 dark:border-[#2d2648] overflow-y-auto bg-gray-50 dark:bg-[#1e1730]">
             {/* HEADER SA DANIMA */}
             <div className="sticky top-0 bg-white dark:bg-[#261f38] border-b-2 border-gray-200 dark:border-[#2d2648] z-10">
-              <div className="flex overflow-x-auto gap-1 p-3">
+              <div className="flex flex-col gap-1 p-3">
                 {loading ? (
                   <div className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-[#9e96b8]">
                     <Loader className="w-4 h-4 animate-spin" />
@@ -1305,7 +1087,7 @@ export function NarudzbeUnosTeren() {
                     <button
                       key={d.sifraTerenaDostava}
                       onClick={() => handleDayClick(d)}
-                      className={`px-3 py-2 rounded-lg whitespace-nowrap text-xs md:text-sm font-medium transition-all ${
+                      className={`w-full px-3 py-2 rounded-lg text-left whitespace-nowrap text-xs md:text-sm font-medium transition-all ${
                         selectedDay === d.sifraTerenaDostava
                           ? "text-white shadow-lg"
                           : "text-gray-700 dark:text-[#c5bfd8] hover:bg-gray-200 dark:hover:bg-[#2d2648]"
@@ -1394,213 +1176,6 @@ export function NarudzbeUnosTeren() {
                   </button>
                 </div>
               ))}
-
-              {!terenGradError &&
-                !terenGradLoading &&
-                getGradesForSelectedTeren().length > 0 && (
-                  <div className="bg-white dark:bg-[#261f38] rounded-lg shadow-sm mt-4 border-2 border-green-200 dark:border-green-900/50 p-4">
-                    <div className="space-y-3">
-                      {getGradesForSelectedTeren().map((grad) => (
-                        <div key={grad.sifra_tabele} className="space-y-2">
-                          <button
-                            onClick={() => handleGradClick(grad)}
-                            className={`w-full px-4 py-3 rounded-lg font-semibold transition-all text-left flex items-center justify-between ${
-                              expandedGrad === grad.sifra_grada
-                                ? "text-white shadow-lg"
-                                : "text-[#2F4F77] dark:text-[#a0b8d8] bg-[#EAF2FF] dark:bg-[#1c2a40] hover:bg-[#DCEAFF] dark:hover:bg-[#243349] border border-[#C6DBFF] dark:border-[#2d4260]"
-                            }`}
-                            style={{
-                              backgroundColor:
-                                expandedGrad === grad.sifra_grada
-                                  ? "#8FC74A"
-                                  : undefined,
-                            }}
-                          >
-                            <span>{grad.naziv_grada}</span>
-                            {expandedGrad === grad.sifra_grada ? (
-                              <ChevronUp className="w-5 h-5" />
-                            ) : (
-                              <ChevronDown className="w-5 h-5" />
-                            )}
-                          </button>
-
-                          {expandedGrad === grad.sifra_grada && (
-                            <div className="pl-4 space-y-2 border-l-4 border-green-300 animate-in fade-in duration-200">
-                              {kupciLoading ? (
-                                <div className="px-3 py-2 text-gray-500 dark:text-[#7d7498] text-xs flex items-center gap-2">
-                                  <Loader className="w-3 h-3 animate-spin" />
-                                  <span>Učitavanje kupaca...</span>
-                                </div>
-                              ) : getKupciForGrad(grad.sifra_grada).length ===
-                                0 ? (
-                                <div className="px-3 py-2 text-gray-600 dark:text-[#9e96b8] text-sm">
-                                  {searchKupac ? (
-                                    <>
-                                      Nema kupaca za pretragu "
-                                      <span className="font-semibold">
-                                        {searchKupac}
-                                      </span>
-                                      "
-                                    </>
-                                  ) : (
-                                    "Nema kupaca"
-                                  )}
-                                </div>
-                              ) : (
-                                getKupciForGrad(grad.sifra_grada).map(
-                                  (kupac) => {
-                                    const isCompleted = completedKupciSet.has(
-                                      Number(kupac.sifra_kupca),
-                                    );
-                                    const hasDodatne =
-                                      hasPartnerDodatneLokacije(
-                                        kupac.sifra_kupca,
-                                      );
-                                    const pjZaGrad = hasDodatne
-                                      ? getPartnerPjZaGrad(
-                                          kupac.sifra_kupca,
-                                          grad.sifra_grada,
-                                        )
-                                      : [];
-
-                                    return (
-                                      <div
-                                        key={kupac.sifra_kupca}
-                                        className="space-y-1"
-                                      >
-                                        <button
-                                          onClick={() => {
-                                            const terenInfo =
-                                              getSelectedTerenInfo();
-                                            if (!terenInfo) {
-                                              alert(
-                                                "Odaberi dan prije nego što odabereš kupca!",
-                                              );
-                                              return;
-                                            }
-                                            openKupacOrderModal(
-                                              kupac,
-                                              terenInfo,
-                                              null,
-                                              grad.sifra_grada,
-                                            );
-                                          }}
-                                          className={`w-full px-3 py-2 rounded-lg text-sm transition-all text-left font-medium border-2 ${
-                                            selectedKupac?.sifra_kupca ===
-                                            kupac.sifra_kupca
-                                              ? "text-white shadow-lg"
-                                              : hasDodatne
-                                                ? "text-[#5A3F86] dark:text-[#c5a8ff] bg-[#F3EDFF] dark:bg-[#312060] hover:bg-[#E8DBFF] dark:hover:bg-[#3d2870] font-bold"
-                                                : "text-gray-700 dark:text-[#c5bfd8] bg-gray-100 dark:bg-[#2a2340] hover:bg-gray-200 dark:hover:bg-[#2d2648]"
-                                          }`}
-                                          style={{
-                                            backgroundColor:
-                                              selectedKupac?.sifra_kupca ===
-                                              kupac.sifra_kupca
-                                                ? "#8FC74A"
-                                                : undefined,
-                                            borderColor: isCompleted
-                                              ? "#8FC74A"
-                                              : "transparent",
-                                          }}
-                                        >
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2">
-                                              <span>
-                                                {kupac.naziv_kupca}
-                                                {kupac.sifra_kupca >
-                                                  CUSTOMER_CODE_THRESHOLD &&
-                                                  " ⭐"}
-                                              </span>
-                                            </span>
-                                            {zadnjiDanMap[kupac.sifra_kupca] !==
-                                              undefined && (
-                                              <span
-                                                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                                                style={{
-                                                  backgroundColor: "#785E9E",
-                                                  color: "#8FC74A",
-                                                }}
-                                                title="Broj dana od zadnje narudžbe"
-                                              >
-                                                {
-                                                  zadnjiDanMap[
-                                                    kupac.sifra_kupca
-                                                  ]
-                                                }
-                                              </span>
-                                            )}
-                                          </div>
-                                        </button>
-
-                                        {hasDodatne && pjZaGrad.length > 0 && (
-                                          <div className="ml-2 pl-2 border-l-2 border-[#D6C8F0] dark:border-[#4a3870] space-y-1">
-                                            {pjZaGrad.map((lok, idx) => {
-                                              const isLokacijaSelected =
-                                                selectedKupac?.sifra_kupca ===
-                                                  kupac.sifra_kupca &&
-                                                selectedDodatnaLokacija !=
-                                                  null &&
-                                                String(
-                                                  selectedDodatnaLokacija.sifra_lokacije ||
-                                                    "",
-                                                ) ===
-                                                  String(
-                                                    lok.sifra_lokacije || "",
-                                                  );
-                                              return (
-                                                <button
-                                                  key={`${kupac.sifra_kupca}-pj-${String(lok.sifra_lokacije || idx)}`}
-                                                  onClick={() => {
-                                                    const terenInfo =
-                                                      getSelectedTerenInfo();
-                                                    if (!terenInfo) {
-                                                      alert(
-                                                        "Odaberi dan prije nego što odabereš kupca!",
-                                                      );
-                                                      return;
-                                                    }
-                                                    openKupacOrderModal(
-                                                      kupac,
-                                                      terenInfo,
-                                                      lok,
-                                                      Number(
-                                                        lok?.sifra_grada,
-                                                      ) || grad.sifra_grada,
-                                                    );
-                                                  }}
-                                                  className="w-full px-3 py-2 rounded-lg text-xs transition-all text-left font-semibold border"
-                                                  style={{
-                                                    borderColor:
-                                                      isLokacijaSelected
-                                                        ? "#8FC74A"
-                                                        : "#D6C8F0",
-                                                    backgroundColor:
-                                                      isLokacijaSelected
-                                                        ? "#F0FFF4"
-                                                        : "#FAF7FF",
-                                                    color: "#5A3F86",
-                                                  }}
-                                                >
-                                                  PJ:{" "}
-                                                  {getLokacijaLabel(lok, idx)}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  },
-                                )
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
             </div>
           </div>
 
@@ -1679,25 +1254,6 @@ export function NarudzbeUnosTeren() {
                                 {kupac.pripada_radniku || "-"}
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeletePartnerFromTeren(kupac)
-                              }
-                              className="p-2 rounded-lg transition-all"
-                              style={{ backgroundColor: "#FFE5E5" }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.backgroundColor =
-                                  "#FFD5D5")
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.backgroundColor =
-                                  "#FFE5E5")
-                              }
-                              title="Obriši partnera (sve stavke za ovog partnera na terenu)"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </button>
                           </div>
                         </div>
 
@@ -1711,7 +1267,7 @@ export function NarudzbeUnosTeren() {
                                   "JM",
                                   "KOLIČINA",
                                   "NAPOMENA",
-                                  "",
+                                  "STATUS",
                                 ].map((h) => (
                                   <th
                                     key={h}
@@ -1756,33 +1312,16 @@ export function NarudzbeUnosTeren() {
                                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-[#9e96b8]">
                                       {proizvod.napomena || "-"}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleDeleteProductFromPartner(
-                                            kupac,
-                                            proizvod,
-                                          )
-                                        }
-                                        className="p-1.5 rounded-lg transition-all inline-flex"
-                                        style={{ backgroundColor: "#FFE5E5" }}
-                                        onMouseEnter={(e) =>
-                                          (e.currentTarget.style.backgroundColor =
-                                            "#FFD5D5")
-                                        }
-                                        onMouseLeave={(e) =>
-                                          (e.currentTarget.style.backgroundColor =
-                                            "#FFE5E5")
-                                        }
-                                        title={
-                                          kupac.proizvodi.length <= 1
-                                            ? "Kupac ima 1 stavku – briše se cijeli partner"
-                                            : "Obriši ovaj proizvod"
-                                        }
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                                      </button>
+                                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                                      {proizvod.verifikovano === 1 ? (
+                                        <span title="Verifikovano">
+                                          <CheckCircle2 className="w-5 h-5 text-green-600 inline-block" />
+                                        </span>
+                                      ) : (
+                                        <span title="Nije verifikovano">
+                                          <Circle className="w-5 h-5 text-gray-300 inline-block" />
+                                        </span>
+                                      )}
                                     </td>
                                   </tr>
                                 ))

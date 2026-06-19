@@ -30,6 +30,16 @@ export const getRanijeUzimano = async (sifraPartnera, nazivPartnera) => {
   });
 };
 
+export const getDostavaTereniProizvodi = async (sifraTerena) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_dostava_tereni_proizvodi(?)",
+      [sifraTerena],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getZadnjiDanNarudzbe = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

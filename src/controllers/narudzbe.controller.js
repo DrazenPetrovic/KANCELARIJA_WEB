@@ -43,6 +43,20 @@ export const getRanijeUzimano = async (req, res) => {
   }
 };
 
+export const getDostavaTereniProizvodi = async (req, res) => {
+  try {
+    const sifraTerena = req.query.sifraTerena || req.params.sifraTerena;
+    if (!sifraTerena) {
+      return res.status(400).json({ success: false, error: "Sifra terena je obavezna" });
+    }
+    const data = await NarudzbeService.getDostavaTereniProizvodi(sifraTerena);
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled dostava tereni proizvodi error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju podataka za štampu" });
+  }
+};
+
 export const getZadnjiDanNarudzbe = async (req, res) => {
   try {
     const data = await NarudzbeService.getZadnjiDanNarudzbe();

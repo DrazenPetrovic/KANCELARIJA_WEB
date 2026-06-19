@@ -1,5 +1,5 @@
-import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
+import { NarudzbePregled } from "./NarudzbePregled";
 
 export function OrdersList() {
-  return <NarudzbeUnosTeren />;
+  return <NarudzbePregled />;
 }

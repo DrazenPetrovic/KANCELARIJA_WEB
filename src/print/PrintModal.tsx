@@ -1,6 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Printer, ZoomIn, ZoomOut } from "lucide-react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import { PrintJob } from "../context/PrintContext";
+import {
+  bytesToBase64,
+  getPrintServiceStatus,
+  mapPrintError,
+  sendPrintJob,
+  type PrintServiceStatus,
+} from "../utils/printService";
 
 const PRIMARY = "#785E9E";
 
@@ -9,14 +18,25 @@ const MM_TO_PX = 3.7795;
 interface Props {
   job: PrintJob;
   onClose: () => void;
+  printerName?: string;
 }
 
-export function PrintModal({ job, onClose }: Props) {
+export function PrintModal({ job, onClose, printerName }: Props) {
   const [orientation, setOrientation] = useState<"portrait" | "landscape">(
     job.orientation ?? "portrait",
   );
   const [format, setFormat] = useState<"A4" | "A5">("A4");
   const [scale, setScale] = useState(0.62);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<PrintServiceStatus | null>(
+    null,
+  );
+  const directPrintRef = useRef<HTMLDivElement | null>(null);
+
+  const allowBrowserPrintFallback = job.allowBrowserPrintFallback !== false;
 
   const paperW =
     orientation === "portrait"
@@ -28,8 +48,37 @@ export function PrintModal({ job, onClose }: Props) {
       ? (format === "A4" ? 297 : 210) * MM_TO_PX
       : (format === "A4" ? 210 : 148) * MM_TO_PX;
 
+  const loadServiceStatus = async (): Promise<PrintServiceStatus | null> => {
+    setStatusLoading(true);
+    setStatusError(null);
 
-  const handlePrint = () => {
+    try {
+      const status = await getPrintServiceStatus();
+      setServiceStatus(status);
+      return status;
+    } catch {
+      setStatusError("Print servis nije dostupan");
+      return null;
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadServiceStatus();
+  }, [job.title]);
+
+  const isServiceReadyForDirectPrint = (status: PrintServiceStatus | null) =>
+    !!status && status.serviceActive && status.pdfRendererActive;
+
+  const resolvePrinterName = (status: PrintServiceStatus) => {
+    if (printerName?.trim()) return printerName.trim();
+    if (status.defaultPrinter.trim()) return status.defaultPrinter.trim();
+    if (status.printers.length > 0) return status.printers[0];
+    return "";
+  };
+
+  const runBrowserPrint = () => {
     const existing = document.getElementById("__print_page_style__");
     if (existing) existing.remove();
     const style = document.createElement("style");
@@ -37,7 +86,113 @@ export function PrintModal({ job, onClose }: Props) {
     style.textContent = `@media print { @page { size: ${format} ${orientation}; margin: 12mm; } }`;
     document.head.appendChild(style);
     window.print();
-    setTimeout(() => document.getElementById("__print_page_style__")?.remove(), 1500);
+    setTimeout(
+      () => document.getElementById("__print_page_style__")?.remove(),
+      1500,
+    );
+  };
+
+  const sendDirectPrintFromPreview = async (status: PrintServiceStatus) => {
+    const printSource = directPrintRef.current;
+    if (!printSource) {
+      throw { code: "INVALID_REQUEST", message: "Nema izvora za štampu" };
+    }
+
+    const resolvedPrinter = resolvePrinterName(status);
+    if (!resolvedPrinter) {
+      throw { code: "PRINTER_NOT_FOUND", message: "Printer nije pronađen" };
+    }
+
+    const canvas = await html2canvas(printSource, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: Math.ceil(paperW),
+      windowHeight: Math.ceil(paperH),
+    });
+
+    const pdf = new jsPDF({
+      orientation,
+      unit: "mm",
+      format,
+      compress: true,
+    });
+
+    const pageWidthMm = format === "A4" ? (orientation === "portrait" ? 210 : 297) : (orientation === "portrait" ? 148 : 210);
+    const pageHeightMm = format === "A4" ? (orientation === "portrait" ? 297 : 210) : (orientation === "portrait" ? 210 : 148);
+
+    pdf.addImage(
+      canvas.toDataURL("image/png"),
+      "PNG",
+      0,
+      0,
+      pageWidthMm,
+      pageHeightMm,
+      undefined,
+      "FAST",
+    );
+
+    const documentBase64 = bytesToBase64(
+      new Uint8Array(pdf.output("arraybuffer")),
+    );
+
+    return sendPrintJob({
+      appId: "kancelarija-web",
+      mode: "pdf",
+      paperSize: format,
+      orientation,
+      printerName: resolvedPrinter,
+      copies: 1,
+      documentType: job.title.toLowerCase(),
+      documentBase64,
+    });
+  };
+
+  const handlePrint = async () => {
+    setPrintError(null);
+
+    let latestStatus = serviceStatus;
+    if (!latestStatus || statusLoading) {
+      latestStatus = await loadServiceStatus();
+    }
+
+    const canUseDirectPrint = isServiceReadyForDirectPrint(latestStatus);
+
+    if (!canUseDirectPrint) {
+      if (allowBrowserPrintFallback) runBrowserPrint();
+      return;
+    }
+
+    if (job.onPrint) {
+      try {
+        await job.onPrint({ format, orientation });
+        setPrintSuccess(true);
+        setTimeout(onClose, 900);
+        return;
+      } catch (error) {
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? String((error as { code: unknown }).code)
+            : undefined;
+        setPrintError(mapPrintError(code));
+        return;
+      }
+    }
+
+    if (!latestStatus) return;
+
+    try {
+      await sendDirectPrintFromPreview(latestStatus);
+      setPrintSuccess(true);
+      setTimeout(onClose, 900);
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code: unknown }).code)
+          : undefined;
+      setPrintError(mapPrintError(code));
+    }
   };
 
   return (
@@ -165,8 +320,48 @@ export function PrintModal({ job, onClose }: Props) {
             </div>
 
             <div className="mt-auto space-y-2">
+              <div className="rounded-xl border border-gray-200 dark:border-[#3a3158] p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878]">
+                    Print servis
+                  </span>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                      statusLoading
+                        ? "bg-gray-50 text-gray-500 border-gray-200"
+                        : isServiceReadyForDirectPrint(serviceStatus)
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-rose-50 text-rose-700 border-rose-200"
+                    }`}
+                  >
+                    {statusLoading
+                      ? "..."
+                      : isServiceReadyForDirectPrint(serviceStatus)
+                        ? "AKTIVAN"
+                        : "OFFLINE"}
+                  </span>
+                </div>
+                {!statusLoading && statusError && (
+                  <p className="text-[11px] text-rose-600 mt-1.5">
+                    {statusError}
+                  </p>
+                )}
+                {!statusLoading && printError && (
+                  <p className="text-[11px] text-rose-600 mt-1.5">
+                    {printError}
+                  </p>
+                )}
+                {!statusLoading && printSuccess && (
+                  <p className="text-[11px] text-emerald-600 mt-1.5">
+                    Poslano na štampu
+                  </p>
+                )}
+              </div>
+
               <button
-                onClick={handlePrint}
+                onClick={() => {
+                  void handlePrint();
+                }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
                 style={{ background: PRIMARY }}
               >
@@ -181,9 +376,38 @@ export function PrintModal({ job, onClose }: Props) {
               </button>
             </div>
 
-            <p className="text-[10px] text-gray-400 dark:text-[#5f5878] text-center leading-relaxed">
-              Za export u PDF izaberi "Spremi kao PDF" u sistemskom dijalogu
-            </p>
+            {allowBrowserPrintFallback && (
+              <p className="text-[10px] text-gray-400 dark:text-[#5f5878] text-center leading-relaxed">
+                Bez print servisa otvara se sistemski dijalog za štampu/PDF
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: "fixed",
+            left: -10000,
+            top: 0,
+            width: paperW,
+            height: paperH,
+            opacity: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+            background: "white",
+            zIndex: -1,
+          }}
+        >
+          <div
+            ref={directPrintRef}
+            style={{
+              width: paperW,
+              height: paperH,
+              overflow: "hidden",
+              background: "white",
+            }}
+          >
+            {job.component}
           </div>
         </div>
       </div>

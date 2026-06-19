@@ -3,6 +3,7 @@ export {
   getAktivneNarudzbe,
   getRanijeUzimano,
   getZadnjiDanNarudzbe,
+  getDostavaTereniProizvodi,
   createNarudzba,
   narudzbaBrisanjePartnera,
   narudzbaBrisanjePartneraProizvoda,

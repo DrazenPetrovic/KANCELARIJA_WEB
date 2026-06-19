@@ -10,11 +10,14 @@ import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
+import { usePrint } from "../context/PrintContext";
+import { getPrintServiceStatus } from "../utils/printService";
 import {
   BarChart2,
   Calculator,
   Calendar,
   CheckCheck,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -71,6 +74,18 @@ export function Dashboard({
   onLogout,
 }: DashboardProps) {
   const { theme, toggleTheme } = useTheme();
+  const {
+    printers,
+    loadingPrinters,
+    loadPrinters,
+    selectedPrinter,
+    setSelectedPrinter,
+    savePrinter,
+  } = usePrint();
+  const [printServiceStatus, setPrintServiceStatus] = useState<
+    "checking" | "online" | "offline"
+  >("checking");
+  const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
     "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
@@ -124,6 +139,38 @@ export function Dashboard({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkPrintService = async () => {
+      try {
+        const status = await getPrintServiceStatus();
+        if (mounted) {
+          setPrintServiceStatus(
+            status.serviceActive && status.pdfRendererActive
+              ? "online"
+              : "offline",
+          );
+        }
+      } catch {
+        if (mounted) setPrintServiceStatus("offline");
+      }
+    };
+
+    void checkPrintService();
+    const intervalId = setInterval(checkPrintService, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showPrinterSavedModal) return;
+    const timeoutId = setTimeout(() => setShowPrinterSavedModal(false), 2500);
+    return () => clearTimeout(timeoutId);
+  }, [showPrinterSavedModal]);
 
   const toggleMenu = (
     menu: "file" | "pregledi" | "narudzbe" | "proizvodnja",
@@ -215,15 +262,42 @@ export function Dashboard({
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2">
-              <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
-                {roleLabel}:
-              </p>
-              <p
-                className="text-sm font-semibold uppercase"
-                style={{ color: ACCENT }}
-              >
-                {username}
-              </p>
+              <div className="flex flex-col leading-tight">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
+                    {roleLabel}:
+                  </p>
+                  <p
+                    className="text-sm font-semibold uppercase"
+                    style={{ color: ACCENT }}
+                  >
+                    {username}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      printServiceStatus === "online" ? "animate-blink" : ""
+                    }`}
+                    style={{
+                      background:
+                        printServiceStatus === "online"
+                          ? "#22c55e"
+                          : printServiceStatus === "offline"
+                            ? "#ef4444"
+                            : "#f59e0b",
+                    }}
+                  />
+                  <p className="text-[10px] uppercase tracking-wide text-white/70 font-medium">
+                    Print servis:{" "}
+                    {printServiceStatus === "online"
+                      ? "online"
+                      : printServiceStatus === "offline"
+                        ? "offline"
+                        : "provjera"}
+                  </p>
+                </div>
+              </div>
             </div>
             <button
               onClick={onLogout}
@@ -883,9 +957,78 @@ export function Dashboard({
                   Opcije
                 </h2>
               </div>
-              <p className="text-gray-500 dark:text-[#7d7498]">
-                Podešavanja modula File.
-              </p>
+
+              <div className="max-w-xl rounded-2xl border border-gray-200 dark:border-[#2d2648] p-4 bg-[#faf9fc] dark:bg-[#1e1730]">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#7d7498]">
+                    Print servis
+                  </p>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                      printServiceStatus === "online"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : printServiceStatus === "offline"
+                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                          : "bg-gray-50 text-gray-500 border-gray-200"
+                    }`}
+                  >
+                    {printServiceStatus === "online"
+                      ? "AKTIVAN"
+                      : printServiceStatus === "offline"
+                        ? "OFFLINE"
+                        : "PROVJERA..."}
+                  </span>
+                </div>
+
+                <label className="block text-sm font-semibold text-gray-700 dark:text-[#c5bfd8] mb-1">
+                  Printer
+                </label>
+
+                <div className="flex gap-2">
+                  <select
+                    value={selectedPrinter}
+                    onChange={(e) => setSelectedPrinter(e.target.value)}
+                    className="flex-1 px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6]"
+                  >
+                    <option value="">-- Izaberi printer --</option>
+                    {printers.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => void loadPrinters()}
+                    className="px-3 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#a89fc2] hover:bg-white dark:hover:bg-[#2d2648] transition-colors"
+                  >
+                    {loadingPrinters ? "..." : "Osvježi"}
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  value={selectedPrinter}
+                  onChange={(e) => setSelectedPrinter(e.target.value)}
+                  placeholder="Naziv printera (ručni unos)"
+                  className="mt-2 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6]"
+                />
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (savePrinter()) setShowPrinterSavedModal(true);
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                    style={{ background: PRIMARY }}
+                  >
+                    Sačuvaj printer
+                  </button>
+                  <span className="text-xs text-gray-500 dark:text-[#7d7498]">
+                    Čuva se za korisnika: {username}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -955,6 +1098,39 @@ export function Dashboard({
           {activeSection === "klise-pregled" && <KlisePregled />}
         </main>
       </BazaContext.Provider>
+
+      {showPrinterSavedModal && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
+          onClick={() => setShowPrinterSavedModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col items-center text-center p-8 gap-3"
+            style={{ width: 320 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ background: "#e9f7df" }}
+            >
+              <CheckCircle2 size={30} style={{ color: ACCENT }} />
+            </div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
+              Printer je sačuvan
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-[#7d7498]">
+              Izabrani printer: <strong>{selectedPrinter}</strong>
+            </p>
+            <button
+              onClick={() => setShowPrinterSavedModal(false)}
+              className="mt-2 w-full px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+              style={{ background: PRIMARY }}
+            >
+              U redu
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

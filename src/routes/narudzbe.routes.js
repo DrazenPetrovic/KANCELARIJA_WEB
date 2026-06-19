@@ -16,6 +16,11 @@ router.get(
 );
 router.get("/ranije-uzimano", verifyToken, NarudzbeController.getRanijeUzimano);
 router.get(
+  "/dostava-tereni-proizvodi",
+  verifyToken,
+  NarudzbeController.getDostavaTereniProizvodi,
+);
+router.get(
   "/zadnji-dan-narudzbe",
   verifyToken,
   NarudzbeController.getZadnjiDanNarudzbe,
