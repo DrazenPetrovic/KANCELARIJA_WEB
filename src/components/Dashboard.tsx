@@ -233,7 +233,7 @@ export function Dashboard({
             title="Početna strana"
           >
             <img
-              src="/foto/karpas_logo_software.png"
+              src={`${import.meta.env.BASE_URL}foto/karpas_logo_software.png`}
               alt="Karpas logo"
               className="h-10 w-10 object-contain rounded-lg bg-white/40 p-1"
               onError={(e) => {
