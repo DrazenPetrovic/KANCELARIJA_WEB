@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Printer, ZoomIn, ZoomOut } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, CheckCircle2, Loader2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { PrintJob } from "../context/PrintContext";
@@ -31,10 +31,13 @@ export function PrintModal({ job, onClose, printerName }: Props) {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
   const [printSuccess, setPrintSuccess] = useState(false);
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<PrintServiceStatus | null>(
     null,
   );
   const directPrintRef = useRef<HTMLDivElement | null>(null);
+  const [contentHeightPx, setContentHeightPx] = useState(0);
 
   const allowBrowserPrintFallback = job.allowBrowserPrintFallback !== false;
 
@@ -47,6 +50,21 @@ export function PrintModal({ job, onClose, printerName }: Props) {
     orientation === "portrait"
       ? (format === "A4" ? 297 : 210) * MM_TO_PX
       : (format === "A4" ? 210 : 148) * MM_TO_PX;
+
+  const pageCount =
+    contentHeightPx > 0 ? Math.max(1, Math.ceil(contentHeightPx / paperH)) : 1;
+
+  useEffect(() => {
+    const el = directPrintRef.current;
+    if (!el) return;
+
+    const measure = () => setContentHeightPx(el.scrollHeight);
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [job.component, paperW]);
 
   const loadServiceStatus = async (): Promise<PrintServiceStatus | null> => {
     setStatusLoading(true);
@@ -103,13 +121,13 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       throw { code: "PRINTER_NOT_FOUND", message: "Printer nije pronađen" };
     }
 
+    const renderScale = 2;
     const canvas = await html2canvas(printSource, {
       backgroundColor: "#ffffff",
-      scale: 2,
+      scale: renderScale,
       useCORS: true,
       logging: false,
       windowWidth: Math.ceil(paperW),
-      windowHeight: Math.ceil(paperH),
     });
 
     const pdf = new jsPDF({
@@ -122,16 +140,53 @@ export function PrintModal({ job, onClose, printerName }: Props) {
     const pageWidthMm = format === "A4" ? (orientation === "portrait" ? 210 : 297) : (orientation === "portrait" ? 148 : 210);
     const pageHeightMm = format === "A4" ? (orientation === "portrait" ? 297 : 210) : (orientation === "portrait" ? 210 : 148);
 
-    pdf.addImage(
-      canvas.toDataURL("image/png"),
-      "PNG",
-      0,
-      0,
-      pageWidthMm,
-      pageHeightMm,
-      undefined,
-      "FAST",
-    );
+    const pageHeightPx = Math.round(paperH * renderScale);
+    const pageWidthPx = canvas.width;
+    const totalHeightPx = canvas.height;
+
+    let renderedHeightPx = 0;
+    let pageIndex = 0;
+
+    while (renderedHeightPx < totalHeightPx) {
+      const sliceHeightPx = Math.min(pageHeightPx, totalHeightPx - renderedHeightPx);
+
+      const pageCanvas = document.createElement("canvas");
+      pageCanvas.width = pageWidthPx;
+      pageCanvas.height = sliceHeightPx;
+      const ctx = pageCanvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageWidthPx, sliceHeightPx);
+        ctx.drawImage(
+          canvas,
+          0,
+          renderedHeightPx,
+          pageWidthPx,
+          sliceHeightPx,
+          0,
+          0,
+          pageWidthPx,
+          sliceHeightPx,
+        );
+      }
+
+      if (pageIndex > 0) pdf.addPage(format, orientation);
+
+      const sliceHeightMm = (sliceHeightPx / pageHeightPx) * pageHeightMm;
+      pdf.addImage(
+        pageCanvas.toDataURL("image/png"),
+        "PNG",
+        0,
+        0,
+        pageWidthMm,
+        sliceHeightMm,
+        undefined,
+        "FAST",
+      );
+
+      renderedHeightPx += sliceHeightPx;
+      pageIndex++;
+    }
 
     const documentBase64 = bytesToBase64(
       new Uint8Array(pdf.output("arraybuffer")),
@@ -149,8 +204,19 @@ export function PrintModal({ job, onClose, printerName }: Props) {
     });
   };
 
+  const handlePrintSuccess = () => {
+    setIsPrinting(false);
+    setPrintSuccess(true);
+    setShowSuccessOverlay(true);
+    setTimeout(() => {
+      setShowSuccessOverlay(false);
+      onClose();
+    }, 2000);
+  };
+
   const handlePrint = async () => {
     setPrintError(null);
+    setIsPrinting(true);
 
     let latestStatus = serviceStatus;
     if (!latestStatus || statusLoading) {
@@ -161,14 +227,14 @@ export function PrintModal({ job, onClose, printerName }: Props) {
 
     if (!canUseDirectPrint) {
       if (allowBrowserPrintFallback) runBrowserPrint();
+      setIsPrinting(false);
       return;
     }
 
     if (job.onPrint) {
       try {
         await job.onPrint({ format, orientation });
-        setPrintSuccess(true);
-        setTimeout(onClose, 900);
+        handlePrintSuccess();
         return;
       } catch (error) {
         const code =
@@ -176,22 +242,26 @@ export function PrintModal({ job, onClose, printerName }: Props) {
             ? String((error as { code: unknown }).code)
             : undefined;
         setPrintError(mapPrintError(code));
+        setIsPrinting(false);
         return;
       }
     }
 
-    if (!latestStatus) return;
+    if (!latestStatus) {
+      setIsPrinting(false);
+      return;
+    }
 
     try {
       await sendDirectPrintFromPreview(latestStatus);
-      setPrintSuccess(true);
-      setTimeout(onClose, 900);
+      handlePrintSuccess();
     } catch (error) {
       const code =
         typeof error === "object" && error !== null && "code" in error
           ? String((error as { code: unknown }).code)
           : undefined;
       setPrintError(mapPrintError(code));
+      setIsPrinting(false);
     }
   };
 
@@ -200,8 +270,30 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      <div className="relative bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{ width: 920, maxWidth: "95vw", height: "88vh" }}>
+
+        {showSuccessOverlay && (
+          <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-white/90 dark:bg-[#261f38]/90 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3">
+              <CheckCircle2 size={48} className="text-emerald-500" />
+              <p className="text-sm font-semibold text-gray-700 dark:text-[#c5bfd8]">
+                Uspješno odštampano
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isPrinting && !showSuccessOverlay && (
+          <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-white/90 dark:bg-[#261f38]/90 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 size={48} className="animate-spin" style={{ color: PRIMARY }} />
+              <p className="text-sm font-semibold text-gray-700 dark:text-[#c5bfd8]">
+                Štampanje u toku...
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div
@@ -323,6 +415,17 @@ export function PrintModal({ job, onClose, printerName }: Props) {
               <div className="rounded-xl border border-gray-200 dark:border-[#3a3158] p-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878]">
+                    Broj stranica
+                  </span>
+                  <span className="text-[11px] font-semibold text-gray-700 dark:text-[#c5bfd8]">
+                    {pageCount}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-[#3a3158] p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878]">
                     Print servis
                   </span>
                   <span
@@ -362,11 +465,16 @@ export function PrintModal({ job, onClose, printerName }: Props) {
                 onClick={() => {
                   void handlePrint();
                 }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                disabled={isPrinting}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ background: PRIMARY }}
               >
-                <Printer size={15} />
-                Štampaj / PDF
+                {isPrinting ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Printer size={15} />
+                )}
+                {isPrinting ? "Štampanje..." : "Štampaj / PDF"}
               </button>
               <button
                 onClick={onClose}
@@ -390,10 +498,8 @@ export function PrintModal({ job, onClose, printerName }: Props) {
             left: -10000,
             top: 0,
             width: paperW,
-            height: paperH,
             opacity: 0,
             pointerEvents: "none",
-            overflow: "hidden",
             background: "white",
             zIndex: -1,
           }}
@@ -402,8 +508,6 @@ export function PrintModal({ job, onClose, printerName }: Props) {
             ref={directPrintRef}
             style={{
               width: paperW,
-              height: paperH,
-              overflow: "hidden",
               background: "white",
             }}
           >
