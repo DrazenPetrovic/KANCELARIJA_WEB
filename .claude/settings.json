@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Read(//d//**)",
+      "Bash(find /d /c /e -maxdepth 4 -iname \"*print*agent*\")",
+      "Bash(find \"/d\" -maxdepth 3 -iname \"*PRINT_AGENT*\")",
+      "Bash(find \"/d/Desktop/PRINT_AGENT\" -maxdepth 2; echo \"---C---\"; find \"/c/local-print-agent\" -maxdepth 2)",
+      "Read(//c/local-print-agent/**)",
+      "PowerShell(sc query LocalPrintAgent)",
+      "PowerShell(sc.exe query LocalPrintAgent 2>&1)",
+      "PowerShell(Get-Process -Name \"local-print-agent\" -ErrorAction SilentlyContinue)",
+      "Bash(cmd.exe /c start-hidden-safe.bat)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Stop-Process -Id 25348 -Force)",
+      "PowerShell(Start-Process -FilePath \"D:\\\\Desktop\\\\PRINT_AGENT\\\\local-print-agent.exe\" -WindowStyle Hidden)"
+    ],
+    "additionalDirectories": [
+      "D:\\Desktop\\PRINT_AGENT"
     ]
   }
 }
