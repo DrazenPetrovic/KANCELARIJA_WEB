@@ -30,6 +30,7 @@ export interface DostavaTereniProizvodiRow {
   verifikovano: number;
   verifikovano_ts: string | null;
   naziv_partnera: string;
+  nacin_placanja?: string | null;
 }
 
 interface PartnerGroup {
@@ -37,6 +38,7 @@ interface PartnerGroup {
   sifra_partnera: number;
   naziv_partnera: string;
   referentni_broj: string | null;
+  nacin_placanja: string | null;
   rows: DostavaTereniProizvodiRow[];
 }
 
@@ -58,6 +60,7 @@ function groupRows(rows: DostavaTereniProizvodiRow[]): PartnerGroup[] {
         sifra_partnera: row.sifra_partnera,
         naziv_partnera: row.naziv_partnera,
         referentni_broj: referentniBroj,
+        nacin_placanja: row.nacin_placanja || null,
         rows: [],
       });
     }
@@ -65,7 +68,11 @@ function groupRows(rows: DostavaTereniProizvodiRow[]): PartnerGroup[] {
     groups.get(key)!.rows.push(row);
   });
 
-  return Array.from(groups.values());
+  return Array.from(groups.values()).sort((a, b) =>
+    a.naziv_partnera.localeCompare(b.naziv_partnera, "bs", {
+      sensitivity: "base",
+    }),
+  );
 }
 
 export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
@@ -155,11 +162,18 @@ export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
                   {group.sifra_partnera} — {group.naziv_partnera}
                   {group.sifra_partnera >= 10000 && " (RAZNI KUPAC)"}
                 </span>
-                {group.referentni_broj && (
-                  <span style={{ fontSize: 9, opacity: 0.85 }}>
-                    Ref. broj: {group.referentni_broj}
-                  </span>
-                )}
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  {group.nacin_placanja && (
+                    <span style={{ fontSize: 9, opacity: 0.85 }}>
+                      Vrsta plaćanja: {group.nacin_placanja}
+                    </span>
+                  )}
+                  {group.referentni_broj && (
+                    <span style={{ fontSize: 9, opacity: 0.85 }}>
+                      Ref. broj: {group.referentni_broj}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Tabela stavki */}
@@ -191,7 +205,7 @@ export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
                         style={{
                           color: PRIMARY,
                           fontWeight: 700,
-                          fontSize: 8,
+                          fontSize: 9,
                           padding: "3px 5px",
                           textAlign: right ? "right" : "left",
                           textTransform: "uppercase",
@@ -258,7 +272,7 @@ export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
 
 const cell: React.CSSProperties = {
   padding: "3px 5px",
-  fontSize: 9,
+  fontSize: 10,
   borderBottom: "1px solid #f0edf8",
   verticalAlign: "middle",
 };

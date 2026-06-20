@@ -91,6 +91,7 @@ interface NarudzbaKupac {
   naziv_kupca: string;
   referentni_broj?: string;
   pripada_radniku?: string;
+  nacin_placanja?: string;
   proizvodi: NarudzbaProizvod[];
 }
 
@@ -750,6 +751,7 @@ export function NarudzbePregled() {
         referentni_broj?: string;
         verifikovano?: number;
         naziv_partnera: string;
+        nacin_placanja?: string;
       }>;
 
       const kupciMap = new Map<string, NarudzbaKupac>();
@@ -763,6 +765,7 @@ export function NarudzbePregled() {
             naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
             referentni_broj: referentniBroj,
             pripada_radniku: "",
+            nacin_placanja: row.nacin_placanja || "",
             proizvodi: [],
           };
           kupciMap.set(kupacKey, kupac);
@@ -778,7 +781,11 @@ export function NarudzbePregled() {
         });
       });
 
-      setNarudzbePoKupcu(Array.from(kupciMap.values()));
+      const sortedKupci = Array.from(kupciMap.values()).sort((a, b) =>
+        a.naziv_kupca.localeCompare(b.naziv_kupca, "bs", { sensitivity: "base" }),
+      );
+
+      setNarudzbePoKupcu(sortedKupci);
     } catch (error) {
       console.error("Error fetching aktivne narudžbe:", error);
     } finally {
@@ -1235,7 +1242,21 @@ export function NarudzbePregled() {
                                 </span>
                               </p>
                             </div>
-                            <div className="ml-auto mr-[10px] relative">
+                            <div className="ml-auto text-center mr-6">
+                              <div
+                                className="text-xs font-semibold"
+                                style={{ color: "#785E9E" }}
+                              >
+                                Vrsta plaćanja
+                              </div>
+                              <span
+                                className="text-lg font-bold"
+                                style={{ color: "#8FC74A" }}
+                              >
+                                {kupac.nacin_placanja || "-"}
+                              </span>
+                            </div>
+                            <div className="mr-[10px] relative">
                               <div className="bg-white dark:bg-[#1e1730] px-4 py-2 rounded-lg shadow">
                                 <span className="text-sm text-gray-600 dark:text-[#9e96b8]">
                                   Ukupno stavki:
