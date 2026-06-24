@@ -8,6 +8,7 @@ import {
   Lock,
   LockOpen,
   Printer,
+  RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -744,6 +745,8 @@ export function NarudzbePregled() {
       const result = await response.json();
       if (!result.success) return;
 
+      if (result.data?.length > 0) console.log("RAW ROW SAMPLE:", result.data[0]);
+
       const rows = (result.data || []) as Array<{
         sifra_partnera: number;
         sifra_proizvoda: number;
@@ -782,7 +785,7 @@ export function NarudzbePregled() {
           spremljena_kolicina: Number(row.spremljena_kolicina) || 0,
           napomena: row.napomena || " ",
           sifra_kupca: row.sifra_partnera,
-          verifikovano: Number(row.verifikovano) === 1 ? 1 : 0,
+          verifikovano: Number(row.verifikovano),
         });
       });
 
@@ -1022,7 +1025,7 @@ export function NarudzbePregled() {
   );
   const ukupnoVerifikovano = narudzbePoKupcu.reduce(
     (sum, kupac) =>
-      sum + kupac.proizvodi.filter((p) => p.verifikovano === 1).length,
+      sum + kupac.proizvodi.filter((p) => p.verifikovano >= 1).length,
     0,
   );
 
@@ -1034,7 +1037,8 @@ export function NarudzbePregled() {
           headerCollapsed ? "max-h-8" : "max-h-24"
         }`}
       >
-        <div className="flex items-center justify-between gap-3 px-6 md:px-8 py-2 md:py-4">
+        <div className="grid grid-cols-3 items-center gap-3 px-6 md:px-8 py-2 md:py-4">
+          {/* LIJEVO - NASLOV */}
           {!headerCollapsed && (
             <h2
               className="text-lg md:text-xl font-bold text-left"
@@ -1054,8 +1058,9 @@ export function NarudzbePregled() {
               )}
             </h2>
           )}
+          {/* CENTAR - BEDŽEVI */}
           {!headerCollapsed && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center gap-3">
               <div
                 className="flex items-center gap-2 px-4 py-2 rounded-xl border-2"
                 style={{ borderColor: "#8FC74A" }}
@@ -1077,6 +1082,20 @@ export function NarudzbePregled() {
                   Zaključano: {ukupnoZakljucano}/{ukupnoProizvoda}
                 </span>
               </div>
+            </div>
+          )}
+          {/* DESNO - DUGMAD */}
+          {!headerCollapsed && (
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                title="Osvježi"
+                onClick={() => selectedDay && fetchAktivneNarudzbe(selectedDay)}
+                className="flex items-center gap-2 px-4 py-3 rounded-xl text-base font-semibold transition-all hover:brightness-110 border-2"
+                style={{ borderColor: "#8FC74A", color: "#8FC74A" }}
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
               <button
                 type="button"
                 title="Štampaj"
@@ -1366,7 +1385,7 @@ export function NarudzbePregled() {
                                     </td>
                                     <td className="px-2 py-4 whitespace-nowrap text-center">
                                       <span className="inline-flex items-center justify-center gap-3">
-                                        {proizvod.verifikovano !== 0 ? (
+                                        {proizvod.verifikovano >= 1 ? (
                                           <span title="Verifikovano">
                                             <CheckCircle2 className="w-5 h-5 text-green-600 inline-block" />
                                           </span>
@@ -1377,7 +1396,7 @@ export function NarudzbePregled() {
                                         )}
                                         {proizvod.verifikovano === 2 ? (
                                           <span title="Zaključano">
-                                            <Lock className="w-6 h-6 inline-block text-red-500" />
+                                            <Lock className="w-6 h-6 inline-block" style={{ color: "#785E9E" }} />
                                           </span>
                                         ) : (
                                           <span title="Otključano">
