@@ -5,6 +5,8 @@ import {
   ChevronUp,
   Circle,
   Loader,
+  Lock,
+  LockOpen,
   Printer,
   Search,
   Trash2,
@@ -81,6 +83,7 @@ interface NarudzbaProizvod {
   naziv_proizvoda: string;
   jm: string;
   kolicina: number;
+  spremljena_kolicina: number;
   napomena?: string;
   sifra_kupca: number;
   verifikovano: number;
@@ -747,6 +750,7 @@ export function NarudzbePregled() {
         naziv_proizvoda: string;
         jm: string;
         kolicina_proizvoda: number;
+        spremljena_kolicina: number;
         napomena: string;
         referentni_broj?: string;
         verifikovano?: number;
@@ -775,6 +779,7 @@ export function NarudzbePregled() {
           naziv_proizvoda: row.naziv_proizvoda,
           jm: row.jm,
           kolicina: row.kolicina_proizvoda,
+          spremljena_kolicina: Number(row.spremljena_kolicina) || 0,
           napomena: row.napomena || " ",
           sifra_kupca: row.sifra_partnera,
           verifikovano: Number(row.verifikovano) === 1 ? 1 : 0,
@@ -1010,6 +1015,11 @@ export function NarudzbePregled() {
     (sum, kupac) => sum + kupac.proizvodi.length,
     0,
   );
+  const ukupnoZakljucano = narudzbePoKupcu.reduce(
+    (sum, kupac) =>
+      sum + kupac.proizvodi.filter((p) => p.verifikovano === 2).length,
+    0,
+  );
   const ukupnoVerifikovano = narudzbePoKupcu.reduce(
     (sum, kupac) =>
       sum + kupac.proizvodi.filter((p) => p.verifikovano === 1).length,
@@ -1056,6 +1066,15 @@ export function NarudzbePregled() {
                   style={{ color: "#785E9E" }}
                 >
                   Verifikovano: {ukupnoVerifikovano}/{ukupnoProizvoda}
+                </span>
+              </div>
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2"
+                style={{ borderColor: "#EF4444" }}
+              >
+                <Lock className="w-4 h-4 text-red-500" />
+                <span className="text-sm font-semibold text-red-500">
+                  Zaključano: {ukupnoZakljucano}/{ukupnoProizvoda}
                 </span>
               </div>
               <button
@@ -1257,17 +1276,22 @@ export function NarudzbePregled() {
                               </span>
                             </div>
                             <div className="mr-[10px] relative">
-                              <div className="bg-white dark:bg-[#1e1730] px-4 py-2 rounded-lg shadow">
-                                <span className="text-sm text-gray-600 dark:text-[#9e96b8]">
-                                  Ukupno stavki:
-                                </span>
-                                <span
-                                  className="ml-2 text-lg font-bold"
-                                  style={{ color: "#8FC74A" }}
-                                >
-                                  {kupac.proizvodi.length}
-                                </span>
-                              </div>
+                              {(() => {
+                                const sviZakljucani = kupac.proizvodi.length > 0 && kupac.proizvodi.every(p => p.verifikovano === 2);
+                                return (
+                                  <div className="px-4 py-2 rounded-lg shadow" style={{ backgroundColor: sviZakljucani ? "#FEE2E2" : "white" }}>
+                                    <span className="text-sm" style={{ color: sviZakljucani ? "#EF4444" : "#9CA3AF" }}>
+                                      Ukupno stavki:
+                                    </span>
+                                    <span
+                                      className="ml-2 text-lg font-bold"
+                                      style={{ color: sviZakljucani ? "#EF4444" : "#8FC74A" }}
+                                    >
+                                      {kupac.proizvodi.length}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                               <span
                                 className="absolute top-full left-1/2 -translate-x-1/2 text-xs mt-1 text-center whitespace-nowrap"
                                 style={{ color: "#785E9E" }}
@@ -1280,6 +1304,14 @@ export function NarudzbePregled() {
 
                         <div className="overflow-x-auto">
                           <table className="min-w-full divide-y divide-gray-200 dark:divide-[#2d2648]">
+                            <colgroup>
+                              <col style={{ width: "72px" }} />
+                              <col />
+                              <col style={{ width: "60px" }} />
+                              <col style={{ width: "15%" }} />
+                              <col style={{ width: "25%" }} />
+                              <col style={{ width: "80px" }} />
+                            </colgroup>
                             <thead className="bg-gray-50 dark:bg-[#2a2340]">
                               <tr>
                                 {[
@@ -1292,7 +1324,7 @@ export function NarudzbePregled() {
                                 ].map((h) => (
                                   <th
                                     key={h}
-                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-[#7d7498] uppercase tracking-wider"
+                                    className={`py-3 text-xs font-medium text-gray-500 dark:text-[#7d7498] uppercase tracking-wider ${h === "STATUS" ? "px-2 text-center" : h === "KOLIČINA" || h === "NAPOMENA" ? "px-6 text-center" : "px-6 text-left"}`}
                                   >
                                     {h}
                                   </th>
@@ -1324,25 +1356,35 @@ export function NarudzbePregled() {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-[#ede9f6]">
                                       {proizvod.jm}
                                     </td>
-                                    <td
-                                      className="px-6 py-4 whitespace-nowrap text-sm font-semibold"
-                                      style={{ color: "#8FC74A" }}
-                                    >
-                                      {proizvod.kolicina}
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center">
+                                      <span style={{ color: "#8FC74A" }}>{Number(proizvod.kolicina).toFixed(3)}</span>
+                                      <span className="text-gray-400 dark:text-[#5f5878] font-normal mx-1">/</span>
+                                      <span style={{ color: "#785E9E" }}>{Number(proizvod.spremljena_kolicina).toFixed(3)}</span>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-[#9e96b8]">
+                                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-[#9e96b8] text-center">
                                       {proizvod.napomena || "-"}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                      {proizvod.verifikovano === 1 ? (
-                                        <span title="Verifikovano">
-                                          <CheckCircle2 className="w-5 h-5 text-green-600 inline-block" />
-                                        </span>
-                                      ) : (
-                                        <span title="Nije verifikovano">
-                                          <Circle className="w-5 h-5 text-gray-300 inline-block" />
-                                        </span>
-                                      )}
+                                    <td className="px-2 py-4 whitespace-nowrap text-center">
+                                      <span className="inline-flex items-center justify-center gap-3">
+                                        {proizvod.verifikovano !== 0 ? (
+                                          <span title="Verifikovano">
+                                            <CheckCircle2 className="w-5 h-5 text-green-600 inline-block" />
+                                          </span>
+                                        ) : (
+                                          <span title="Nije verifikovano">
+                                            <Circle className="w-5 h-5 text-gray-300 inline-block" />
+                                          </span>
+                                        )}
+                                        {proizvod.verifikovano === 2 ? (
+                                          <span title="Zaključano">
+                                            <Lock className="w-6 h-6 inline-block text-red-500" />
+                                          </span>
+                                        ) : (
+                                          <span title="Otključano">
+                                            <LockOpen className="w-6 h-6 inline-block" style={{ color: "#8FC74A" }} />
+                                          </span>
+                                        )}
+                                      </span>
                                     </td>
                                   </tr>
                                 ))
