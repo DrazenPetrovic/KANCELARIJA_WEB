@@ -13,7 +13,10 @@ import { useTheme } from "../context/ThemeContext";
 import { usePrint } from "../context/PrintContext";
 import { getPrintServiceStatus } from "../utils/printService";
 import {
+  Banknote,
   BarChart2,
+  BookMarked,
+  BookOpen,
   Calculator,
   Calendar,
   CheckCheck,
@@ -27,6 +30,7 @@ import {
   FilePlus,
   FileText,
   FolderArchive,
+  Landmark,
   Layers,
   LogOut,
   MapPin,
@@ -66,6 +70,10 @@ type MenuSection =
   | "klise-naplata"
   | "klise-dobavljac"
   | "klise-pregled"
+  | "racuni-gotovinski"
+  | "racuni-virmanski"
+  | "racuni-knjizna-gotovinski"
+  | "racuni-knjizna-virmanski"
   | null;
 
 export function Dashboard({
@@ -88,23 +96,25 @@ export function Dashboard({
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
-    "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
+    "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
-    "file" | "pregledi" | "narudzbe" | "proizvodnja" | null
+    "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
   >(null);
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
   const proizvodnjaBtnRef = useRef<HTMLButtonElement>(null);
+  const racuniBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
   const proizvodnjaDrop = useRef<HTMLDivElement>(null);
+  const racuniDropRef = useRef<HTMLDivElement>(null);
 
   const isAdministrator = vrstaRadnika === 1;
   const isStandardUser = vrstaRadnika === 3;
@@ -133,7 +143,10 @@ export function Dashboard({
       const inProizvodnja =
         proizvodnjaBtnRef.current?.contains(t) ||
         proizvodnjaDrop.current?.contains(t);
-      if (!inFile && !inPregledi && !inNarudzbe && !inProizvodnja)
+      const inRacuni =
+        racuniBtnRef.current?.contains(t) ||
+        racuniDropRef.current?.contains(t);
+      if (!inFile && !inPregledi && !inNarudzbe && !inProizvodnja && !inRacuni)
         setOpenMenu(null);
     };
     document.addEventListener("mousedown", handler);
@@ -173,7 +186,7 @@ export function Dashboard({
   }, [showPrinterSavedModal]);
 
   const toggleMenu = (
-    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja",
+    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni",
   ) => {
     const ref =
       menu === "file"
@@ -182,7 +195,9 @@ export function Dashboard({
           ? preglediBtnRef
           : menu === "narudzbe"
             ? narudzbeBtnRef
-            : proizvodnjaBtnRef;
+            : menu === "racuni"
+              ? racuniBtnRef
+              : proizvodnjaBtnRef;
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 6, left: r.left });
@@ -200,7 +215,7 @@ export function Dashboard({
   };
 
   const navBtnStyle = (
-    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja",
+    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni",
     isActive: boolean,
   ): React.CSSProperties => ({
     background: isActive || hoveredBtn === menu ? ACCENT : PRIMARY,
@@ -811,6 +826,130 @@ export function Dashboard({
                     document.body,
                   )}
               </div>
+              {/* RAČUNI */}
+              <div>
+                <button
+                  ref={racuniBtnRef}
+                  onClick={() => toggleMenu("racuni")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "racuni",
+                    !!(
+                      openMenu === "racuni" ||
+                      activeSection?.startsWith("racuni-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("racuni")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <Receipt size={13} style={{ color: "#111" }} />
+                  </span>
+                  Računi
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "racuni" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "racuni" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={racuniDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-56 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <Receipt size={12} />
+                        Računi
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() => handleSectionChange("racuni-gotovinski")}
+                          className={dropdownItemClass(activeSection === "racuni-gotovinski")}
+                          style={activeSection === "racuni-gotovinski" ? { background: PRIMARY } : {}}
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-gotovinski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={activeSection === "racuni-gotovinski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                          >
+                            <Banknote
+                              size={13}
+                              style={{ color: activeSection === "racuni-gotovinski" ? "#fff" : PRIMARY }}
+                            />
+                          </span>
+                          Gotovinski račun
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("racuni-virmanski")}
+                          className={dropdownItemClass(activeSection === "racuni-virmanski")}
+                          style={activeSection === "racuni-virmanski" ? { background: PRIMARY } : {}}
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-virmanski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={activeSection === "racuni-virmanski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                          >
+                            <Landmark
+                              size={13}
+                              style={{ color: activeSection === "racuni-virmanski" ? "#fff" : PRIMARY }}
+                            />
+                          </span>
+                          Virmanski račun
+                        </button>
+
+                        <div className="my-1.5 border-t border-dashed border-gray-200 dark:border-[#3a3158]" />
+
+                        <button
+                          onClick={() => handleSectionChange("racuni-knjizna-gotovinski")}
+                          className={dropdownItemClass(activeSection === "racuni-knjizna-gotovinski")}
+                          style={activeSection === "racuni-knjizna-gotovinski" ? { background: PRIMARY } : {}}
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-knjizna-gotovinski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={activeSection === "racuni-knjizna-gotovinski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                          >
+                            <BookOpen
+                              size={13}
+                              style={{ color: activeSection === "racuni-knjizna-gotovinski" ? "#fff" : PRIMARY }}
+                            />
+                          </span>
+                          Knjižna gotovinski
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("racuni-knjizna-virmanski")}
+                          className={dropdownItemClass(activeSection === "racuni-knjizna-virmanski")}
+                          style={activeSection === "racuni-knjizna-virmanski" ? { background: PRIMARY } : {}}
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-knjizna-virmanski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={activeSection === "racuni-knjizna-virmanski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                          >
+                            <BookMarked
+                              size={13}
+                              style={{ color: activeSection === "racuni-knjizna-virmanski" ? "#fff" : PRIMARY }}
+                            />
+                          </span>
+                          Knjižna virmanski
+                        </button>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+
               {/* PROIZVODNJA */}
               <div>
                 <button
@@ -1096,6 +1235,58 @@ export function Dashboard({
           {activeSection === "klise-dobavljac" && <KliseUnosZaDobavljaca />}
 
           {activeSection === "klise-pregled" && <KlisePregled />}
+
+          {activeSection === "racuni-gotovinski" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Banknote size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Gotovinski račun
+                </h2>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "racuni-virmanski" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Landmark size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Virmanski račun
+                </h2>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "racuni-knjizna-gotovinski" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <BookOpen size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Knjižna gotovinski
+                </h2>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "racuni-knjizna-virmanski" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <BookMarked size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Knjižna virmanski
+                </h2>
+              </div>
+            </div>
+          )}
         </main>
       </BazaContext.Provider>
 
