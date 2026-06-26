@@ -1,5 +1,15 @@
 import * as PartneriService from "../services/partneri.service.js";
 
+export const getPartneri = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneri();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled partnera error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju partnera" });
+  }
+};
+
 export const getPartneriDodatneLokacije = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriDodatneLokacije();

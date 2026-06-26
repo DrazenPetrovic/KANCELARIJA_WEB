@@ -7,6 +7,7 @@ import { OrdersList } from "./OrdersList.tsx";
 import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
 import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
 import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
+import { GotovinskiRacuni } from "./GotovinskiRacuni";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -1081,7 +1082,7 @@ export function Dashboard({
 
       {/* Content */}
       <BazaContext.Provider value={{ isArhiva, godina: aktivnaGodina }}>
-        <main className="mx-[10px] px-[10px] py-8">
+        <main className={`mx-[10px] px-[10px] ${activeSection === "racuni-gotovinski" ? "pt-[10px] pb-0" : "py-8"}`}>
           {activeSection === null && (
             <div className="flex flex-col items-center justify-center py-20 text-center"></div>
           )}
@@ -1236,18 +1237,7 @@ export function Dashboard({
 
           {activeSection === "klise-pregled" && <KlisePregled />}
 
-          {activeSection === "racuni-gotovinski" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <Banknote size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Gotovinski račun
-                </h2>
-              </div>
-            </div>
-          )}
+          {activeSection === "racuni-gotovinski" && <GotovinskiRacuni />}
 
           {activeSection === "racuni-virmanski" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

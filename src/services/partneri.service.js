@@ -1,5 +1,12 @@
 import { withConnection } from "./db.service.js";
 
+export const getPartneri = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.sp_pregled_partnera()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getPartneriDodatneLokacije = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
