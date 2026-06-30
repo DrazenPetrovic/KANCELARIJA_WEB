@@ -245,36 +245,16 @@ export function Dashboard({
         <div className="mx-[15px] px-[5px] py-3 flex items-center justify-between relative">
           <button
             onClick={() => handleSectionChange(null)}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            className="flex flex-col leading-tight hover:opacity-80 transition-opacity"
             title="Početna strana"
           >
-            <img
-              src={`${import.meta.env.BASE_URL}foto/karpas_logo_software.png`}
-              alt="Karpas logo"
-              className="h-10 w-10 object-contain rounded-lg bg-white/40 p-1"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-            <p
-              className="text-lg font-bold leading-tight tracking-wide"
-              style={{ color: ACCENT }}
-            >
-              Kancelarija
+            <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
+              Rad u bazi podataka: <span className="text-white/80">{import.meta.env.VITE_DB_HOST ?? "—"}</span>
+            </p>
+            <p className="text-sm font-bold uppercase tracking-wide" style={{ color: ACCENT }}>
+              {isArhiva ? `Arhiva ${aktivnaGodina}` : "Za godinu 2026"}
             </p>
           </button>
-
-          <div className="absolute left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center">
-            <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
-              Rad u bazi podataka
-            </p>
-            <p
-              className="text-sm font-bold uppercase tracking-wide"
-              style={{ color: ACCENT }}
-            >
-              {bazaLabel}
-            </p>
-          </div>
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2">
