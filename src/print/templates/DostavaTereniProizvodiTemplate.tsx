@@ -164,7 +164,7 @@ export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
                 </span>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   {group.nacin_placanja && (
-                    <span style={{ fontSize: 9, opacity: 0.85 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, opacity: 0.85 }}>
                       Vrsta plaćanja: {group.nacin_placanja}
                     </span>
                   )}
@@ -271,8 +271,8 @@ export function DostavaTereniProizvodiTemplate({ rows, terenLabel }: Props) {
 }
 
 const cell: React.CSSProperties = {
-  padding: "3px 5px",
-  fontSize: 10,
+  padding: "4px 5px",
+  fontSize: 13,
   borderBottom: "1px solid #f0edf8",
   verticalAlign: "middle",
 };

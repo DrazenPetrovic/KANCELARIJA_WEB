@@ -12,7 +12,10 @@ import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
 import { usePrint } from "../context/PrintContext";
-import { getPrintServiceStatus } from "../utils/printService";
+import {
+  getPrintServiceStatus,
+  getPrintServiceVersion,
+} from "../utils/printService";
 import {
   Banknote,
   BarChart2,
@@ -94,6 +97,7 @@ export function Dashboard({
   const [printServiceStatus, setPrintServiceStatus] = useState<
     "checking" | "online" | "offline"
   >("checking");
+  const [printServiceVersion, setPrintServiceVersion] = useState("");
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
@@ -169,6 +173,13 @@ export function Dashboard({
         }
       } catch {
         if (mounted) setPrintServiceStatus("offline");
+      }
+
+      try {
+        const version = await getPrintServiceVersion();
+        if (mounted) setPrintServiceVersion(version);
+      } catch {
+        if (mounted) setPrintServiceVersion("");
       }
     };
 
@@ -291,6 +302,7 @@ export function Dashboard({
                       : printServiceStatus === "offline"
                         ? "offline"
                         : "provjera"}
+                    {printServiceVersion ? ` (v${printServiceVersion})` : ""}
                   </p>
                 </div>
               </div>
@@ -1097,6 +1109,7 @@ export function Dashboard({
                       : printServiceStatus === "offline"
                         ? "OFFLINE"
                         : "PROVJERA..."}
+                    {printServiceVersion ? ` · v${printServiceVersion}` : ""}
                   </span>
                 </div>
 

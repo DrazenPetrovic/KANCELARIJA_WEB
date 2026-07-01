@@ -171,6 +171,34 @@ export async function getPrintServiceStatus(): Promise<PrintServiceStatus> {
   return normalizeStatus(data);
 }
 
+export async function getPrintServiceVersion(): Promise<string> {
+  const response = await fetch(`${PRINT_SERVICE_URL}/version`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("PRINT_VERSION_ENDPOINT_FAILED");
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    const data = await response.json();
+    if (typeof data === "string") return data;
+    if (data && typeof data === "object") {
+      return readString(data as Record<string, unknown>, [
+        "version",
+        "appVersion",
+        "printServiceVersion",
+      ]);
+    }
+    return "";
+  }
+
+  return (await response.text()).trim();
+}
+
 export async function getAvailablePrinters(): Promise<string[]> {
   const response = await fetch(`${PRINT_SERVICE_URL}/printers`, {
     method: "GET",

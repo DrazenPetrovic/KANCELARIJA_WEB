@@ -13,7 +13,8 @@
       "Bash(cmd.exe /c start-hidden-safe.bat)",
       "PowerShell(netstat -ano)",
       "PowerShell(Stop-Process -Id 25348 -Force)",
-      "PowerShell(Start-Process -FilePath \"D:\\\\Desktop\\\\PRINT_AGENT\\\\local-print-agent.exe\" -WindowStyle Hidden)"
+      "PowerShell(Start-Process -FilePath \"D:\\\\Desktop\\\\PRINT_AGENT\\\\local-print-agent.exe\" -WindowStyle Hidden)",
+      "Bash(npx tsc *)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"
