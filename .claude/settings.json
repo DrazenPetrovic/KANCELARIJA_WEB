@@ -14,7 +14,15 @@
       "PowerShell(netstat -ano)",
       "PowerShell(Stop-Process -Id 25348 -Force)",
       "PowerShell(Start-Process -FilePath \"D:\\\\Desktop\\\\PRINT_AGENT\\\\local-print-agent.exe\" -WindowStyle Hidden)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(node -e ' *)",
+      "Bash(node --check src/controllers/partneri.controller.js)",
+      "Bash(node --check src/routes/partneri.routes.js)",
+      "Bash(node --check src/services/partneri.service.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3002/api/radnici --max-time 3)",
+      "Bash(curl -s http://localhost:3002/api/radnici --max-time 5)",
+      "Bash(curl -s http://localhost:3002/api/gradovi --max-time 5)",
+      "Bash(curl -s http://localhost:3002/api/artikli --max-time 5)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"

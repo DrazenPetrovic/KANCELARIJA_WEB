@@ -7,6 +7,36 @@ export const getPartneri = async () => {
   });
 };
 
+export const getPartneriRazni = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_pregled_partnera_razni()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+export const dodajPartneraRaznog = async ({ nazivPartnera, pripadaRadniku, sifraGrada }) => {
+  return withConnection(async (connection) => {
+    await connection.execute(
+      "CALL erp.sp_partneri_dodaj_raznog(?, ?, ?)",
+      [nazivPartnera, pripadaRadniku, sifraGrada],
+    );
+
+    const [redovi] = await connection.execute(
+      "CALL erp.sp_pregled_partnera_razni()",
+    );
+    const listaRaznih = Array.isArray(redovi) && redovi.length > 0 ? redovi[0] : [];
+    const noviKupac = listaRaznih.reduce(
+      (najveci, p) =>
+        !najveci || Number(p.sifra_partnera) > Number(najveci.sifra_partnera) ? p : najveci,
+      null,
+    );
+
+    return noviKupac ?? { sifra_partnera: null, naziv_partnera: nazivPartnera, pripada_radniku: pripadaRadniku };
+  });
+};
+
 export const getPartneriDodatneLokacije = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

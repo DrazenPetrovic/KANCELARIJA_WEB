@@ -39,6 +39,7 @@ interface Artikal {
   kolicinaNaStanju: number;
   grupa_proizvoda: string;
   naziv_grupe: string;
+  vrsta_proizvoda: number;
   [key: string]: unknown;
 }
 
@@ -55,6 +56,25 @@ interface StavkaRacuna {
   kolicina: number;
   mpc: number;
   ukupno: number;
+}
+
+interface PartnerRazni {
+  sifra_partnera: number;
+  naziv_partnera: string;
+  pripada_radniku: number;
+}
+
+interface Grad {
+  sifra_grada: number;
+  naziv_grada: string;
+  [key: string]: unknown;
+}
+
+interface Radnik {
+  sifra_radnika: number;
+  naziv_radnika: string;
+  sifra_vrste: number;
+  [key: string]: unknown;
 }
 
 interface Partner {
@@ -88,11 +108,29 @@ export function GotovinskiRacuni() {
   const [pokaziModal, setPokazuiModal] = useState(false);
   const [pretragaModal, setPretragaModal] = useState("");
 
+  const [partneriRazni, setPartneriRazni] = useState<PartnerRazni[]>([]);
+  const [loadingPartneriRazni, setLoadingPartneriRazni] = useState(false);
+  const [odabraniRazni, setOdabraniRazni] = useState<PartnerRazni | null>(null);
+  const [pokaziModalRazni, setPokazuiModalRazni] = useState(false);
+  const [pretragaRazni, setPretragaRazni] = useState("");
+
+  const [prikaziNoviRazniForm, setPrikaziNoviRazniForm] = useState(false);
+  const [gradovi, setGradovi] = useState<Grad[]>([]);
+  const [loadingGradovi, setLoadingGradovi] = useState(false);
+  const [radnici, setRadnici] = useState<Radnik[]>([]);
+  const [loadingRadnici, setLoadingRadnici] = useState(false);
+  const [noviRazniNaziv, setNoviRazniNaziv] = useState("");
+  const [noviRazniSifraGrada, setNoviRazniSifraGrada] = useState("");
+  const [noviRazniSifraRadnika, setNoviRazniSifraRadnika] = useState("");
+  const [dodajRazniLoading, setDodajRazniLoading] = useState(false);
+  const [dodajRazniGreska, setDodajRazniGreska] = useState<string | null>(null);
+
   const [artikli, setArtikli] = useState<Artikal[]>([]);
   const [grupe, setGrupe] = useState<ArtikalGrupa[]>([]);
   const [loadingArtikli, setLoadingArtikli] = useState(true);
   const [pretragaArtikala, setPretragaArtikala] = useState("");
   const [odabranaGrupa, setOdabranaGrupa] = useState<string | null>(null);
+  const [samoNaStanju, setSamoNaStanju] = useState(false);
 
   const [stavke, setStavke] = useState<StavkaRacuna[]>([]);
   const [artikalZaUnos, setArtikalZaUnos] = useState<Artikal | null>(null);
@@ -101,8 +139,11 @@ export function GotovinskiRacuni() {
   const [artikalZaCijenu, setArtikalZaCijenu] = useState<Artikal | null>(null);
   const [novaVpc, setNovaVpc] = useState("");
   const [novaMpc, setNovaMpc] = useState("");
+  const [nivelacijaLoading, setNivelacijaLoading] = useState(false);
+  const [nivelacijaGreska, setNivelacijaGreska] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLDivElement>(null);
+  const korisnickiOdabirPartneraRef = useRef(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -132,6 +173,36 @@ export function GotovinskiRacuni() {
     };
     void fetchData();
   }, []);
+
+  useEffect(() => {
+    if (odabraniPartner?.sifra_partnera !== 300) {
+      setOdabraniRazni(null);
+      setPokazuiModalRazni(false);
+      setPrikaziNoviRazniForm(false);
+      korisnickiOdabirPartneraRef.current = false;
+      return;
+    }
+    const otvoriModal = korisnickiOdabirPartneraRef.current;
+    korisnickiOdabirPartneraRef.current = false;
+    setOdabraniRazni(null);
+    if (otvoriModal) setPokazuiModalRazni(true);
+    setLoadingPartneriRazni(true);
+    let cancelled = false;
+    fetch(`${API_URL}/api/partneri/razni`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        if (!cancelled) setPartneriRazni(d.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPartneriRazni([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPartneriRazni(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [odabraniPartner?.sifra_partnera]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -191,17 +262,108 @@ export function GotovinskiRacuni() {
       const matchQ = !q ||
         a.naziv_proizvoda.toLowerCase().includes(q) ||
         String(a.sifra_proizvoda).includes(q);
-      return matchGrupa && matchQ;
+      const matchStanje = !samoNaStanju || Number(a.kolicina_proizvoda) > 0;
+      return matchGrupa && matchQ && matchStanje;
     });
-  }, [artikli, pretragaArtikala, odabranaGrupa]);
+  }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju]);
 
   const handleOdabir = (p: Partner) => {
+    korisnickiOdabirPartneraRef.current = true;
     setOdabraniPartner(p);
     setPretraga("");
     setPokazuiDropdown(false);
   };
 
+  const filtriraniRazni = useMemo(() => {
+    const q = pretragaRazni.toLowerCase().trim();
+    return partneriRazni.filter(
+      (p) => !q || p.naziv_partnera.toLowerCase().includes(q) || String(p.sifra_partnera).includes(q),
+    );
+  }, [partneriRazni, pretragaRazni]);
+
+  const radniciZaIzbor = useMemo(
+    () => radnici.filter((r) => Number(r.sifra_vrste) === 1 || Number(r.sifra_vrste) === 2),
+    [radnici],
+  );
+
+  const handleOdabirRazni = (p: PartnerRazni) => {
+    setOdabraniRazni(p);
+    setPokazuiModalRazni(false);
+    setPretragaRazni("");
+    setPrikaziNoviRazniForm(false);
+  };
+
+  const handleOtvoriNoviRazniForm = () => {
+    setPrikaziNoviRazniForm(true);
+    setDodajRazniGreska(null);
+    if (gradovi.length === 0 && !loadingGradovi) {
+      setLoadingGradovi(true);
+      fetch(`${API_URL}/api/gradovi`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => setGradovi(d.data ?? []))
+        .catch(() => setGradovi([]))
+        .finally(() => setLoadingGradovi(false));
+    }
+    if (radnici.length === 0 && !loadingRadnici) {
+      setLoadingRadnici(true);
+      fetch(`${API_URL}/api/radnici`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => setRadnici(d.data ?? []))
+        .catch(() => setRadnici([]))
+        .finally(() => setLoadingRadnici(false));
+    }
+  };
+
+  const handleZatvoriNoviRazniForm = () => {
+    setPrikaziNoviRazniForm(false);
+    setNoviRazniNaziv("");
+    setNoviRazniSifraGrada("");
+    setNoviRazniSifraRadnika("");
+    setDodajRazniGreska(null);
+  };
+
+  const handleSacuvajNovogRaznog = async () => {
+    if (!noviRazniNaziv.trim() || !noviRazniSifraGrada || !noviRazniSifraRadnika) {
+      setDodajRazniGreska("Popunite sva polja");
+      return;
+    }
+    setDodajRazniLoading(true);
+    setDodajRazniGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/partneri/razni`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          nazivPartnera: noviRazniNaziv.trim(),
+          pripadaRadniku: Number(noviRazniSifraRadnika),
+          sifraGrada: Number(noviRazniSifraGrada),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setDodajRazniGreska(json.error || "Greška pri dodavanju kupca");
+        return;
+      }
+      const noviKupac: PartnerRazni = json.data;
+      setPartneriRazni((prev) => [...prev, noviKupac]);
+      setOdabraniRazni(noviKupac);
+      setPokazuiModalRazni(false);
+      handleZatvoriNoviRazniForm();
+    } catch {
+      setDodajRazniGreska("Greška pri dodavanju kupca");
+    } finally {
+      setDodajRazniLoading(false);
+    }
+  };
+
+  const jeRazniNeodabran = odabraniPartner?.sifra_partnera === 300 && !odabraniRazni;
+
   const handleKlikArtikl = (a: Artikal) => {
+    if (jeRazniNeodabran) {
+      setPokazuiModalRazni(true);
+      return;
+    }
     setArtikalZaUnos(a);
     setKolicina("");
   };
@@ -226,6 +388,60 @@ export function GotovinskiRacuni() {
 
   const handleUkloniStavku = (sifra: string) => {
     setStavke((prev) => prev.filter((s) => s.sifra_proizvoda !== sifra));
+  };
+
+  const handleSacuvajNivelaciju = async () => {
+    if (!artikalZaCijenu) return;
+    const staraVpc = typeof artikalZaCijenu.vpc === "number" ? artikalZaCijenu.vpc : parseFloat(String(artikalZaCijenu.vpc)) || 0;
+    const novaVpcBroj = parseFloat(novaVpc);
+    if (!novaVpcBroj || novaVpcBroj <= 0) return;
+    const kolicina = Number(artikalZaCijenu.kolicina_proizvoda) || 0;
+    const nivelacijaRobe = Number(artikalZaCijenu.vrsta_proizvoda) === 2 ? 1 : 0;
+
+    setNivelacijaLoading(true);
+    setNivelacijaGreska(null);
+    try {
+      const danas = new Date().toISOString().slice(0, 10);
+      const res = await fetch(`${API_URL}/api/nivelacije`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          datumNivelacije: danas,
+          ukupnoStaro: Math.round(kolicina * staraVpc * 100) / 100,
+          ukupnoNovo: Math.round(kolicina * novaVpcBroj * 100) / 100,
+          nivelacijaRobe,
+          stavke: [
+            {
+              sifra_proizvoda: artikalZaCijenu.sifra_proizvoda,
+              kolicina_proizvoda: kolicina,
+              cijena_stara: staraVpc,
+              cijena_nova: novaVpcBroj,
+            },
+          ],
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setNivelacijaGreska(json.error || "Greška pri unosu nivelacije");
+        return;
+      }
+      const novaMpcBroj = parseFloat(novaMpc) || 0;
+      setArtikli((prev) =>
+        prev.map((a) =>
+          a.sifra_proizvoda === artikalZaCijenu.sifra_proizvoda
+            ? { ...a, vpc: novaVpcBroj, mpc: novaMpcBroj }
+            : a,
+        ),
+      );
+      setArtikalZaCijenu(null);
+      setNovaVpc("");
+      setNovaMpc("");
+    } catch {
+      setNivelacijaGreska("Greška pri unosu nivelacije");
+    } finally {
+      setNivelacijaLoading(false);
+    }
   };
 
   const ukupnoRacun = stavke.reduce((s, r) => s + r.ukupno, 0);
@@ -326,23 +542,52 @@ export function GotovinskiRacuni() {
         {/* Partner kartica — isti red */}
         <div className="flex-1 min-w-0">
           {odabraniPartner ? (
-            <div className="h-full rounded-2xl px-3 py-2 shadow-sm flex items-center gap-2" style={{ background: PRIMARY }}>
-              <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center bg-white/20">
-                <Banknote size={14} className="text-white" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white text-xs truncate">
-                  {odabraniPartner.naziv_partnera}
+            <div className="h-full rounded-2xl px-3 py-2 shadow-sm grid grid-cols-[1fr_auto_1fr] items-center gap-2" style={{ background: PRIMARY }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center bg-white/20">
+                  <Banknote size={14} className="text-white" />
                 </div>
-                <div className="text-[10px] text-white/70 flex items-center gap-1 mt-0.5">
-                  <MapPin size={8} />
-                  {odabraniPartner.naziv_grada} · ID: {odabraniPartner.sifra_partnera}
-                  {odabraniPartner.dogovorena_valuta && ` · ${odabraniPartner.dogovorena_valuta}`}
-                  {odabraniPartner.dodatna_lokacija && (
-                    <span className="ml-1 px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold">+lok</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-white text-xs truncate">
+                    {odabraniPartner.naziv_partnera}
+                  </div>
+                  <div className="text-[10px] text-white/70 flex items-center gap-1 mt-0.5">
+                    <MapPin size={8} />
+                    {odabraniPartner.naziv_grada} · ID: {odabraniPartner.sifra_partnera}
+                    {odabraniPartner.dogovorena_valuta && ` · ${odabraniPartner.dogovorena_valuta}`}
+                    {odabraniPartner.dodatna_lokacija && (
+                      <span className="ml-1 px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold">+lok</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {odabraniPartner.sifra_partnera === 300 ? (
+                <div className="flex items-center gap-1 rounded-full bg-white shadow-md border-2" style={{ borderColor: ACCENT }}>
+                  <button
+                    onClick={() => setPokazuiModalRazni(true)}
+                    className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full hover:bg-black/5 transition-all"
+                  >
+                    <Users size={12} style={{ color: PRIMARY }} />
+                    <span className="text-[11px] font-bold whitespace-nowrap" style={{ color: PRIMARY }}>
+                      {odabraniRazni ? odabraniRazni.naziv_partnera : "Izaberite kupca…"}
+                    </span>
+                  </button>
+                  {odabraniRazni && (
+                    <button
+                      onClick={() => setOdabraniRazni(null)}
+                      title="Poništi izbor kupca"
+                      className="flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/10 transition-all mr-1.5"
+                    >
+                      <X size={10} style={{ color: PRIMARY }} />
+                    </button>
                   )}
                 </div>
-              </div>
+              ) : (
+                <div />
+              )}
+
+              <div />
             </div>
           ) : (
             <div className="h-full flex items-center gap-2 rounded-2xl border border-dashed border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] px-3 py-2 text-xs text-gray-400 dark:text-[#5f5878]">
@@ -365,17 +610,50 @@ export function GotovinskiRacuni() {
       <div className="flex gap-3 mt-3 flex-1 min-h-0">
 
         {/* Lijevi panel — artikli */}
-        <div className="w-[22%] flex-shrink-0 flex flex-col bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="relative w-[22%] flex-shrink-0 flex flex-col bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+
+          {jeRazniNeodabran && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/90 dark:bg-[#261f38]/90 px-4 text-center">
+              <Users size={22} className="text-gray-300 dark:text-[#3a3158]" />
+              <span className="text-xs text-gray-500 dark:text-[#7d7498]">
+                Izaberite kupca iz liste „Razni kupci" da biste mogli unositi artikle
+              </span>
+              <button
+                onClick={() => setPokazuiModalRazni(true)}
+                className="mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:brightness-110"
+                style={{ background: PRIMARY }}
+              >
+                Izaberi kupca
+              </button>
+            </div>
+          )}
 
           {/* Header */}
           <div className="px-3 py-2 border-b border-gray-100 dark:border-[#2d2648] flex items-center gap-1.5 flex-shrink-0">
             <Package size={13} style={{ color: PRIMARY }} />
-            <span className="text-xs font-bold text-gray-700 dark:text-[#c5bfd8]">Artikli</span>
-            {!loadingArtikli && (
-              <span className="ml-auto text-[10px] text-gray-400 dark:text-[#5f5878]">
-                {filtriranihArtikli.length}
-              </span>
-            )}
+            <span className="text-xs font-bold text-gray-700 dark:text-[#c5bfd8]">
+              Artikli{!loadingArtikli && `(${filtriranihArtikli.length})`}
+            </span>
+            <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-full bg-gray-100 dark:bg-[#2a2340] flex-shrink-0">
+              <button
+                onClick={() => setSamoNaStanju(false)}
+                className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all ${
+                  !samoNaStanju ? "text-white" : "text-gray-500 dark:text-[#7d7498] hover:text-gray-700 dark:hover:text-[#c5bfd8]"
+                }`}
+                style={!samoNaStanju ? { background: PRIMARY } : {}}
+              >
+                Svi
+              </button>
+              <button
+                onClick={() => setSamoNaStanju(true)}
+                className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all ${
+                  samoNaStanju ? "text-white" : "text-gray-500 dark:text-[#7d7498] hover:text-gray-700 dark:hover:text-[#c5bfd8]"
+                }`}
+                style={samoNaStanju ? { background: PRIMARY } : {}}
+              >
+                Na stanju
+              </button>
+            </div>
           </div>
 
           {/* Pretraga */}
@@ -560,57 +838,86 @@ export function GotovinskiRacuni() {
                 <span className="font-bold text-white text-base truncate">{artikalZaNivelisanje.naziv_proizvoda}</span>
                 <span className="ml-auto flex-shrink-0 px-2 py-0.5 rounded-lg bg-white/20 text-white text-xs font-semibold">{artikalZaNivelisanje.jm}</span>
               </div>
-              <div className="px-6 py-5 space-y-4">
-                <p className="text-sm text-gray-600 dark:text-[#c5bfd8]">
-                  Da li želite da izvršite <span className="font-semibold" style={{ color: PRIMARY }}>nivelisanje cijena</span> za navedeni proizvod?
-                </p>
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">Šifra</div>
-                    <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">{artikalZaNivelisanje.sifra_proizvoda}</div>
-                  </div>
-                  <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">VPC</div>
-                    <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">
-                      {typeof artikalZaNivelisanje.vpc === "number" ? artikalZaNivelisanje.vpc.toFixed(2) : artikalZaNivelisanje.vpc} KM
+              {(() => {
+                const jeVecIzabran = stavke.some((s) => s.sifra_proizvoda === artikalZaNivelisanje.sifra_proizvoda);
+                return (
+                  <>
+                    <div className="px-6 py-5 space-y-4">
+                      {jeVecIzabran ? (
+                        <div className="flex items-start gap-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-4 py-3">
+                          <Ban size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            Ovaj proizvod je već dodan kao stavka na računu. Nivelisanje cijena nije moguće izvršiti dok se stavka ne ukloni iz liste.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-600 dark:text-[#c5bfd8]">
+                          Da li želite da izvršite <span className="font-semibold" style={{ color: PRIMARY }}>nivelisanje cijena</span> za navedeni proizvod?
+                        </p>
+                      )}
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">Šifra</div>
+                          <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">{artikalZaNivelisanje.sifra_proizvoda}</div>
+                        </div>
+                        <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">VPC</div>
+                          <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">
+                            {typeof artikalZaNivelisanje.vpc === "number" ? artikalZaNivelisanje.vpc.toFixed(2) : artikalZaNivelisanje.vpc} KM
+                          </div>
+                        </div>
+                        <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">MPC</div>
+                          <div className="text-sm font-bold" style={{ color: PRIMARY }}>
+                            {typeof artikalZaNivelisanje.mpc === "number" ? artikalZaNivelisanje.mpc.toFixed(2) : artikalZaNivelisanje.mpc} KM
+                          </div>
+                        </div>
+                        <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">Količina</div>
+                          <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">
+                            {Number(artikalZaNivelisanje.kolicina_proizvoda).toFixed(3)}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">MPC</div>
-                    <div className="text-sm font-bold" style={{ color: PRIMARY }}>
-                      {typeof artikalZaNivelisanje.mpc === "number" ? artikalZaNivelisanje.mpc.toFixed(2) : artikalZaNivelisanje.mpc} KM
+                    <div className="flex gap-3 px-6 pb-5">
+                      {jeVecIzabran ? (
+                        <button
+                          onClick={() => setArtikalZaNivelisanje(null)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
+                          style={{ background: PRIMARY }}
+                        >
+                          Razumijem
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setArtikalZaNivelisanje(null)}
+                            className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                          >
+                            Ne
+                          </button>
+                          <button
+                            onClick={() => {
+                              const vpc = typeof artikalZaNivelisanje.vpc === "number" ? artikalZaNivelisanje.vpc : parseFloat(String(artikalZaNivelisanje.vpc)) || 0;
+                              const mpc = typeof artikalZaNivelisanje.mpc === "number" ? artikalZaNivelisanje.mpc : parseFloat(String(artikalZaNivelisanje.mpc)) || 0;
+                              setNovaVpc(vpc.toFixed(2));
+                              setNovaMpc(mpc.toFixed(2));
+                              setNivelacijaGreska(null);
+                              setArtikalZaCijenu(artikalZaNivelisanje);
+                              setArtikalZaNivelisanje(null);
+                            }}
+                            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
+                            style={{ background: ACCENT }}
+                          >
+                            Da
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </div>
-                  <div className="rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d] px-4 py-3">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878] font-semibold mb-1">Količina</div>
-                    <div className="text-sm font-bold text-gray-700 dark:text-[#ede9f6]">
-                      {Number(artikalZaNivelisanje.kolicina_proizvoda).toFixed(3)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 px-6 pb-5">
-                <button
-                  onClick={() => setArtikalZaNivelisanje(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
-                >
-                  Ne
-                </button>
-                <button
-                  onClick={() => {
-                    const vpc = typeof artikalZaNivelisanje.vpc === "number" ? artikalZaNivelisanje.vpc : parseFloat(String(artikalZaNivelisanje.vpc)) || 0;
-                    const mpc = typeof artikalZaNivelisanje.mpc === "number" ? artikalZaNivelisanje.mpc : parseFloat(String(artikalZaNivelisanje.mpc)) || 0;
-                    setNovaVpc(vpc.toFixed(2));
-                    setNovaMpc(mpc.toFixed(2));
-                    setArtikalZaCijenu(artikalZaNivelisanje);
-                    setArtikalZaNivelisanje(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
-                  style={{ background: ACCENT }}
-                >
-                  Da
-                </button>
-              </div>
+                  </>
+                );
+              })()}
             </div>
           </div>,
           document.body,
@@ -729,21 +1036,27 @@ export function GotovinskiRacuni() {
                     </div>
                   );
                 })()}
+
+                {nivelacijaGreska && (
+                  <div className="text-xs font-medium text-red-500">{nivelacijaGreska}</div>
+                )}
               </div>
 
               <div className="flex gap-3 px-6 pb-5">
                 <button
-                  onClick={() => { setArtikalZaCijenu(null); setNovaVpc(""); setNovaMpc(""); }}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                  onClick={() => { setArtikalZaCijenu(null); setNovaVpc(""); setNovaMpc(""); setNivelacijaGreska(null); }}
+                  disabled={nivelacijaLoading}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40"
                 >
                   Odustani
                 </button>
                 <button
-                  disabled={!novaVpc || !novaMpc || parseFloat(novaVpc) <= 0}
-                  onClick={() => { setArtikalZaCijenu(null); setNovaVpc(""); setNovaMpc(""); }}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
+                  disabled={!novaVpc || !novaMpc || parseFloat(novaVpc) <= 0 || nivelacijaLoading}
+                  onClick={handleSacuvajNivelaciju}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
                   style={{ background: ACCENT }}
                 >
+                  {nivelacijaLoading && <Loader2 size={14} className="animate-spin" />}
                   Sačuvaj
                 </button>
               </div>
@@ -819,6 +1132,203 @@ export function GotovinskiRacuni() {
           document.body,
         )}
 
+      {/* Modal izbora "razni kupac" — blokirajući, obavezan kad je izabran partner 300 */}
+      {pokaziModalRazni &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.55)" }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[560px] max-h-[80vh] flex flex-col overflow-hidden">
+              <div className="px-6 py-4 flex items-center gap-3 flex-shrink-0" style={{ background: PRIMARY }}>
+                <Users size={18} className="text-white flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-white text-base truncate">
+                    {prikaziNoviRazniForm ? "Novi razni kupac" : "Razni kupci"}
+                  </div>
+                  <div className="text-white/70 text-xs mt-0.5">
+                    {prikaziNoviRazniForm
+                      ? "Unesite podatke za novog kupca"
+                      : "Izaberite kupca da biste mogli nastaviti unos artikala"}
+                  </div>
+                </div>
+              </div>
+
+              {prikaziNoviRazniForm ? (
+                <>
+                  <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-[#c5bfd8] mb-1.5">
+                        Naziv kupca
+                      </label>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Unesite naziv kupca..."
+                        value={noviRazniNaziv}
+                        onChange={(e) => setNoviRazniNaziv(e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-[#c5bfd8] mb-1.5">
+                        Grad
+                      </label>
+                      <select
+                        value={noviRazniSifraGrada}
+                        onChange={(e) => setNoviRazniSifraGrada(e.target.value)}
+                        disabled={loadingGradovi}
+                        className={inputClass}
+                      >
+                        <option value="">{loadingGradovi ? "Učitavanje..." : "Izaberite grad"}</option>
+                        {gradovi.map((g) => (
+                          <option key={g.sifra_grada} value={g.sifra_grada}>
+                            {g.naziv_grada}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-[#c5bfd8] mb-1.5">
+                        Radnik
+                      </label>
+                      <select
+                        value={noviRazniSifraRadnika}
+                        onChange={(e) => setNoviRazniSifraRadnika(e.target.value)}
+                        disabled={loadingRadnici}
+                        className={inputClass}
+                      >
+                        <option value="">{loadingRadnici ? "Učitavanje..." : "Izaberite radnika"}</option>
+                        {radniciZaIzbor.map((r) => (
+                          <option key={r.sifra_radnika} value={r.sifra_radnika}>
+                            {r.naziv_radnika}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {dodajRazniGreska && (
+                      <div className="text-xs font-medium text-red-500">{dodajRazniGreska}</div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                    <button
+                      onClick={handleZatvoriNoviRazniForm}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                    >
+                      Nazad
+                    </button>
+                    <button
+                      onClick={handleSacuvajNovogRaznog}
+                      disabled={
+                        dodajRazniLoading ||
+                        !noviRazniNaziv.trim() ||
+                        !noviRazniSifraGrada ||
+                        !noviRazniSifraRadnika
+                      }
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
+                      style={{ background: ACCENT }}
+                    >
+                      {dodajRazniLoading ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <UserPlus size={14} />
+                      )}
+                      Sačuvaj
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="px-4 py-3 border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Pretraži kupca..."
+                        value={pretragaRazni}
+                        onChange={(e) => setPretragaRazni(e.target.value)}
+                        className={`${inputClass} pl-9`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto">
+                    {loadingPartneriRazni ? (
+                      <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span className="text-xs">Učitavanje...</span>
+                      </div>
+                    ) : filtriraniRazni.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-1.5 text-gray-400 dark:text-[#5f5878]">
+                        <Users size={22} className="text-gray-300 dark:text-[#3a3158]" />
+                        <span className="text-xs">Nema rezultata</span>
+                      </div>
+                    ) : (
+                      filtriraniRazni.map((p) => {
+                        const jeNoviKupac = p.sifra_partnera >= 10000;
+                        return (
+                          <button
+                            key={p.sifra_partnera}
+                            onClick={() => handleOdabirRazni(p)}
+                            className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-all border-b border-gray-50 dark:border-[#2a2340] last:border-b-0 ${
+                              jeNoviKupac
+                                ? "bg-amber-50/70 dark:bg-[#3a2f1a]/40 hover:bg-amber-100 dark:hover:bg-[#3a2f1a]/70"
+                                : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                            }`}
+                          >
+                            <div
+                              className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
+                                jeNoviKupac ? "bg-amber-100 dark:bg-[#4a3a1f]" : "bg-[#ede8f5] dark:bg-[#312a50]"
+                              }`}
+                            >
+                              {jeNoviKupac ? (
+                                <UserPlus size={12} className="text-amber-600 dark:text-amber-400" />
+                              ) : (
+                                <User size={12} style={{ color: PRIMARY }} />
+                              )}
+                            </div>
+                            <span className="text-sm font-medium text-gray-800 dark:text-[#ede9f6] truncate flex-1">
+                              {p.naziv_partnera}
+                            </span>
+                            {jeNoviKupac && (
+                              <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-[#4a3a1f] text-amber-700 dark:text-amber-400 text-[9px] font-bold uppercase tracking-wide">
+                                Novi
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        setPokazuiModalRazni(false);
+                        setPretragaRazni("");
+                      }}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                    >
+                      Odustani
+                    </button>
+                    <button
+                      onClick={handleOtvoriNoviRazniForm}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                      style={{ background: ACCENT }}
+                    >
+                      <UserPlus size={14} />
+                      Novi kupac
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Modal pregleda partnera — full screen */}
       {pokaziModal &&
         ReactDOM.createPortal(
@@ -883,7 +1393,7 @@ export function GotovinskiRacuni() {
                     {modalRezultati.map((p, i) => (
                       <tr
                         key={p.sifra_partnera}
-                        onClick={() => { setOdabraniPartner(p); setPokazuiModal(false); setPretragaModal(""); }}
+                        onClick={() => { korisnickiOdabirPartneraRef.current = true; setOdabraniPartner(p); setPokazuiModal(false); setPretragaModal(""); }}
                         className={`cursor-pointer border-b border-gray-100 dark:border-[#2a2340] transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#2d2648] ${
                           i % 2 === 0 ? "bg-white dark:bg-[#1a1528]" : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                         } ${odabraniPartner?.sifra_partnera === p.sifra_partnera ? "!bg-[#e0d9f0] dark:!bg-[#2d2648] font-semibold" : ""}`}

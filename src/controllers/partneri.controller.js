@@ -10,6 +10,33 @@ export const getPartneri = async (req, res) => {
   }
 };
 
+export const getPartneriRazni = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriRazni();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled raznih kupaca error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju raznih kupaca" });
+  }
+};
+
+export const createPartnerRazni = async (req, res) => {
+  try {
+    const { nazivPartnera, pripadaRadniku, sifraGrada } = req.body;
+    if (!nazivPartnera || !pripadaRadniku || !sifraGrada) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaju obavezni podaci (nazivPartnera, pripadaRadniku, sifraGrada)",
+      });
+    }
+    const data = await PartneriService.dodajPartneraRaznog({ nazivPartnera, pripadaRadniku, sifraGrada });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Dodavanje raznog kupca error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri dodavanju kupca" });
+  }
+};
+
 export const getPartneriDodatneLokacije = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriDodatneLokacije();
