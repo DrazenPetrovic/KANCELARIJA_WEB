@@ -32,3 +32,13 @@ export const createNivelacija = async (req, res) => {
     return res.status(500).json({ success: false, error: "Greška pri unosu nivelacije" });
   }
 };
+
+export const getNivelacijeAktivne = async (req, res) => {
+  try {
+    const data = await NivelacijeService.getNivelacijeAktivne();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled aktivnih nivelacija error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju aktivnih nivelacija" });
+  }
+};

@@ -3,10 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
   Ban,
+  History,
   Loader2,
   MapPin,
   Package,
+  Percent,
   Search,
+  StickyNote,
   Trash2,
   UserPlus,
   Users,
@@ -46,6 +49,44 @@ interface Artikal {
 interface ArtikalGrupa {
   sifra_grupe: string | number;
   naziv_grupe: string;
+  [key: string]: unknown;
+}
+
+interface NivelacijaAktivna {
+  sifra_proizvoda: string;
+  naziv_proizvoda: string;
+  cijena_bazna: number | string;
+  cijena_trenutna: number | string;
+  datum_nivelacije: string;
+  sifra_nivelacije: number;
+}
+
+interface RacunIstorija {
+  sifra_tabele: number;
+  broj_racuna: number | string;
+  vrsta_racuna: number | string;
+  datum_racuna: string;
+  vrsta_racuna_novi?: number | string;
+  vrsta_racuna_pod?: number | string;
+}
+
+interface StavkaIstorijeRacuna {
+  sifra_proizvoda: number;
+  naziv_proizvoda: string;
+  jm: string;
+  kolicina: number | string;
+  cijena_sa_rab: number | string;
+  prodajna_cijena: number | string;
+  vpc_vrednost: number | string;
+  prodajna_vrednost: number | string;
+}
+
+interface Teren {
+  sifra_terena_dostava: number;
+  sifra_terena: number;
+  naziv_dana: string;
+  datum_dostave?: string;
+  zavrsena_dostava?: number;
   [key: string]: unknown;
 }
 
@@ -130,7 +171,19 @@ export function GotovinskiRacuni() {
   const [loadingArtikli, setLoadingArtikli] = useState(true);
   const [pretragaArtikala, setPretragaArtikala] = useState("");
   const [odabranaGrupa, setOdabranaGrupa] = useState<string | null>(null);
-  const [samoNaStanju, setSamoNaStanju] = useState(false);
+  const [samoNaStanju, setSamoNaStanju] = useState(true);
+  const [nivelacijeAktivne, setNivelacijeAktivne] = useState<NivelacijaAktivna[]>([]);
+  const [istorijaRacuna, setIstorijaRacuna] = useState<RacunIstorija[]>([]);
+  const [loadingIstorijaRacuna, setLoadingIstorijaRacuna] = useState(false);
+  const [pokaziModalStavkiRacuna, setPokazuiModalStavkiRacuna] = useState(false);
+  const [odabraniRacunIstorija, setOdabraniRacunIstorija] = useState<RacunIstorija | null>(null);
+  const [stavkeIstorijeRacuna, setStavkeIstorijeRacuna] = useState<StavkaIstorijeRacuna[]>([]);
+  const [loadingStavkeIstorijeRacuna, setLoadingStavkeIstorijeRacuna] = useState(false);
+  const [napomena, setNapomena] = useState("");
+  const [tereni, setTereni] = useState<Teren[]>([]);
+  const [loadingTereni, setLoadingTereni] = useState(true);
+  const [odabraniTeren, setOdabraniTeren] = useState<Teren | null>(null);
+  const [pokaziDropdownTeren, setPokazuiDropdownTeren] = useState(false);
 
   const [stavke, setStavke] = useState<StavkaRacuna[]>([]);
   const [artikalZaUnos, setArtikalZaUnos] = useState<Artikal | null>(null);
@@ -143,6 +196,7 @@ export function GotovinskiRacuni() {
   const [nivelacijaGreska, setNivelacijaGreska] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLDivElement>(null);
+  const terenRef = useRef<HTMLDivElement>(null);
   const korisnickiOdabirPartneraRef = useRef(false);
 
   useEffect(() => {
@@ -205,9 +259,34 @@ export function GotovinskiRacuni() {
   }, [odabraniPartner?.sifra_partnera]);
 
   useEffect(() => {
+    if (!odabraniPartner || odabraniPartner.sifra_partnera === 300) {
+      setIstorijaRacuna([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingIstorijaRacuna(true);
+    fetch(`${API_URL}/api/racuni/istorija?sifraPartnera=${odabraniPartner.sifra_partnera}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        if (!cancelled) setIstorijaRacuna(d.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setIstorijaRacuna([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingIstorijaRacuna(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [odabraniPartner?.sifra_partnera]);
+
+  useEffect(() => {
     const h = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node))
         setPokazuiDropdown(false);
+      if (terenRef.current && !terenRef.current.contains(e.target as Node))
+        setPokazuiDropdownTeren(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -234,6 +313,38 @@ export function GotovinskiRacuni() {
   }, [partneri, pretragaModal]);
 
   useEffect(() => {
+    const fetchTereni = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/teren/terena-po-danima`, { credentials: "include" });
+        if (res.ok) {
+          const d = await res.json();
+          const lista: Teren[] = d.data ?? [];
+          setTereni(
+            [...lista].sort((a, b) =>
+              new Date(a.datum_dostave ?? 0).getTime() - new Date(b.datum_dostave ?? 0).getTime(),
+            ),
+          );
+        }
+      } finally {
+        setLoadingTereni(false);
+      }
+    };
+    void fetchTereni();
+  }, []);
+
+  const fetchNivelacijeAktivne = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/nivelacije/aktivne`, { credentials: "include" });
+      if (res.ok) {
+        const d = await res.json();
+        setNivelacijeAktivne(d.data ?? []);
+      }
+    } catch {
+      // ignoriši grešku — bedž je samo dodatna informacija
+    }
+  };
+
+  useEffect(() => {
     const fetchArtikli = async () => {
       try {
         const [artikliRes, grupeRes] = await Promise.all([
@@ -248,12 +359,18 @@ export function GotovinskiRacuni() {
           const d = await grupeRes.json();
           setGrupe(d.data ?? []);
         }
+        void fetchNivelacijeAktivne();
       } finally {
         setLoadingArtikli(false);
       }
     };
     void fetchArtikli();
   }, []);
+
+  const nivelacijeMap = useMemo(
+    () => new Map(nivelacijeAktivne.map((n) => [String(n.sifra_proizvoda), n])),
+    [nivelacijeAktivne],
+  );
 
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
@@ -392,8 +509,9 @@ export function GotovinskiRacuni() {
 
   const handleSacuvajNivelaciju = async () => {
     if (!artikalZaCijenu) return;
-    const staraVpc = typeof artikalZaCijenu.vpc === "number" ? artikalZaCijenu.vpc : parseFloat(String(artikalZaCijenu.vpc)) || 0;
-    const novaVpcBroj = parseFloat(novaVpc);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const staraVpc = round2(typeof artikalZaCijenu.vpc === "number" ? artikalZaCijenu.vpc : parseFloat(String(artikalZaCijenu.vpc)) || 0);
+    const novaVpcBroj = round2(parseFloat(novaVpc));
     if (!novaVpcBroj || novaVpcBroj <= 0) return;
     const kolicina = Number(artikalZaCijenu.kolicina_proizvoda) || 0;
     const nivelacijaRobe = Number(artikalZaCijenu.vrsta_proizvoda) === 2 ? 1 : 0;
@@ -401,15 +519,17 @@ export function GotovinskiRacuni() {
     setNivelacijaLoading(true);
     setNivelacijaGreska(null);
     try {
-      const danas = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const datumNivelacije = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       const res = await fetch(`${API_URL}/api/nivelacije`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          datumNivelacije: danas,
-          ukupnoStaro: Math.round(kolicina * staraVpc * 100) / 100,
-          ukupnoNovo: Math.round(kolicina * novaVpcBroj * 100) / 100,
+          datumNivelacije,
+          ukupnoStaro: round2(kolicina * staraVpc),
+          ukupnoNovo: round2(kolicina * novaVpcBroj),
           nivelacijaRobe,
           stavke: [
             {
@@ -437,6 +557,7 @@ export function GotovinskiRacuni() {
       setArtikalZaCijenu(null);
       setNovaVpc("");
       setNovaMpc("");
+      void fetchNivelacijeAktivne();
     } catch {
       setNivelacijaGreska("Greška pri unosu nivelacije");
     } finally {
@@ -445,6 +566,39 @@ export function GotovinskiRacuni() {
   };
 
   const ukupnoRacun = stavke.reduce((s, r) => s + r.ukupno, 0);
+
+  const formatDatumRacuna = (d: string) => {
+    const datum = new Date(d);
+    if (isNaN(datum.getTime())) return String(d);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}.`;
+  };
+
+  const formatOznakaRacuna = (r: RacunIstorija) => {
+    const vrsta = Number(r.vrsta_racuna_novi);
+    const prefiks = vrsta === 1 ? "MP" : vrsta === 2 ? "VP" : "";
+    const godina = String(new Date(r.datum_racuna).getFullYear()).slice(-2);
+    return `${prefiks}-${r.vrsta_racuna_pod}-${r.broj_racuna} / ${godina}`;
+  };
+
+  const handleKlikRacunIstorija = async (r: RacunIstorija) => {
+    setOdabraniRacunIstorija(r);
+    setPokazuiModalStavkiRacuna(true);
+    setLoadingStavkeIstorijeRacuna(true);
+    try {
+      const res = await fetch(`${API_URL}/api/racuni/stavke?sifraTabele=${r.sifra_tabele}`, { credentials: "include" });
+      if (res.ok) {
+        const d = await res.json();
+        setStavkeIstorijeRacuna(d.data ?? []);
+      } else {
+        setStavkeIstorijeRacuna([]);
+      }
+    } catch {
+      setStavkeIstorijeRacuna([]);
+    } finally {
+      setLoadingStavkeIstorijeRacuna(false);
+    }
+  };
 
   return (
     <>
@@ -540,9 +694,9 @@ export function GotovinskiRacuni() {
         </div>
 
         {/* Partner kartica — isti red */}
-        <div className="flex-1 min-w-0">
+        <div className="relative flex-1 min-w-0">
           {odabraniPartner ? (
-            <div className="h-full rounded-2xl px-3 py-2 shadow-sm grid grid-cols-[1fr_auto_1fr] items-center gap-2" style={{ background: PRIMARY }}>
+            <div className="relative h-full rounded-2xl px-3 py-2 shadow-sm grid grid-cols-[1fr_auto_1fr] items-center gap-2" style={{ background: PRIMARY }}>
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center bg-white/20">
                   <Banknote size={14} className="text-white" />
@@ -590,9 +744,89 @@ export function GotovinskiRacuni() {
               <div />
             </div>
           ) : (
-            <div className="h-full flex items-center gap-2 rounded-2xl border border-dashed border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] px-3 py-2 text-xs text-gray-400 dark:text-[#5f5878]">
+            <div className="relative h-full flex items-center gap-2 rounded-2xl border border-dashed border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] px-3 py-2 text-xs text-gray-400 dark:text-[#5f5878]">
               <User size={13} className="text-gray-300 dark:text-[#3a3158] flex-shrink-0" />
               Odaberite partnera
+            </div>
+          )}
+          {!!odabraniTeren && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+              <rect
+                x="1"
+                y="1"
+                width="calc(100% - 2px)"
+                height="calc(100% - 2px)"
+                rx="15"
+                ry="15"
+                pathLength={100}
+                fill="none"
+                stroke={ACCENT}
+                strokeWidth={4}
+                strokeLinecap="round"
+                strokeDasharray="14 86"
+                className="snake-trace"
+              />
+            </svg>
+          )}
+        </div>
+
+        {/* Teren */}
+        <div ref={terenRef} className="relative flex-shrink-0" style={{ minWidth: 170 }}>
+          <button
+            onClick={() => setPokazuiDropdownTeren((v) => !v)}
+            disabled={loadingTereni}
+            className={`h-full w-full flex flex-col justify-center px-3 rounded-2xl border text-left disabled:opacity-60 transition-all ${
+              odabraniTeren
+                ? "border-transparent"
+                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38]"
+            }`}
+            style={odabraniTeren ? { background: PRIMARY } : undefined}
+          >
+            <span
+              className={`text-[9px] font-semibold uppercase tracking-wide ${
+                odabraniTeren ? "text-white/70" : "text-gray-400 dark:text-[#5f5878]"
+              }`}
+            >
+              Teren
+            </span>
+            <span className={`text-xs font-semibold truncate ${odabraniTeren ? "text-white" : "text-gray-700 dark:text-[#ede9f6]"}`}>
+              {loadingTereni
+                ? "Učitavanje..."
+                : odabraniTeren
+                  ? (
+                    <>
+                      {odabraniTeren.naziv_dana}{" "}
+                      <span className={`text-[10px] font-normal ${odabraniTeren ? "text-white/70" : "text-gray-400 dark:text-[#5f5878]"}`}>
+                        ({odabraniTeren.sifra_terena_dostava})
+                      </span>
+                    </>
+                  )
+                  : "Bez terena"}
+            </span>
+          </button>
+
+          {pokaziDropdownTeren && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-[#261f38] border border-gray-200 dark:border-[#3a3158] rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+              <button
+                onClick={() => { setOdabraniTeren(null); setPokazuiDropdownTeren(false); }}
+                className="w-full flex items-center px-3 py-2 text-left hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all border-b border-gray-100 dark:border-[#2d2648] text-xs font-semibold text-gray-500 dark:text-[#7d7498]"
+              >
+                Bez terena
+              </button>
+              {tereni.map((t) => (
+                <button
+                  key={t.sifra_terena_dostava}
+                  onClick={() => { setOdabraniTeren(t); setPokazuiDropdownTeren(false); }}
+                  className="w-full flex items-center px-3 py-2 text-left hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all border-b border-gray-100 dark:border-[#2d2648] last:border-b-0"
+                >
+                  <span className="text-xs font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
+                    {t.naziv_dana}
+                  </span>
+                  <span className="ml-1.5 text-[10px] font-normal text-gray-400 dark:text-[#5f5878] flex-shrink-0">
+                    ({t.sifra_terena_dostava})
+                  </span>
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -721,15 +955,19 @@ export function GotovinskiRacuni() {
             ) : (
               filtriranihArtikli.map((a) => {
                 const nemaStanje = Number(a.kolicina_proizvoda) <= 0;
+                const nivelacija = nivelacijeMap.get(String(a.sifra_proizvoda));
                 return (
                   <div
                     key={a.sifra_proizvoda}
                     onClick={() => !nemaStanje && handleKlikArtikl(a)}
                   onContextMenu={(e) => { if (!nemaStanje) { e.preventDefault(); setArtikalZaNivelisanje(a); } }}
+                  title={nivelacija ? `Privremena nivelacija — originalna cijena ${Number(nivelacija.cijena_bazna).toFixed(2)} KM, trenutno ${Number(nivelacija.cijena_trenutna).toFixed(2)} KM` : undefined}
                   className={`px-2.5 py-1.5 border-b border-gray-50 dark:border-[#2a2340] transition-colors ${
                       nemaStanje
                         ? "opacity-40 cursor-not-allowed bg-gray-50 dark:bg-[#1c1828]"
-                        : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] cursor-pointer"
+                        : nivelacija
+                          ? "bg-sky-50/70 dark:bg-sky-950/30 hover:bg-sky-100 dark:hover:bg-sky-950/50 cursor-pointer"
+                          : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] cursor-pointer"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-1">
@@ -744,8 +982,16 @@ export function GotovinskiRacuni() {
                           {a.sifra_proizvoda} · {a.jm}
                         </div>
                       </div>
-                      <div className="text-xs font-bold flex-shrink-0" style={{ color: PRIMARY }}>
-                        {typeof a.mpc === "number" ? a.mpc.toFixed(2) : a.mpc}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="text-xs font-bold" style={{ color: PRIMARY }}>
+                          {typeof a.mpc === "number" ? a.mpc.toFixed(2) : a.mpc}
+                        </div>
+                        {nivelacija && (
+                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-sky-500 text-white text-[9px] font-bold uppercase tracking-wide shadow-sm animate-pulse">
+                            <Percent size={9} />
+                            Nivel.
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -816,6 +1062,64 @@ export function GotovinskiRacuni() {
               </div>
             </div>
             <div className="border-t-2 border-gray-200 dark:border-[#2d2648]" />
+
+            <div className="flex gap-3 px-4 flex-shrink-0" style={{ marginTop: 5 }}>
+              {/* Prva trećina — istorija računa, samo za partnere različite od 300 (RAZNI KUPCI) */}
+              <div className="w-1/3">
+                {odabraniPartner && odabraniPartner.sifra_partnera !== 300 && (
+                  <>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <History size={11} style={{ color: PRIMARY }} />
+                      <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                        Poslednji računi partnera
+                      </span>
+                    </div>
+                    {loadingIstorijaRacuna ? (
+                      <div className="flex items-center gap-1.5 text-gray-400 text-[11px] py-1">
+                        <Loader2 size={12} className="animate-spin" />
+                        Učitavanje...
+                      </div>
+                    ) : istorijaRacuna.length === 0 ? (
+                      <div className="text-[11px] text-gray-400 dark:text-[#5f5878] py-1">Nema ranijih računa</div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {istorijaRacuna.map((r) => (
+                          <button
+                            key={r.sifra_tabele}
+                            onClick={() => handleKlikRacunIstorija(r)}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#f4f1f9] dark:bg-[#1e1a2d] hover:bg-[#ede8f5] dark:hover:bg-[#2d2648] transition-all text-left"
+                          >
+                            <div className="text-[11px] font-bold truncate" style={{ color: PRIMARY }}>
+                              {formatOznakaRacuna(r)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                              {formatDatumRacuna(r.datum_racuna)}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Druga trećina — napomena */}
+              <div className="w-1/3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <StickyNote size={11} style={{ color: PRIMARY }} />
+                  <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                    Napomena
+                  </span>
+                </div>
+                <textarea
+                  value={napomena}
+                  onChange={(e) => setNapomena(e.target.value)}
+                  placeholder="Unesite napomenu..."
+                  rows={5}
+                  className="w-full px-2 py-1 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 resize-none"
+                />
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1434,6 +1738,88 @@ export function GotovinskiRacuni() {
               )}
             </div>
 
+          </div>,
+          document.body,
+        )}
+
+      {/* Modal stavki ranijeg računa (iz istorije) */}
+      {pokaziModalStavkiRacuna &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setPokazuiModalStavkiRacuna(false);
+                setOdabraniRacunIstorija(null);
+              }
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border-2 w-[850px] max-h-[80vh] flex flex-col overflow-hidden" style={{ borderColor: ACCENT }}>
+              <div className="px-6 py-4 flex items-center gap-3 flex-shrink-0" style={{ background: PRIMARY }}>
+                <History size={18} className="text-white flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-white text-base truncate">
+                    {odabraniRacunIstorija ? formatOznakaRacuna(odabraniRacunIstorija) : "Stavke računa"}
+                  </div>
+                  <div className="text-white/70 text-xs mt-0.5">
+                    {odabraniRacunIstorija && formatDatumRacuna(odabraniRacunIstorija.datum_racuna)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setPokazuiModalStavkiRacuna(false); setOdabraniRacunIstorija(null); }}
+                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {loadingStavkeIstorijeRacuna ? (
+                  <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span className="text-sm">Učitavanje...</span>
+                  </div>
+                ) : stavkeIstorijeRacuna.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 dark:text-[#5f5878]">
+                    <Package size={24} className="text-gray-300 dark:text-[#3a3158]" />
+                    <span className="text-sm">Nema stavki za ovaj račun</span>
+                  </div>
+                ) : (
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="sticky top-0 z-10 bg-[#f4f1f9] dark:bg-[#1e1a2d] text-gray-500 dark:text-[#7d7498]">
+                        <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-16">Šifra</th>
+                        <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648]">Naziv proizvoda</th>
+                        <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-14">JM</th>
+                        <th className="text-right px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-20">Količina</th>
+                        <th className="text-right px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-24">Cij. sa rab.</th>
+                        <th className="text-right px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-24">Prod. cijena</th>
+                        <th className="text-right px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-24">VPC vrijed.</th>
+                        <th className="text-right px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-28">Prod. vrijed.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stavkeIstorijeRacuna.map((s, i) => (
+                        <tr
+                          key={`${s.sifra_proizvoda}-${i}`}
+                          className={`border-b border-gray-100 dark:border-[#2a2340] ${i % 2 === 0 ? "bg-white dark:bg-[#1a1528]" : "bg-[#faf9fc] dark:bg-[#1e1a2d]"}`}
+                        >
+                          <td className="px-3 py-1.5 text-gray-500 dark:text-[#7d7498] font-mono">{s.sifra_proizvoda}</td>
+                          <td className="px-3 py-1.5 font-medium text-gray-800 dark:text-[#ede9f6]">{s.naziv_proizvoda}</td>
+                          <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">{s.jm}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-700 dark:text-[#c5bfd8]">{Number(s.kolicina).toFixed(3)}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-700 dark:text-[#c5bfd8]">{Number(s.cijena_sa_rab).toFixed(2)}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-700 dark:text-[#c5bfd8]">{Number(s.prodajna_cijena).toFixed(2)}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-700 dark:text-[#c5bfd8]">{Number(s.vpc_vrednost).toFixed(2)}</td>
+                          <td className="px-3 py-1.5 text-right font-semibold" style={{ color: PRIMARY }}>{Number(s.prodajna_vrednost).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
           </div>,
           document.body,
         )}

@@ -16,3 +16,10 @@ export const unosNivelacije = async ({
     return rezultat[0] ?? null;
   });
 };
+
+export const getNivelacijeAktivne = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.sp_nivelacija_aktivne()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};

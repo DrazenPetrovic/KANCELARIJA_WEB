@@ -15,6 +15,16 @@
   }
 }
 
+@keyframes snakeDash {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.snake-trace {
+  animation: snakeDash 2.2s linear infinite;
+}
+
 /* ── Print isolation ─────────────────────────────── */
 #print-root {
   display: none;
