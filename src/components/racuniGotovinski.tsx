@@ -3,12 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
   Ban,
+  CheckCircle2,
   History,
   Loader2,
   MapPin,
   Package,
   Percent,
+  Printer,
   Search,
+  Tag,
   StickyNote,
   Trash2,
   UserPlus,
@@ -16,10 +19,15 @@ import {
   User,
   X,
 } from "lucide-react";
+import { preuzmiStatusEsira } from "./fiskalniRacuni";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
+
+// Statične oznake vrste računa za ovaj modul (gotovinski, maloprodaja).
+const VRSTA_RACUNA = "g";
+const VRSTA_RACUNA_NOVI = 1;
 
 const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
@@ -68,6 +76,12 @@ interface RacunIstorija {
   datum_racuna: string;
   vrsta_racuna_novi?: number | string;
   vrsta_racuna_pod?: number | string;
+}
+
+interface RacunPodgrupa {
+  sifra_podgrupe: number;
+  opis_podgrupe: string;
+  obracunava_se_pdv: number;
 }
 
 interface StavkaIstorijeRacuna {
@@ -180,6 +194,9 @@ export function GotovinskiRacuni() {
   const [stavkeIstorijeRacuna, setStavkeIstorijeRacuna] = useState<StavkaIstorijeRacuna[]>([]);
   const [loadingStavkeIstorijeRacuna, setLoadingStavkeIstorijeRacuna] = useState(false);
   const [napomena, setNapomena] = useState("");
+  const [podgrupeRacuna, setPodgrupeRacuna] = useState<RacunPodgrupa[]>([]);
+  const [loadingPodgrupeRacuna, setLoadingPodgrupeRacuna] = useState(true);
+  const [odabranaPodgrupa, setOdabranaPodgrupa] = useState<RacunPodgrupa | null>(null);
   const [tereni, setTereni] = useState<Teren[]>([]);
   const [loadingTereni, setLoadingTereni] = useState(true);
   const [odabraniTeren, setOdabraniTeren] = useState<Teren | null>(null);
@@ -194,6 +211,8 @@ export function GotovinskiRacuni() {
   const [novaMpc, setNovaMpc] = useState("");
   const [nivelacijaLoading, setNivelacijaLoading] = useState(false);
   const [nivelacijaGreska, setNivelacijaGreska] = useState<string | null>(null);
+
+  const [statusKase, setStatusKase] = useState<"provjera" | "dostupna" | "nedostupna">("provjera");
 
   const searchRef = useRef<HTMLDivElement>(null);
   const terenRef = useRef<HTMLDivElement>(null);
@@ -229,6 +248,23 @@ export function GotovinskiRacuni() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const provjeriKasu = async () => {
+      setStatusKase("provjera");
+      try {
+        await preuzmiStatusEsira("gotovinski");
+        if (!cancelled) setStatusKase("dostupna");
+      } catch {
+        if (!cancelled) setStatusKase("nedostupna");
+      }
+    };
+    void provjeriKasu();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (odabraniPartner?.sifra_partnera !== 300) {
       setOdabraniRazni(null);
       setPokazuiModalRazni(false);
@@ -256,7 +292,7 @@ export function GotovinskiRacuni() {
     return () => {
       cancelled = true;
     };
-  }, [odabraniPartner?.sifra_partnera]);
+  }, [odabraniPartner]);
 
   useEffect(() => {
     if (!odabraniPartner || odabraniPartner.sifra_partnera === 300) {
@@ -279,7 +315,7 @@ export function GotovinskiRacuni() {
     return () => {
       cancelled = true;
     };
-  }, [odabraniPartner?.sifra_partnera]);
+  }, [odabraniPartner]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -330,6 +366,24 @@ export function GotovinskiRacuni() {
       }
     };
     void fetchTereni();
+  }, []);
+
+  useEffect(() => {
+    const fetchPodgrupeRacuna = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/racuni/podgrupe`, { credentials: "include" });
+        if (res.ok) {
+          const d = await res.json();
+          const lista: RacunPodgrupa[] = d.data ?? [];
+          setPodgrupeRacuna(lista);
+          const podrazumijevana = lista.find((p) => Number(p.sifra_podgrupe) === 10);
+          if (podrazumijevana) setOdabranaPodgrupa(podrazumijevana);
+        }
+      } finally {
+        setLoadingPodgrupeRacuna(false);
+      }
+    };
+    void fetchPodgrupeRacuna();
   }, []);
 
   const fetchNivelacijeAktivne = async () => {
@@ -832,9 +886,35 @@ export function GotovinskiRacuni() {
         </div>
 
         {/* Vrsta forme */}
-        <div className="flex-shrink-0 flex items-center justify-center px-5 rounded-2xl border-2 border-dashed" style={{ borderColor: PRIMARY }}>
+        <div className="flex-shrink-0 flex flex-col items-center justify-center gap-1 px-5 rounded-2xl border-2 border-dashed" style={{ borderColor: PRIMARY }}>
           <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: PRIMARY }}>
             Gotovinski račun
+          </span>
+          <span
+            className={`flex items-center gap-1.5 text-[10px] font-semibold ${
+              statusKase === "dostupna"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : statusKase === "nedostupna"
+                  ? "text-rose-600 dark:text-rose-400"
+                  : "text-gray-400 dark:text-[#7d7498]"
+            }`}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full"
+              style={{
+                background:
+                  statusKase === "dostupna"
+                    ? "#22c55e"
+                    : statusKase === "nedostupna"
+                      ? "#ef4444"
+                      : "#f59e0b",
+              }}
+            />
+            {statusKase === "provjera"
+              ? "Provjera kase..."
+              : statusKase === "dostupna"
+                ? "Kasa dostupna"
+                : "Kasa nije dostupna"}
           </span>
         </div>
 
@@ -1054,11 +1134,27 @@ export function GotovinskiRacuni() {
               <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
                 Broj stavki: <span style={{ color: PRIMARY }}>{stavke.length}</span>
               </span>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold uppercase tracking-wide">Ukupno za platiti</span>
-                <span className="text-sm font-bold" style={{ color: PRIMARY }}>
-                  {ukupnoRacun.toFixed(2)} KM
-                </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold uppercase tracking-wide">Ukupno za platiti</span>
+                  <span className="text-sm font-bold" style={{ color: PRIMARY }}>
+                    {ukupnoRacun.toFixed(2)} KM
+                  </span>
+                </div>
+                <button
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  <CheckCircle2 size={15} />
+                  Samo sačuvaj
+                </button>
+                <button
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: ACCENT }}
+                >
+                  <Printer size={15} />
+                  Sačuvaj i štampaj
+                </button>
               </div>
             </div>
             <div className="border-t-2 border-gray-200 dark:border-[#2d2648]" />
@@ -1118,6 +1214,37 @@ export function GotovinskiRacuni() {
                   rows={5}
                   className="w-full px-2 py-1 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 resize-none"
                 />
+              </div>
+
+              {/* Treća trećina — podgrupa računa */}
+              <div className="w-1/3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Tag size={11} style={{ color: PRIMARY }} />
+                  <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                    Podgrupa računa
+                  </span>
+                </div>
+                <select
+                  value={odabranaPodgrupa?.sifra_podgrupe ?? ""}
+                  onChange={(e) => {
+                    const podgrupa =
+                      podgrupeRacuna.find((p) => String(p.sifra_podgrupe) === e.target.value) ?? null;
+                    setOdabranaPodgrupa(podgrupa);
+                  }}
+                  disabled={loadingPodgrupeRacuna}
+                  className="w-full px-2 py-1.5 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20"
+                >
+                  {podgrupeRacuna.length === 0 && (
+                    <option value="">
+                      {loadingPodgrupeRacuna ? "Učitavanje..." : "Nema podgrupa"}
+                    </option>
+                  )}
+                  {podgrupeRacuna.map((p) => (
+                    <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
+                      {p.opis_podgrupe}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

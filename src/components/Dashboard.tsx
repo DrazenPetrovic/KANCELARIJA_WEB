@@ -7,7 +7,8 @@ import { OrdersList } from "./OrdersList.tsx";
 import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
 import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
 import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
-import { GotovinskiRacuni } from "./GotovinskiRacuni";
+import { GotovinskiRacuni } from "./racuniGotovinski.tsx";
+import { ZiralniRacuni } from "./racuniZiralni.tsx";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -16,6 +17,11 @@ import {
   getPrintServiceStatus,
   getPrintServiceVersion,
 } from "../utils/printService";
+import {
+  proveriDostupnostEsira,
+  unesiPinEsira,
+  type EsirUredjaj,
+} from "./fiskalniRacuni";
 import {
   Banknote,
   BarChart2,
@@ -50,6 +56,42 @@ import {
 const PRIMARY = "#785E9E";
 const PRIMARY_DARK = "#604880";
 const ACCENT = "#8FC74A";
+
+type ServisStatus = "checking" | "online" | "offline";
+
+const statusBoja = (status: ServisStatus) =>
+  status === "online" ? "#22c55e" : status === "offline" ? "#ef4444" : "#f59e0b";
+
+const statusTekst = (status: ServisStatus) =>
+  status === "online" ? "online" : status === "offline" ? "offline" : "provjera";
+
+function StatusIndikator({
+  label,
+  status,
+  dodatak,
+  tekst,
+  boja,
+}: {
+  label: string;
+  status: ServisStatus;
+  dodatak?: string;
+  tekst?: string;
+  boja?: string;
+}) {
+  const bojaKonacna = boja ?? statusBoja(status);
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`inline-block w-2 h-2 rounded-full ${status === "online" && !boja ? "animate-blink" : ""}`}
+        style={{ background: bojaKonacna }}
+      />
+      <p className="text-[10px] uppercase tracking-wide text-white/70 font-medium">
+        {label}: {tekst ?? statusTekst(status)}
+        {dodatak ? ` (v${dodatak})` : ""}
+      </p>
+    </div>
+  );
+}
 
 interface DashboardProps {
   username: string;
@@ -94,10 +136,21 @@ export function Dashboard({
     setSelectedPrinter,
     savePrinter,
   } = usePrint();
-  const [printServiceStatus, setPrintServiceStatus] = useState<
-    "checking" | "online" | "offline"
-  >("checking");
+  const [printServiceStatus, setPrintServiceStatus] =
+    useState<ServisStatus>("checking");
   const [printServiceVersion, setPrintServiceVersion] = useState("");
+  const [esirGotovinskiStatus, setEsirGotovinskiStatus] =
+    useState<ServisStatus>("checking");
+  const [esirZiralniStatus, setEsirZiralniStatus] =
+    useState<ServisStatus>("checking");
+  const [esirGotovinskiPin, setEsirGotovinskiPin] = useState<{
+    ok: boolean;
+    poruka?: string;
+  }>({ ok: false });
+  const [esirZiralniPin, setEsirZiralniPin] = useState<{
+    ok: boolean;
+    poruka?: string;
+  }>({ ok: false });
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
@@ -109,6 +162,11 @@ export function Dashboard({
   const [hoveredBtn, setHoveredBtn] = useState<
     "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
   >(null);
+
+  const pinUnesenRef = useRef<Record<EsirUredjaj, boolean>>({
+    gotovinski: false,
+    ziralni: false,
+  });
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
@@ -124,10 +182,6 @@ export function Dashboard({
   const isAdministrator = vrstaRadnika === 1;
   const isStandardUser = vrstaRadnika === 3;
   const roleLabel = isAdministrator ? "Administrator" : "Korisnik";
-
-  const bazaLabel = activeSection?.startsWith("file-arhiva-")
-    ? `žiralni ${activeSection.replace("file-arhiva-", "")}`
-    : "žiralni";
 
   const isArhiva = activeSection?.startsWith("file-arhiva-") ?? false;
   const aktivnaGodina = isArhiva
@@ -149,8 +203,7 @@ export function Dashboard({
         proizvodnjaBtnRef.current?.contains(t) ||
         proizvodnjaDrop.current?.contains(t);
       const inRacuni =
-        racuniBtnRef.current?.contains(t) ||
-        racuniDropRef.current?.contains(t);
+        racuniBtnRef.current?.contains(t) || racuniDropRef.current?.contains(t);
       if (!inFile && !inPregledi && !inNarudzbe && !inProizvodnja && !inRacuni)
         setOpenMenu(null);
     };
@@ -185,6 +238,70 @@ export function Dashboard({
 
     void checkPrintService();
     const intervalId = setInterval(checkPrintService, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const osigurajPin = async (
+      uredjaj: EsirUredjaj,
+      pin: string | undefined,
+      setPinStanje: (s: { ok: boolean; poruka?: string }) => void,
+    ) => {
+      if (pinUnesenRef.current[uredjaj]) {
+        if (mounted) setPinStanje({ ok: true });
+        return;
+      }
+      if (!pin) {
+        if (mounted) setPinStanje({ ok: false, poruka: "PIN nije podešen" });
+        return;
+      }
+      try {
+        const rezultat = await unesiPinEsira(uredjaj, pin);
+        if (rezultat.uspjesno) pinUnesenRef.current[uredjaj] = true;
+        if (mounted)
+          setPinStanje({ ok: rezultat.uspjesno, poruka: rezultat.poruka });
+      } catch {
+        if (mounted)
+          setPinStanje({ ok: false, poruka: "Greška pri unosu PIN-a" });
+      }
+    };
+
+    const checkEsirUredjaji = async () => {
+      const [gotovinski, ziralni] = await Promise.all([
+        proveriDostupnostEsira("gotovinski"),
+        proveriDostupnostEsira("ziralni"),
+      ]);
+      if (gotovinski) {
+        void osigurajPin(
+          "gotovinski",
+          import.meta.env.VITE_ESIR_PIN_GOTOVINSKI,
+          setEsirGotovinskiPin,
+        );
+      } else if (mounted) {
+        setEsirGotovinskiPin({ ok: false });
+      }
+      if (ziralni) {
+        void osigurajPin(
+          "ziralni",
+          import.meta.env.VITE_ESIR_PIN_ZIRALNI,
+          setEsirZiralniPin,
+        );
+      } else if (mounted) {
+        setEsirZiralniPin({ ok: false });
+      }
+      if (mounted) {
+        setEsirGotovinskiStatus(gotovinski ? "online" : "offline");
+        setEsirZiralniStatus(ziralni ? "online" : "offline");
+      }
+    };
+
+    void checkEsirUredjaji();
+    const intervalId = setInterval(checkEsirUredjaji, 15000);
     return () => {
       mounted = false;
       clearInterval(intervalId);
@@ -254,58 +371,76 @@ export function Dashboard({
       {/* Header */}
       <header style={{ background: PRIMARY }} className="text-white shadow-lg">
         <div className="mx-[15px] px-[5px] py-3 flex items-center justify-between relative">
-          <button
-            onClick={() => handleSectionChange(null)}
-            className="flex flex-col leading-tight hover:opacity-80 transition-opacity"
-            title="Početna strana"
-          >
-            <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
-              Rad u bazi podataka: <span className="text-white/80">{import.meta.env.VITE_DB_HOST ?? "—"}</span>
-            </p>
-            <p className="text-sm font-bold uppercase tracking-wide" style={{ color: ACCENT }}>
-              {isArhiva ? `Arhiva ${aktivnaGodina}` : "Za godinu 2026"}
-            </p>
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => handleSectionChange(null)}
+              className="flex flex-col leading-tight hover:opacity-80 transition-opacity"
+              title="Početna strana"
+            >
+              <p className="text-[10px] text-white/50 uppercase tracking-widest font-medium">
+                Rad u bazi podataka:{" "}
+                <span className="text-white/80">
+                  {import.meta.env.VITE_DB_HOST ?? "—"}
+                </span>
+              </p>
+              <p
+                className="text-sm font-bold uppercase tracking-wide"
+                style={{ color: ACCENT }}
+              >
+                {isArhiva ? `Arhiva ${aktivnaGodina}` : "Za godinu 2026"}
+              </p>
+            </button>
+
+            <div className="hidden sm:flex items-center gap-2 pl-4 border-l border-white/20">
+              <div className="flex flex-col leading-tight">
+                <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
+                  {roleLabel}:
+                </p>
+                <p
+                  className="text-sm font-semibold uppercase"
+                  style={{ color: ACCENT }}
+                >
+                  {username}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="flex flex-col leading-tight">
-                <div className="flex items-center gap-2">
-                  <p className="text-xs text-white/50 font-medium uppercase tracking-wider">
-                    {roleLabel}:
-                  </p>
-                  <p
-                    className="text-sm font-semibold uppercase"
-                    style={{ color: ACCENT }}
-                  >
-                    {username}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span
-                    className={`inline-block w-2 h-2 rounded-full ${
-                      printServiceStatus === "online" ? "animate-blink" : ""
-                    }`}
-                    style={{
-                      background:
-                        printServiceStatus === "online"
-                          ? "#22c55e"
-                          : printServiceStatus === "offline"
-                            ? "#ef4444"
-                            : "#f59e0b",
-                    }}
-                  />
-                  <p className="text-[10px] uppercase tracking-wide text-white/70 font-medium">
-                    Print servis:{" "}
-                    {printServiceStatus === "online"
-                      ? "online"
-                      : printServiceStatus === "offline"
-                        ? "offline"
-                        : "provjera"}
-                    {printServiceVersion ? ` (v${printServiceVersion})` : ""}
-                  </p>
-                </div>
-              </div>
+            <div className="hidden sm:flex flex-col gap-0.5">
+              <StatusIndikator
+                label="Print servis"
+                status={printServiceStatus}
+                dodatak={printServiceVersion || undefined}
+              />
+              <StatusIndikator
+                label="ESIR gotovinski"
+                status={esirGotovinskiStatus}
+                tekst={
+                  esirGotovinskiStatus === "online" && !esirGotovinskiPin.ok
+                    ? `PIN — ${esirGotovinskiPin.poruka ?? "nije unesen"}`
+                    : undefined
+                }
+                boja={
+                  esirGotovinskiStatus === "online" && !esirGotovinskiPin.ok
+                    ? "#f59e0b"
+                    : undefined
+                }
+              />
+              <StatusIndikator
+                label="ESIR žiralni"
+                status={esirZiralniStatus}
+                tekst={
+                  esirZiralniStatus === "online" && !esirZiralniPin.ok
+                    ? `PIN — ${esirZiralniPin.poruka ?? "nije unesen"}`
+                    : undefined
+                }
+                boja={
+                  esirZiralniStatus === "online" && !esirZiralniPin.ok
+                    ? "#f59e0b"
+                    : undefined
+                }
+              />
             </div>
             <button
               onClick={onLogout}
@@ -869,34 +1004,68 @@ export function Dashboard({
                       </div>
                       <div className="p-2 space-y-0.5">
                         <button
-                          onClick={() => handleSectionChange("racuni-gotovinski")}
-                          className={dropdownItemClass(activeSection === "racuni-gotovinski")}
-                          style={activeSection === "racuni-gotovinski" ? { background: PRIMARY } : {}}
+                          onClick={() =>
+                            handleSectionChange("racuni-gotovinski")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "racuni-gotovinski",
+                          )}
+                          style={
+                            activeSection === "racuni-gotovinski"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
                         >
                           <span
                             className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-gotovinski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
-                            style={activeSection === "racuni-gotovinski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                            style={
+                              activeSection === "racuni-gotovinski"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <Banknote
                               size={13}
-                              style={{ color: activeSection === "racuni-gotovinski" ? "#fff" : PRIMARY }}
+                              style={{
+                                color:
+                                  activeSection === "racuni-gotovinski"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
                             />
                           </span>
                           Gotovinski račun
                         </button>
 
                         <button
-                          onClick={() => handleSectionChange("racuni-virmanski")}
-                          className={dropdownItemClass(activeSection === "racuni-virmanski")}
-                          style={activeSection === "racuni-virmanski" ? { background: PRIMARY } : {}}
+                          onClick={() =>
+                            handleSectionChange("racuni-virmanski")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "racuni-virmanski",
+                          )}
+                          style={
+                            activeSection === "racuni-virmanski"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
                         >
                           <span
                             className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-virmanski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
-                            style={activeSection === "racuni-virmanski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                            style={
+                              activeSection === "racuni-virmanski"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <Landmark
                               size={13}
-                              style={{ color: activeSection === "racuni-virmanski" ? "#fff" : PRIMARY }}
+                              style={{
+                                color:
+                                  activeSection === "racuni-virmanski"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
                             />
                           </span>
                           Virmanski račun
@@ -905,34 +1074,68 @@ export function Dashboard({
                         <div className="my-1.5 border-t border-dashed border-gray-200 dark:border-[#3a3158]" />
 
                         <button
-                          onClick={() => handleSectionChange("racuni-knjizna-gotovinski")}
-                          className={dropdownItemClass(activeSection === "racuni-knjizna-gotovinski")}
-                          style={activeSection === "racuni-knjizna-gotovinski" ? { background: PRIMARY } : {}}
+                          onClick={() =>
+                            handleSectionChange("racuni-knjizna-gotovinski")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "racuni-knjizna-gotovinski",
+                          )}
+                          style={
+                            activeSection === "racuni-knjizna-gotovinski"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
                         >
                           <span
                             className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-knjizna-gotovinski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
-                            style={activeSection === "racuni-knjizna-gotovinski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                            style={
+                              activeSection === "racuni-knjizna-gotovinski"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <BookOpen
                               size={13}
-                              style={{ color: activeSection === "racuni-knjizna-gotovinski" ? "#fff" : PRIMARY }}
+                              style={{
+                                color:
+                                  activeSection === "racuni-knjizna-gotovinski"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
                             />
                           </span>
                           Knjižna gotovinski
                         </button>
 
                         <button
-                          onClick={() => handleSectionChange("racuni-knjizna-virmanski")}
-                          className={dropdownItemClass(activeSection === "racuni-knjizna-virmanski")}
-                          style={activeSection === "racuni-knjizna-virmanski" ? { background: PRIMARY } : {}}
+                          onClick={() =>
+                            handleSectionChange("racuni-knjizna-virmanski")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "racuni-knjizna-virmanski",
+                          )}
+                          style={
+                            activeSection === "racuni-knjizna-virmanski"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
                         >
                           <span
                             className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-knjizna-virmanski" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
-                            style={activeSection === "racuni-knjizna-virmanski" ? { background: "rgba(255,255,255,0.2)" } : {}}
+                            style={
+                              activeSection === "racuni-knjizna-virmanski"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
                           >
                             <BookMarked
                               size={13}
-                              style={{ color: activeSection === "racuni-knjizna-virmanski" ? "#fff" : PRIMARY }}
+                              style={{
+                                color:
+                                  activeSection === "racuni-knjizna-virmanski"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
                             />
                           </span>
                           Knjižna virmanski
@@ -1074,7 +1277,9 @@ export function Dashboard({
 
       {/* Content */}
       <BazaContext.Provider value={{ isArhiva, godina: aktivnaGodina }}>
-        <main className={`mx-[10px] px-[10px] ${activeSection === "racuni-gotovinski" ? "pt-[10px] pb-0" : "py-8"}`}>
+        <main
+          className={`mx-[10px] px-[10px] ${activeSection === "racuni-gotovinski" ? "pt-[10px] pb-0" : "py-8"}`}
+        >
           {activeSection === null && (
             <div className="flex flex-col items-center justify-center py-20 text-center"></div>
           )}
@@ -1220,7 +1425,9 @@ export function Dashboard({
 
           {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
 
-          {activeSection === "narudzbe-zavrsene-lokalno" && <NarudzbeZavrseneLokalno />}
+          {activeSection === "narudzbe-zavrsene-lokalno" && (
+            <NarudzbeZavrseneLokalno />
+          )}
 
           {activeSection === "klise-unos" && <KliseUnosNovog />}
 
@@ -1232,18 +1439,7 @@ export function Dashboard({
 
           {activeSection === "racuni-gotovinski" && <GotovinskiRacuni />}
 
-          {activeSection === "racuni-virmanski" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <Landmark size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Virmanski račun
-                </h2>
-              </div>
-            </div>
-          )}
+          {activeSection === "racuni-virmanski" && <ZiralniRacuni />}
 
           {activeSection === "racuni-knjizna-gotovinski" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

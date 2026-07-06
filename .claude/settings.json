@@ -45,7 +45,12 @@
       "Bash(npx --yes playwright screenshot --channel chrome --wait-for-timeout 500 \"file:///C:/Users/Korisnik/AppData/Local/Temp/claude/d--WEB-KOMERCIJALA-KANCELARIJA-WEB/c68b9ac5-7277-463a-a5cf-5155f1e30e7b/scratchpad/snake-test.html\" snake-test.png)",
       "Bash(npm install *)",
       "Bash(node debug.mjs)",
-      "Bash(node debug2.mjs)"
+      "Bash(node debug2.mjs)",
+      "Bash(npx eslint *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(cp src/components/fiskalniRacuni.tsx src/components/fiskalniRacuni.ts.tmp)",
+      "Bash(mv src/components/fiskalniRacuni.ts.tmp /tmp_test.ts)",
+      "Bash(cp src/components/fiskalniRacuni.tsx src/components/__test_fiskalni.ts)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"

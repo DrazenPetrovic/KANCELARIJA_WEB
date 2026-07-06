@@ -30,3 +30,13 @@ export const getRacunPoIstorija = async (req, res) => {
     return res.status(500).json({ success: false, error: "Greška pri učitavanju stavki računa" });
   }
 };
+
+export const getRacuniPodgrupe = async (req, res) => {
+  try {
+    const data = await RacuniService.getRacuniPodgrupe();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Podgrupe računa error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju podgrupa računa" });
+  }
+};
