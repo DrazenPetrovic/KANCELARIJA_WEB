@@ -50,7 +50,8 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(cp src/components/fiskalniRacuni.tsx src/components/fiskalniRacuni.ts.tmp)",
       "Bash(mv src/components/fiskalniRacuni.ts.tmp /tmp_test.ts)",
-      "Bash(cp src/components/fiskalniRacuni.tsx src/components/__test_fiskalni.ts)"
+      "Bash(cp src/components/fiskalniRacuni.tsx src/components/__test_fiskalni.ts)",
+      "Bash(cat)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"

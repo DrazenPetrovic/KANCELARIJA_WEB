@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { preuzmiStatusEsira } from "./fiskalniRacuni";
+import { brojUSlovima } from "../utils/brojUSlovima";
+import { getCurrentUser } from "../utils/auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -28,6 +30,15 @@ const ACCENT = "#8FC74A";
 // Statične oznake vrste računa za ovaj modul (gotovinski, maloprodaja).
 const VRSTA_RACUNA = "g";
 const VRSTA_RACUNA_NOVI = 1;
+
+// Stopa PDV-a — MPC je osnova obračuna, VPC = MPC / (1 + STOPA_PDV).
+const STOPA_PDV = 0.17;
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const pad = (n: number) => String(n).padStart(2, "0");
+const formatDatumIso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const formatVremeIso = (d: Date) =>
+  `${formatDatumIso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
 const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
@@ -46,6 +57,7 @@ interface Artikal {
   jm: string;
   vpc: number | string;
   mpc: number | string;
+  nabavna_cijena: number | string;
   kolicina_proizvoda: number | string;
   kolicinaNaStanju: number;
   grupa_proizvoda: string;
@@ -110,7 +122,58 @@ interface StavkaRacuna {
   jm: string;
   kolicina: number;
   mpc: number;
+  nabavna_cijena: number;
   ukupno: number;
+}
+
+// Red pomoćne tabele (stavke) gotovinskog računa — priprema za slanje kroz proceduru.
+// Osnova obračuna je uvijek MPC (odatle se šalje i fiskalnom računu): VPC = MPC / 1.17,
+// a PDV po artiklu je razlika MPC - VPC. Rabat i njegovi nivoi (2, 3) postoje zbog
+// zajedničkog oblika sa žiralnim računima — za gotovinski (maloprodajni) uvijek su 0,
+// a "vpc_bez_rabata"/"vpc_rabat_1" su tada isti kao vpc.
+interface StavkaZaUnos {
+  sifra_proizvoda: string;
+  cijena_proizvoda: number;
+  prodajna_cijena: number;
+  kolicina: number;
+  rabat_proc: number;
+  rabat_km: number;
+  vpc: number;
+  vpc_bez_rabata: number;
+  rabat_proc_2: number;
+  rabat_km_2: number;
+  rab_proc_3: number;
+  rabat_km_3: number;
+  vpc_rabat_1: number;
+  pdv_po_artiklu: number;
+  nabavna_cijena_proizvoda: number;
+}
+
+// Heder (glavna tabela) gotovinskog računa.
+interface RacunHeader {
+  vrsta_racuna: string;
+  sifra_kupca: number;
+  datum_racuna: string;
+  ukupno: number;
+  sifra_radnika: number;
+  slovima: string;
+  valuta: string;
+  datum_isporuke: string;
+  napomena: string;
+  rabat_km: number;
+  vreme: string;
+  VP_vrednost: number;
+  vp_vrednost_original: number;
+  VP_1: number;
+  VP_2: number;
+  vrsta_racuna_novi: number;
+  vrsta_racuna_pod: number;
+  sifra_terena: number;
+}
+
+interface RacunZaUnos {
+  header: RacunHeader;
+  items: StavkaZaUnos[];
 }
 
 interface PartnerRazni {
@@ -544,6 +607,7 @@ export function GotovinskiRacuni() {
     const kol = parseFloat(kolicina.replace(",", "."));
     if (!kol || kol <= 0) return;
     const mpc = typeof artikalZaUnos.mpc === "number" ? artikalZaUnos.mpc : parseFloat(String(artikalZaUnos.mpc)) || 0;
+    const nabavnaCijena = typeof artikalZaUnos.nabavna_cijena === "number" ? artikalZaUnos.nabavna_cijena : parseFloat(String(artikalZaUnos.nabavna_cijena)) || 0;
     setStavke((prev) => {
       const idx = prev.findIndex((s) => s.sifra_proizvoda === artikalZaUnos.sifra_proizvoda);
       if (idx >= 0) {
@@ -551,7 +615,7 @@ export function GotovinskiRacuni() {
         updated[idx] = { ...updated[idx], kolicina: updated[idx].kolicina + kol, ukupno: (updated[idx].kolicina + kol) * mpc };
         return updated;
       }
-      return [...prev, { sifra_proizvoda: artikalZaUnos.sifra_proizvoda, naziv_proizvoda: artikalZaUnos.naziv_proizvoda, jm: artikalZaUnos.jm, kolicina: kol, mpc, ukupno: kol * mpc }];
+      return [...prev, { sifra_proizvoda: artikalZaUnos.sifra_proizvoda, naziv_proizvoda: artikalZaUnos.naziv_proizvoda, jm: artikalZaUnos.jm, kolicina: kol, mpc, nabavna_cijena: nabavnaCijena, ukupno: kol * mpc }];
     });
     setArtikalZaUnos(null);
     setKolicina("");
@@ -563,7 +627,6 @@ export function GotovinskiRacuni() {
 
   const handleSacuvajNivelaciju = async () => {
     if (!artikalZaCijenu) return;
-    const round2 = (n: number) => Math.round(n * 100) / 100;
     const staraVpc = round2(typeof artikalZaCijenu.vpc === "number" ? artikalZaCijenu.vpc : parseFloat(String(artikalZaCijenu.vpc)) || 0);
     const novaVpcBroj = round2(parseFloat(novaVpc));
     if (!novaVpcBroj || novaVpcBroj <= 0) return;
@@ -573,9 +636,7 @@ export function GotovinskiRacuni() {
     setNivelacijaLoading(true);
     setNivelacijaGreska(null);
     try {
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const datumNivelacije = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const datumNivelacije = formatVremeIso(new Date()).replace("T", " ");
       const res = await fetch(`${API_URL}/api/nivelacije`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -620,11 +681,78 @@ export function GotovinskiRacuni() {
   };
 
   const ukupnoRacun = stavke.reduce((s, r) => s + r.ukupno, 0);
+  const ukupnoRacunSlovima = useMemo(() => brojUSlovima(ukupnoRacun), [ukupnoRacun]);
+
+  // Priprema kompletnog JSON-a (header + items) za slanje kroz proceduru.
+  // MPC je uvijek osnova obračuna (ista vrijednost ide i fiskalnom računu):
+  // VPC = MPC / 1.17, PDV po artiklu = MPC - VPC. Rabat i njegovi nivoi su za
+  // gotovinski (maloprodajni) račun uvijek 0 — postoje zbog žiralnih računa.
+  const pripremiRacunZaUnos = (): RacunZaUnos => {
+    const items: StavkaZaUnos[] = stavke.map((s) => {
+      const mpc = round2(s.mpc);
+      const vpc = round2(mpc / (1 + STOPA_PDV));
+      const pdvPoArtiklu = round2(mpc - vpc);
+      return {
+        sifra_proizvoda: s.sifra_proizvoda,
+        cijena_proizvoda: vpc,
+        prodajna_cijena: mpc,
+        kolicina: s.kolicina,
+        rabat_proc: 0,
+        rabat_km: 0,
+        vpc,
+        vpc_bez_rabata: vpc,
+        rabat_proc_2: 0,
+        rabat_km_2: 0,
+        rab_proc_3: 0,
+        rabat_km_3: 0,
+        vpc_rabat_1: vpc,
+        pdv_po_artiklu: pdvPoArtiklu,
+        nabavna_cijena_proizvoda: round2(s.nabavna_cijena),
+      };
+    });
+
+    const vpVrednost = round2(items.reduce((sum, it) => sum + it.vpc * it.kolicina, 0));
+    const sada = new Date();
+    const datumRacuna = formatDatumIso(sada);
+    const sifraKupca =
+      odabraniPartner?.sifra_partnera === 300
+        ? odabraniRazni?.sifra_partnera ?? 0
+        : odabraniPartner?.sifra_partnera ?? 0;
+
+    const header: RacunHeader = {
+      vrsta_racuna: VRSTA_RACUNA,
+      sifra_kupca: sifraKupca,
+      datum_racuna: datumRacuna,
+      ukupno: round2(ukupnoRacun),
+      sifra_radnika: getCurrentUser()?.sifraRadnika ?? 0,
+      slovima: ukupnoRacunSlovima,
+      valuta: datumRacuna,
+      datum_isporuke: datumRacuna,
+      napomena,
+      rabat_km: 0,
+      vreme: formatVremeIso(sada),
+      VP_vrednost: vpVrednost,
+      vp_vrednost_original: vpVrednost,
+      VP_1: vpVrednost,
+      VP_2: vpVrednost,
+      vrsta_racuna_novi: VRSTA_RACUNA_NOVI,
+      vrsta_racuna_pod: odabranaPodgrupa?.sifra_podgrupe ?? 0,
+      sifra_terena: odabraniTeren?.sifra_terena ?? 0,
+    };
+
+    return { header, items };
+  };
+
+  // Privremeno — dok se ne doda stvarno slanje na backend, ispisujemo pripremljen
+  // JSON u konzolu radi provjere obračuna prilikom testiranja unosa stavki.
+  useEffect(() => {
+    if (stavke.length > 0) console.log("Račun za unos (gotovinski):", pripremiRacunZaUnos());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stavke, odabraniPartner, odabraniRazni, napomena, odabranaPodgrupa, odabraniTeren]);
 
   const formatDatumRacuna = (d: string) => {
     const datum = new Date(d);
     if (isNaN(datum.getTime())) return String(d);
-    const pad = (n: number) => String(n).padStart(2, "0");
     return `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}.`;
   };
 
@@ -1131,9 +1259,16 @@ export function GotovinskiRacuni() {
           {/* Linija + ukupno — 1/3 visine */}
           <div className="border-t-2 border-gray-200 dark:border-[#2d2648] flex flex-col" style={{ flex: 1 }}>
             <div className="flex items-center justify-between px-6 gap-3" style={{ paddingTop: 10, paddingBottom: 10 }}>
-              <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
-                Broj stavki: <span style={{ color: PRIMARY }}>{stavke.length}</span>
-              </span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
+                  Broj stavki: <span style={{ color: PRIMARY }}>{stavke.length}</span>
+                </span>
+                {stavke.length > 0 && (
+                  <span className="text-[11px] italic text-gray-400 dark:text-[#5f5878]">
+                    Slovima: {ukupnoRacunSlovima}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold uppercase tracking-wide">Ukupno za platiti</span>
@@ -1241,7 +1376,7 @@ export function GotovinskiRacuni() {
                   )}
                   {podgrupeRacuna.map((p) => (
                     <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
-                      {p.opis_podgrupe}
+                      {p.opis_podgrupe} ({p.sifra_podgrupe})
                     </option>
                   ))}
                 </select>
