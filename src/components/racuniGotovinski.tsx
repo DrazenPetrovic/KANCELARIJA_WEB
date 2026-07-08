@@ -19,7 +19,15 @@ import {
   User,
   X,
 } from "lucide-react";
-import { preuzmiStatusEsira } from "./fiskalniRacuni";
+import {
+  preuzmiStatusEsira,
+  ESIR_OZNAKA_SA_PDV,
+  ESIR_SLIP_PRESET_58MM,
+  type EsirStavka,
+  type EsirPlacanje,
+  type EsirInvoiceRequest,
+  type EsirOpcijeStampe,
+} from "./fiskalniRacuni";
 import { brojUSlovima } from "../utils/brojUSlovima";
 import { getCurrentUser } from "../utils/auth";
 
@@ -58,6 +66,7 @@ interface Artikal {
   vpc: number | string;
   mpc: number | string;
   nabavna_cijena: number | string;
+  barkod: string;
   kolicina_proizvoda: number | string;
   kolicinaNaStanju: number;
   grupa_proizvoda: string;
@@ -123,6 +132,7 @@ interface StavkaRacuna {
   kolicina: number;
   mpc: number;
   nabavna_cijena: number;
+  barkod: string;
   ukupno: number;
 }
 
@@ -132,7 +142,7 @@ interface StavkaRacuna {
 // zajedničkog oblika sa žiralnim računima — za gotovinski (maloprodajni) uvijek su 0,
 // a "vpc_bez_rabata"/"vpc_rabat_1" su tada isti kao vpc.
 interface StavkaZaUnos {
-  sifra_proizvoda: string;
+  sifra_proizvoda: number;
   cijena_proizvoda: number;
   prodajna_cijena: number;
   kolicina: number;
@@ -608,6 +618,7 @@ export function GotovinskiRacuni() {
     if (!kol || kol <= 0) return;
     const mpc = typeof artikalZaUnos.mpc === "number" ? artikalZaUnos.mpc : parseFloat(String(artikalZaUnos.mpc)) || 0;
     const nabavnaCijena = typeof artikalZaUnos.nabavna_cijena === "number" ? artikalZaUnos.nabavna_cijena : parseFloat(String(artikalZaUnos.nabavna_cijena)) || 0;
+    const barkod = artikalZaUnos.barkod ?? "";
     setStavke((prev) => {
       const idx = prev.findIndex((s) => s.sifra_proizvoda === artikalZaUnos.sifra_proizvoda);
       if (idx >= 0) {
@@ -615,7 +626,7 @@ export function GotovinskiRacuni() {
         updated[idx] = { ...updated[idx], kolicina: updated[idx].kolicina + kol, ukupno: (updated[idx].kolicina + kol) * mpc };
         return updated;
       }
-      return [...prev, { sifra_proizvoda: artikalZaUnos.sifra_proizvoda, naziv_proizvoda: artikalZaUnos.naziv_proizvoda, jm: artikalZaUnos.jm, kolicina: kol, mpc, nabavna_cijena: nabavnaCijena, ukupno: kol * mpc }];
+      return [...prev, { sifra_proizvoda: artikalZaUnos.sifra_proizvoda, naziv_proizvoda: artikalZaUnos.naziv_proizvoda, jm: artikalZaUnos.jm, kolicina: kol, mpc, nabavna_cijena: nabavnaCijena, barkod, ukupno: kol * mpc }];
     });
     setArtikalZaUnos(null);
     setKolicina("");
@@ -693,7 +704,7 @@ export function GotovinskiRacuni() {
       const vpc = round2(mpc / (1 + STOPA_PDV));
       const pdvPoArtiklu = round2(mpc - vpc);
       return {
-        sifra_proizvoda: s.sifra_proizvoda,
+        sifra_proizvoda: Number(s.sifra_proizvoda),
         cijena_proizvoda: vpc,
         prodajna_cijena: mpc,
         kolicina: s.kolicina,
@@ -714,10 +725,16 @@ export function GotovinskiRacuni() {
     const vpVrednost = round2(items.reduce((sum, it) => sum + it.vpc * it.kolicina, 0));
     const sada = new Date();
     const datumRacuna = formatDatumIso(sada);
-    const sifraKupca =
-      odabraniPartner?.sifra_partnera === 300
-        ? odabraniRazni?.sifra_partnera ?? 0
-        : odabraniPartner?.sifra_partnera ?? 0;
+    const sifraKupca = odabraniPartner?.sifra_partnera ?? 0;
+
+    // Za partnera 300 (razni kupci) fiskalni račun i sifra_kupca ne razlikuju kog
+    // konkretno raznog kupca — zato se ime i šifra tog kupca upisuju u napomenu.
+    const napomenaZaUnos =
+      odabraniPartner?.sifra_partnera === 300 && odabraniRazni
+        ? [napomena.trim(), `${odabraniRazni.naziv_partnera} #${odabraniRazni.sifra_partnera}`]
+            .filter(Boolean)
+            .join(" ")
+        : napomena;
 
     const header: RacunHeader = {
       vrsta_racuna: VRSTA_RACUNA,
@@ -728,7 +745,7 @@ export function GotovinskiRacuni() {
       slovima: ukupnoRacunSlovima,
       valuta: datumRacuna,
       datum_isporuke: datumRacuna,
-      napomena,
+      napomena: napomenaZaUnos,
       rabat_km: 0,
       vreme: formatVremeIso(sada),
       VP_vrednost: vpVrednost,
@@ -743,10 +760,76 @@ export function GotovinskiRacuni() {
     return { header, items };
   };
 
+  // Ako artikal nema barkod, GTIN se zamjenjuje šifrom proizvoda dopunjenom nulama
+  // slijeva do 13 cifara (dužina EAN13 barkoda — GTIN mora imati 8 do 14 znakova).
+  const gtinZaStavku = (s: StavkaRacuna) =>
+    s.barkod.trim() ? s.barkod.trim() : String(s.sifra_proizvoda).padStart(13, "0");
+
+  // Priprema stavki za ESIR fiskalni račun (POST /api/invoices — izdajFiskalniRacun).
+  // Način plaćanja je za gotovinski račun uvijek "Cash", a poreska oznaka po stavci
+  // uvijek ESIR_OZNAKA_SA_PDV ("Е") — svi artikli se ovdje prodaju sa PDV-om.
+  const pripremiEsirStavke = (): EsirStavka[] =>
+    stavke.map((s) => ({
+      name: s.naziv_proizvoda,
+      gtin: gtinZaStavku(s),
+      labels: [ESIR_OZNAKA_SA_PDV],
+      totalAmount: round2(s.kolicina * s.mpc),
+      unitPrice: round2(s.mpc),
+      quantity: s.kolicina,
+      discount: 0,
+      discountAmount: 0,
+    }));
+
+  const pripremiEsirPlacanje = (): EsirPlacanje[] => [
+    { amount: round2(ukupnoRacun), paymentType: "Cash" },
+  ];
+
+  // Kupac 300 je generički "razni kupci" — na fiskalnom računu se uvijek šalje kao
+  // šifra "300" / oznaka "RAZNI KUPCI", bez obzira koji je konkretan razni kupac
+  // izabran interno. Za pravog partnera šalje se JIB / naziv partnera.
+  const pripremiBuyerId = (): string | undefined => {
+    if (!odabraniPartner) return undefined;
+    if (odabraniPartner.sifra_partnera === 300) return "300";
+    const jib = odabraniPartner.jib?.trim();
+    return jib ? jib : undefined;
+  };
+
+  // ESIR ograničava buyerCostCenterId na 50 znakova.
+  const pripremiBuyerCostCenterId = (): string | undefined => {
+    if (!odabraniPartner) return undefined;
+    const naziv = odabraniPartner.sifra_partnera === 300 ? "RAZNI KUPCI" : odabraniPartner.naziv_partnera;
+    return naziv.slice(0, 50);
+  };
+
+  // Kompletan zahtjev za POST /api/invoices (izdajFiskalniRacun). Opcije štampe se
+  // šalju odvojeno (sestrinsko polje uz invoiceRequest), vidi EsirOpcijeStampe.
+  const pripremiEsirZahtjev = (): EsirInvoiceRequest => ({
+    invoiceType: "Normal",
+    transactionType: "Sale",
+    referentDocumentNumber: null,
+    referentDocumentDT: null,
+    buyerId: pripremiBuyerId(),
+    buyerCostCenterId: pripremiBuyerCostCenterId(),
+    payment: pripremiEsirPlacanje(),
+    items: pripremiEsirStavke(),
+    cashier: getCurrentUser()?.username ?? "",
+  });
+
+  const esirOpcijeStampe: EsirOpcijeStampe = {
+    print: true,
+    renderReceiptImage: true,
+    receiptLayout: "Slip",
+    receiptImageFormat: "Png",
+    ...ESIR_SLIP_PRESET_58MM,
+  };
+
   // Privremeno — dok se ne doda stvarno slanje na backend, ispisujemo pripremljen
   // JSON u konzolu radi provjere obračuna prilikom testiranja unosa stavki.
   useEffect(() => {
-    if (stavke.length > 0) console.log("Račun za unos (gotovinski):", pripremiRacunZaUnos());
+    if (stavke.length > 0) {
+      console.log("Račun za unos (gotovinski):", pripremiRacunZaUnos());
+      console.log("ESIR zahtjev:", { ...esirOpcijeStampe, invoiceRequest: pripremiEsirZahtjev() });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stavke, odabraniPartner, odabraniRazni, napomena, odabranaPodgrupa, odabraniTeren]);
 
@@ -1277,14 +1360,16 @@ export function GotovinskiRacuni() {
                   </span>
                 </div>
                 <button
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  disabled={stavke.length === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   style={{ background: PRIMARY }}
                 >
                   <CheckCircle2 size={15} />
                   Samo sačuvaj
                 </button>
                 <button
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  disabled={stavke.length === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   style={{ background: ACCENT }}
                 >
                   <Printer size={15} />

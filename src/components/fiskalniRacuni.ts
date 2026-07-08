@@ -168,6 +168,8 @@ export interface EsirStavka {
   totalAmount: number;
   unitPrice: number;
   quantity: number;
+  discount?: number;
+  discountAmount?: number;
 }
 
 export interface EsirPlacanje {
@@ -178,13 +180,20 @@ export interface EsirPlacanje {
 export interface EsirInvoiceRequest {
   invoiceType: string;
   transactionType: string;
+  // Referenca na originalni dokument — samo za storno/refundaciju, inače null.
+  referentDocumentNumber?: string | null;
+  referentDocumentDT?: string | null;
   // Dodatna polja za "gotovinski račun sa identifikacijom kupca":
   buyerId?: string;
   buyerCostCenterId?: string;
   payment: EsirPlacanje[];
   items: EsirStavka[];
   cashier: string;
-  // Štampa na drugom (ne-integrisanom) štampaču — vidi ESIR_SLIP_PRESET_58MM / _80MM za receiptSlip* vrijednosti.
+}
+
+// Opcije štampe/prikaza — idu kao sestrinska polja uz "invoiceRequest" u tijelu
+// zahtjeva (NE unutar njega). Vidi ESIR_SLIP_PRESET_58MM / _80MM za receiptSlip* vrijednosti.
+export interface EsirOpcijeStampe {
   print?: boolean;
   renderReceiptImage?: boolean;
   receiptLayout?: "Slip" | "Invoice";
@@ -254,11 +263,12 @@ function generisiRequestId(): string {
 export async function izdajFiskalniRacun(
   uredjaj: EsirUredjaj,
   invoiceRequest: EsirInvoiceRequest,
+  opcijeStampe: EsirOpcijeStampe = {},
 ): Promise<EsirInvoiceResponse> {
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
     headers: { RequestId: generisiRequestId() },
-    body: JSON.stringify({ invoiceRequest }),
+    body: JSON.stringify({ ...opcijeStampe, invoiceRequest }),
   });
   const json = await res.json().catch(() => null);
   if (!res.ok) {
