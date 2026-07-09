@@ -1,0 +1,65 @@
+0    - Račun je uspješno sačuvan.
+
+1001 - Nije dostavljen JSON.
+1002 - Dostavljeni JSON nije ispravan.
+1003 - Nedostaje objekat header.
+1004 - Nedostaje lista stavki.
+1005 - Lista stavki nije ispravnog formata.
+1006 - Račun ne sadrži nijednu stavku.
+
+1101 - Vrsta računa nije određena.
+1102 - Kupac nije izabran.
+1103 - Datum računa nije unesen.
+1104 - Ukupan iznos nije unesen.
+1105 - Radnik nije izabran.
+1106 - Vrsta računa (novi) nije definisana.
+1107 - Podvrsta računa nije definisana.
+1108 - Teren nije definisan.
+1109 - Valuta nije unesena.
+1110 - Datum isporuke nije unesen.
+1111 - Tekst iznosa slovima nije unesen.
+1112 - VP vrijednost nije unesena.
+1113 - Originalna VP vrijednost nije unesena.
+1114 - VP_1 nije unesen.
+1115 - VP_2 nije unesen.
+
+1201 - Jedna ili više stavki nema šifru proizvoda.
+1202 - Jedna ili više stavki nema količinu.
+1203 - Jedna ili više stavki nema cijenu proizvoda.
+1204 - Jedna ili više stavki nema prodajnu cijenu.
+1205 - Jedna ili više stavki nema VPC.
+1206 - Jedna ili više stavki nema VPC bez rabata.
+1207 - Jedna ili više stavki nema PDV.
+1208 - Jedna ili više stavki nema nabavnu cijenu.
+1209 - Količina mora biti veća od nule.
+1210 - Prodajna cijena ne može biti negativna.
+1211 - VPC ne može biti negativan.
+1212 - PDV ne može biti negativan.
+
+1301 - Kupac ne postoji.
+1302 - Proizvod ne postoji.
+1303 - Radnik ne postoji.
+1304 - Teren ne postoji.
+1305 - Vrsta računa nije dozvoljena.
+
+1401 - Nema dovoljno robe na stanju.
+1402 - Proizvod nije aktivan.
+1403 - Proizvod nije dozvoljen za prodaju.
+1404 - Cijena proizvoda nije definisana.
+1405 - Poreska stopa nije definisana.
+
+1501 - Broj računa nije moguće generisati.
+1502 - Šifra računa nije moguće generisati.
+1503 - Nije moguće zaključati tabelu za unos računa.
+1504 - Transakcija nije uspješno završena.
+1505 - Došlo je do greške prilikom upisa u bazu.
+1506 - Došlo je do neočekivane sistemske greške.
+
+1601 - Fiskalizacija nije uspjela.
+1602 - Fiskalni uređaj nije dostupan.
+1603 - Fiskalni račun nije moguće kreirati.
+
+1701 - Račun je već storniran.
+1702 - Račun je već fiskalizovan.
+1703 - Račun nije moguće mijenjati.
+1704 - Račun nije moguće obrisati.

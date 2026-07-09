@@ -4,8 +4,11 @@ import {
   Banknote,
   Ban,
   CheckCircle2,
+  ClipboardCheck,
+  Download,
   History,
   Loader2,
+  Lock,
   MapPin,
   Package,
   Percent,
@@ -123,6 +126,24 @@ interface Teren {
   datum_dostave?: string;
   zavrsena_dostava?: number;
   [key: string]: unknown;
+}
+
+interface NarudzbaZavrsenaProizvod {
+  sifra_proizvoda: string;
+  naziv_proizvoda: string;
+  jm: string;
+  kolicina: number;
+  napomena: string;
+  verifikovano: number;
+}
+
+interface NarudzbaZavrsenaKupac {
+  sifra_kupca: number;
+  naziv_kupca: string;
+  referentni_broj: string;
+  nacin_placanja: string;
+  stampano: number;
+  proizvodi: NarudzbaZavrsenaProizvod[];
 }
 
 interface StavkaRacuna {
@@ -275,6 +296,12 @@ export function GotovinskiRacuni() {
   const [odabraniTeren, setOdabraniTeren] = useState<Teren | null>(null);
   const [pokaziDropdownTeren, setPokazuiDropdownTeren] = useState(false);
 
+  const [pokaziModalNarudzbe, setPokazuiModalNarudzbe] = useState(false);
+  const [loadingNarudzbe, setLoadingNarudzbe] = useState(false);
+  const [zavrseneNarudzbe, setZavrseneNarudzbe] = useState<NarudzbaZavrsenaKupac[]>([]);
+  const [odabraniKupacNarudzbe, setOdabraniKupacNarudzbe] = useState<NarudzbaZavrsenaKupac | null>(null);
+  const [pendingUvozNarudzbe, setPendingUvozNarudzbe] = useState<NarudzbaZavrsenaKupac | null>(null);
+
   const [stavke, setStavke] = useState<StavkaRacuna[]>([]);
   const [artikalZaUnos, setArtikalZaUnos] = useState<Artikal | null>(null);
   const [kolicina, setKolicina] = useState("");
@@ -284,6 +311,9 @@ export function GotovinskiRacuni() {
   const [novaMpc, setNovaMpc] = useState("");
   const [nivelacijaLoading, setNivelacijaLoading] = useState(false);
   const [nivelacijaGreska, setNivelacijaGreska] = useState<string | null>(null);
+
+  const [spremanjeLoading, setSpremanjeLoading] = useState(false);
+  const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
 
   const [statusKase, setStatusKase] = useState<"provjera" | "dostupna" | "nedostupna">("provjera");
 
@@ -812,7 +842,7 @@ export function GotovinskiRacuni() {
     buyerCostCenterId: pripremiBuyerCostCenterId(),
     payment: pripremiEsirPlacanje(),
     items: pripremiEsirStavke(),
-    cashier: getCurrentUser()?.username ?? "",
+    cashier: (getCurrentUser()?.username ?? "").toUpperCase(),
   });
 
   const esirOpcijeStampe: EsirOpcijeStampe = {
@@ -862,6 +892,222 @@ export function GotovinskiRacuni() {
       setStavkeIstorijeRacuna([]);
     } finally {
       setLoadingStavkeIstorijeRacuna(false);
+    }
+  };
+
+  // Završene narudžbe za izabrani teren — spaja "grupisano" (podaci o kupcu) i
+  // "aktivne" (stavke po proizvodu, sa verifikovano). Prikazuju se samo kupci kod
+  // kojih su SVI proizvodi verifikovani (verifikovano === 2), tj. spremni za račun.
+  const handleOtvoriModalNarudzbe = async () => {
+    setPokazuiModalNarudzbe(true);
+    setOdabraniKupacNarudzbe(null);
+    if (!odabraniTeren) {
+      setZavrseneNarudzbe([]);
+      return;
+    }
+    setLoadingNarudzbe(true);
+    try {
+      const [grupisaneRes, aktivneRes] = await Promise.all([
+        fetch(`${API_URL}/api/narudzbe/narudzbe-grupisane?sifraTerena=${odabraniTeren.sifra_terena_dostava}`, { credentials: "include" }),
+        fetch(`${API_URL}/api/narudzbe/narudzbe-aktivne?sifraTerena=${odabraniTeren.sifra_terena_dostava}`, { credentials: "include" }),
+      ]);
+      if (!grupisaneRes.ok || !aktivneRes.ok) {
+        setZavrseneNarudzbe([]);
+        return;
+      }
+      const grupisaneJson = await grupisaneRes.json();
+      const aktivneJson = await aktivneRes.json();
+      if (!grupisaneJson.success || !aktivneJson.success) {
+        setZavrseneNarudzbe([]);
+        return;
+      }
+
+      // Šema tmp_partneri (narudzbe-grupisane):
+      const grupisaneRedovi = (grupisaneJson.data ?? []) as Array<{
+        sifra_partnera: number;
+        naziv_partnera: string;
+        sifra_grada?: number;
+        naziv_grada?: string;
+        referentni_broj?: string;
+        nacin_placanja?: string;
+        stampano?: number | string;
+      }>;
+      // Šema tmp_pregled_narucenig_proizvoda (narudzbe-aktivne):
+      const aktivniRedovi = (aktivneJson.data ?? []) as Array<{
+        sifra_tabele?: number;
+        sifra_partnera: number;
+        sifra_proizvoda: string | number;
+        naziv_proizvoda: string;
+        jm: string;
+        kolicina_proizvoda: number | string;
+        napomena?: string;
+        referentni_broj?: string;
+        spremljena_kolicina?: number | string;
+        verifikovano: number | string;
+        naziv_partnera?: string;
+        nacin_placanja?: string;
+      }>;
+
+      const kupciMap = new Map<number, NarudzbaZavrsenaKupac>();
+      grupisaneRedovi.forEach((row) => {
+        const sifraKupca = Number(row.sifra_partnera);
+        if (!kupciMap.has(sifraKupca)) {
+          kupciMap.set(sifraKupca, {
+            sifra_kupca: sifraKupca,
+            naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
+            referentni_broj: String(row.referentni_broj ?? "").trim(),
+            nacin_placanja: String(row.nacin_placanja ?? "").trim(),
+            stampano: Number(row.stampano) || 0,
+            proizvodi: [],
+          });
+        }
+      });
+      aktivniRedovi.forEach((row) => {
+        const sifraKupca = Number(row.sifra_partnera);
+        let kupac = kupciMap.get(sifraKupca);
+        if (!kupac) {
+          kupac = {
+            sifra_kupca: sifraKupca,
+            naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
+            referentni_broj: String(row.referentni_broj ?? "").trim(),
+            nacin_placanja: String(row.nacin_placanja ?? "").trim(),
+            stampano: 0,
+            proizvodi: [],
+          };
+          kupciMap.set(sifraKupca, kupac);
+        }
+        kupac.proizvodi.push({
+          sifra_proizvoda: String(row.sifra_proizvoda),
+          naziv_proizvoda: row.naziv_proizvoda,
+          jm: row.jm,
+          kolicina: Number(row.kolicina_proizvoda) || 0,
+          napomena: row.napomena || "",
+          verifikovano: Number(row.verifikovano),
+        });
+      });
+
+      const zavrseni = Array.from(kupciMap.values())
+        .filter(
+          (k) =>
+            k.proizvodi.length > 0 &&
+            k.proizvodi.every((p) => p.verifikovano === 2) &&
+            k.nacin_placanja.trim().toUpperCase() !== "VIRMANSKO",
+        )
+        .sort((a, b) => a.naziv_kupca.localeCompare(b.naziv_kupca, "bs"));
+
+      setZavrseneNarudzbe(zavrseni);
+    } catch {
+      setZavrseneNarudzbe([]);
+    } finally {
+      setLoadingNarudzbe(false);
+    }
+  };
+
+  // Pokreće uvoz narudžbe u glavnu formu — izabere partnera (ili "razni" kupca),
+  // a stvarno punjenje stavki radi efekat ispod, čim odabraniPartner stigne na cilj.
+  const handleUvezNarudzbu = (k: NarudzbaZavrsenaKupac) => {
+    const jeRazniKupac = k.nacin_placanja.trim().toUpperCase() === "RAZNI KUPAC";
+    if (jeRazniKupac) {
+      const partner300 = partneri.find((p) => p.sifra_partnera === 300);
+      if (!partner300) {
+        alert("Partner 'Razni kupci' (300) nije pronađen u listi partnera.");
+        return;
+      }
+      korisnickiOdabirPartneraRef.current = false;
+      setOdabraniPartner(partner300);
+    } else {
+      const partner = partneri.find((p) => p.sifra_partnera === k.sifra_kupca);
+      if (!partner) {
+        alert(`Partner sa šifrom ${k.sifra_kupca} nije pronađen u listi partnera.`);
+        return;
+      }
+      korisnickiOdabirPartneraRef.current = false;
+      setOdabraniPartner(partner);
+    }
+    setPendingUvozNarudzbe(k);
+    setPokazuiModalNarudzbe(false);
+    setOdabraniKupacNarudzbe(null);
+  };
+
+  // Kad odabraniPartner stvarno stigne na traženog kupca (ili na 300 za razni), puni
+  // se korpa cijenama iz TRENUTNOG kataloga artikli (ne iz narudžbe — cijena se mogla
+  // promijeniti). Artikli koji ne postoje u katalogu ili nemaju stanje se preskaču.
+  useEffect(() => {
+    if (!pendingUvozNarudzbe) return;
+    const k = pendingUvozNarudzbe;
+    const jeRazniKupac = k.nacin_placanja.trim().toUpperCase() === "RAZNI KUPAC";
+
+    if (jeRazniKupac) {
+      if (odabraniPartner?.sifra_partnera !== 300) return;
+      setOdabraniRazni({ sifra_partnera: k.sifra_kupca, naziv_partnera: k.naziv_kupca, pripada_radniku: 0 });
+    } else if (odabraniPartner?.sifra_partnera !== k.sifra_kupca) {
+      return;
+    }
+
+    const preskoceniProizvodi: string[] = [];
+    const noveStavke: StavkaRacuna[] = [];
+    k.proizvodi.forEach((p) => {
+      const artikal = artikli.find((a) => String(a.sifra_proizvoda) === p.sifra_proizvoda);
+      if (!artikal || Number(artikal.kolicina_proizvoda) <= 0) {
+        preskoceniProizvodi.push(p.naziv_proizvoda);
+        return;
+      }
+      const mpc = typeof artikal.mpc === "number" ? artikal.mpc : parseFloat(String(artikal.mpc)) || 0;
+      const nabavnaCijena =
+        typeof artikal.nabavna_cijena === "number" ? artikal.nabavna_cijena : parseFloat(String(artikal.nabavna_cijena)) || 0;
+      noveStavke.push({
+        sifra_proizvoda: artikal.sifra_proizvoda,
+        naziv_proizvoda: artikal.naziv_proizvoda,
+        jm: artikal.jm,
+        kolicina: p.kolicina,
+        mpc,
+        nabavna_cijena: nabavnaCijena,
+        barkod: artikal.barkod ?? "",
+        ukupno: round2(p.kolicina * mpc),
+      });
+    });
+
+    console.log("Uvoz narudžbe — kupac:", k);
+    console.log("Uvoz narudžbe — nove stavke (zamjenjuju sve postojeće u računu):", noveStavke);
+
+    // setStavke potpuno zamjenjuje dotadašnji sadržaj računa (ne dodaje na postojeće).
+    setStavke(noveStavke);
+    setPendingUvozNarudzbe(null);
+    if (preskoceniProizvodi.length > 0) {
+      alert(`Preskočeni proizvodi (nema ih u katalogu ili nema stanja):\n${preskoceniProizvodi.join("\n")}`);
+    }
+  }, [pendingUvozNarudzbe, odabraniPartner, artikli]);
+
+  // Šalje { header, items } proceduri erp.sp_racuni_unos preko POST /api/racuni/unos.
+  // Procedura vraća kod=0 uz sifra_tabele/broj_racuna pri uspjehu, ili kod!=0 uz poruku
+  // greške (šifrarnik grešaka: public/kodovi_unosa.txt) — tu poruku samo prosljeđujemo.
+  // TODO: "stampaj" trenutno samo čuva račun — izdavanje fiskalnog računa (ESIR) treba
+  // posebno povezati (pripremiEsirZahtjev/esirOpcijeStampe su već spremni za to).
+  const handleSacuvajRacun = async (stampaj: boolean) => {
+    if (stavke.length === 0) return;
+    setSpremanjeLoading(true);
+    setSpremanjeGreska(null);
+    try {
+      const podaci = pripremiRacunZaUnos();
+      const res = await fetch(`${API_URL}/api/racuni/unos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(podaci),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setSpremanjeGreska(json.error || "Greška pri čuvanju računa");
+        return;
+      }
+      alert(`Račun je uspješno sačuvan. Broj računa: ${json.broj_racuna}`);
+      setStavke([]);
+      setNapomena("");
+      void stampaj;
+    } catch {
+      setSpremanjeGreska("Greška pri čuvanju računa");
+    } finally {
+      setSpremanjeLoading(false);
     }
   };
 
@@ -1360,23 +1606,28 @@ export function GotovinskiRacuni() {
                   </span>
                 </div>
                 <button
-                  disabled={stavke.length === 0}
+                  onClick={() => handleSacuvajRacun(false)}
+                  disabled={stavke.length === 0 || spremanjeLoading}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   style={{ background: PRIMARY }}
                 >
-                  <CheckCircle2 size={15} />
+                  {spremanjeLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
                   Samo sačuvaj
                 </button>
                 <button
-                  disabled={stavke.length === 0}
+                  onClick={() => handleSacuvajRacun(true)}
+                  disabled={stavke.length === 0 || spremanjeLoading}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
                   style={{ background: ACCENT }}
                 >
-                  <Printer size={15} />
+                  {spremanjeLoading ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
                   Sačuvaj i štampaj
                 </button>
               </div>
             </div>
+            {spremanjeGreska && (
+              <div className="px-6 pb-2 text-xs font-medium text-red-500">{spremanjeGreska}</div>
+            )}
             <div className="border-t-2 border-gray-200 dark:border-[#2d2648]" />
 
             <div className="flex gap-3 px-4 flex-shrink-0" style={{ marginTop: 5 }}>
@@ -1465,6 +1716,14 @@ export function GotovinskiRacuni() {
                     </option>
                   ))}
                 </select>
+                <button
+                  onClick={handleOtvoriModalNarudzbe}
+                  className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: ACCENT }}
+                >
+                  <ClipboardCheck size={12} />
+                  Završene narudžbe
+                </button>
               </div>
             </div>
           </div>
@@ -2164,6 +2423,151 @@ export function GotovinskiRacuni() {
                       ))}
                     </tbody>
                   </table>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Modal završenih narudžbi — spremne za pretvaranje u račun (svi proizvodi verifikovano=2) */}
+      {pokaziModalNarudzbe &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setPokazuiModalNarudzbe(false);
+                setOdabraniKupacNarudzbe(null);
+              }
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[560px] max-h-[80vh] flex flex-col overflow-hidden">
+              <div className="px-6 py-4 flex items-center gap-3 flex-shrink-0" style={{ background: PRIMARY }}>
+                <ClipboardCheck size={18} className="text-white flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-white text-base truncate">Završene narudžbe</div>
+                  <div className="text-white/70 text-xs mt-0.5">
+                    {odabraniTeren ? `Teren: ${odabraniTeren.naziv_dana}` : "Izaberite teren da biste vidjeli narudžbe"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setPokazuiModalNarudzbe(false); setOdabraniKupacNarudzbe(null); }}
+                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {loadingNarudzbe ? (
+                  <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span className="text-sm">Učitavanje...</span>
+                  </div>
+                ) : !odabraniTeren ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 dark:text-[#5f5878]">
+                    <ClipboardCheck size={24} className="text-gray-300 dark:text-[#3a3158]" />
+                    <span className="text-sm">Prvo izaberite teren</span>
+                  </div>
+                ) : zavrseneNarudzbe.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 dark:text-[#5f5878]">
+                    <ClipboardCheck size={24} className="text-gray-300 dark:text-[#3a3158]" />
+                    <span className="text-sm">Nema završenih narudžbi za ovaj teren</span>
+                  </div>
+                ) : (
+                  zavrseneNarudzbe.map((k) => {
+                    const vecUneseno = k.stampano !== 0;
+                    const prosireno = odabraniKupacNarudzbe?.sifra_kupca === k.sifra_kupca;
+                    return (
+                      <div key={k.sifra_kupca} className="border-b border-gray-50 dark:border-[#2a2340] last:border-b-0">
+                        <button
+                          onClick={() => { if (!vecUneseno) setOdabraniKupacNarudzbe(prosireno ? null : k); }}
+                          disabled={vecUneseno}
+                          className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-all ${
+                            vecUneseno ? "opacity-50 cursor-not-allowed" : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                          }`}
+                        >
+                          <div
+                            className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center"
+                            style={{ background: k.sifra_kupca >= 10000 ? ACCENT : PRIMARY }}
+                          >
+                            <User size={12} style={{ color: k.sifra_kupca >= 10000 ? PRIMARY : ACCENT }} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-gray-800 dark:text-[#ede9f6] truncate">
+                              {k.naziv_kupca}
+                            </div>
+                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                              Šifra: {k.sifra_kupca} · {k.proizvodi.length} {k.proizvodi.length === 1 ? "proizvod" : "proizvoda"}
+                              {k.nacin_placanja && ` · ${k.nacin_placanja}`}
+                            </div>
+                          </div>
+                          {vecUneseno ? (
+                            <span className="flex items-center gap-1 flex-shrink-0 text-[10px] font-semibold text-gray-400 dark:text-[#5f5878]">
+                              <Lock size={12} />
+                              Već uneseno
+                            </span>
+                          ) : (
+                            <span
+                              onClick={(e) => { e.stopPropagation(); handleUvezNarudzbu(k); }}
+                              className="flex-shrink-0 p-1 -m-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                              title="Uvezi u račun"
+                            >
+                              <Download size={14} style={{ color: PRIMARY }} />
+                            </span>
+                          )}
+                        </button>
+
+                        {prosireno && (
+                          <div className="bg-[#faf9fc] dark:bg-[#1e1a2d] px-4 py-2">
+                            {k.proizvodi.length === 0 ? (
+                              <div className="flex items-center justify-center gap-1.5 py-4 text-gray-400 dark:text-[#5f5878]">
+                                <Package size={16} className="text-gray-300 dark:text-[#3a3158]" />
+                                <span className="text-xs">Nema proizvoda</span>
+                              </div>
+                            ) : (
+                              <table className="w-full text-xs border-collapse">
+                                <thead>
+                                  <tr className="text-gray-500 dark:text-[#7d7498]">
+                                    <th className="text-left px-2 py-1.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">Naziv proizvoda</th>
+                                    <th className="text-left px-2 py-1.5 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-14">JM</th>
+                                    <th className="text-right px-2 py-1.5 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-20">Količina</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {k.proizvodi.map((p, i) => (
+                                    <tr
+                                      key={`${p.sifra_proizvoda}-${i}`}
+                                      className={`border-b border-gray-100 dark:border-[#2a2340] last:border-b-0 ${i % 2 === 0 ? "bg-white dark:bg-[#1a1528]" : "bg-[#faf9fc] dark:bg-[#1e1a2d]"}`}
+                                    >
+                                      <td className="px-2 py-1.5 font-medium text-gray-800 dark:text-[#ede9f6]">
+                                        {p.naziv_proizvoda}
+                                        {p.napomena && (
+                                          <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">{p.napomena}</div>
+                                        )}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-gray-600 dark:text-[#c5bfd8]">{p.jm}</td>
+                                      <td className="px-2 py-1.5 text-right font-semibold text-gray-700 dark:text-[#c5bfd8]">{p.kolicina.toFixed(3)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                            <button
+                              onClick={() => handleUvezNarudzbu(k)}
+                              className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white transition-all hover:brightness-110"
+                              style={{ background: ACCENT }}
+                            >
+                              <Download size={12} />
+                              Uvezi u račun
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>

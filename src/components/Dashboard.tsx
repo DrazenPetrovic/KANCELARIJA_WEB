@@ -9,6 +9,7 @@ import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
 import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
 import { GotovinskiRacuni } from "./racuniGotovinski.tsx";
 import { ZiralniRacuni } from "./racuniZiralni.tsx";
+import { RacuniPregled } from "./racuniPregled.tsx";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -1387,21 +1388,7 @@ export function Dashboard({
             </div>
           )}
 
-          {activeSection === "pregledi-racuna" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <Receipt size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Pregledi računa
-                </h2>
-              </div>
-              <p className="text-gray-500 dark:text-[#7d7498]">
-                Prikaz i pretraga računa.
-              </p>
-            </div>
-          )}
+          {activeSection === "pregledi-racuna" && <RacuniPregled />}
 
           {activeSection === "pregled-kalkulacija" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

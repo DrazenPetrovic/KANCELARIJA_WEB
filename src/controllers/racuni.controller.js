@@ -40,3 +40,54 @@ export const getRacuniPodgrupe = async (req, res) => {
     return res.status(500).json({ success: false, error: "Greška pri učitavanju podgrupa računa" });
   }
 };
+
+export const getRacunPoPregled = async (req, res) => {
+  try {
+    const sifraTabele = req.query.sifraTabele || req.params.sifraTabele;
+    if (!sifraTabele) {
+      return res.status(400).json({ success: false, error: "Sifra tabele je obavezna" });
+    }
+    const data = await RacuniService.getRacunPoPregled(sifraTabele);
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled po računu error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju detalja računa" });
+  }
+};
+
+export const unosRacuna = async (req, res) => {
+  try {
+    const { header, items } = req.body;
+    if (!header || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaju obavezni podaci (header, items)",
+      });
+    }
+
+    const rezultat = await RacuniService.unosRacuna({ header, items });
+    if (!rezultat) {
+      return res.status(500).json({ success: false, error: "Nema odgovora od procedure za unos računa" });
+    }
+
+    const kod = Number(rezultat.kod);
+    if (kod !== 0) {
+      return res.status(400).json({
+        success: false,
+        kod,
+        error: rezultat.poruka || "Greška pri unosu računa",
+      });
+    }
+
+    return res.json({
+      success: true,
+      kod,
+      poruka: rezultat.poruka,
+      sifra_tabele: rezultat.sifra_tabele,
+      broj_racuna: rezultat.broj_racuna,
+    });
+  } catch (error) {
+    console.error("Unos računa error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri unosu računa" });
+  }
+};
