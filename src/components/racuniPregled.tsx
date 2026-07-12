@@ -1,6 +1,7 @@
-import ReactDOM from "react-dom";
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Receipt, Search, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { CheckCircle2, Loader2, Printer, Receipt, Search } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { RacunA5 } from "../print/templates/RacunA5";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -9,6 +10,13 @@ const ACCENT = "#8FC74A";
 // Red vraćen sa erp.sp_racuni_gl_pregled / erp.sp_racuni_po_pregled — kolone nisu
 // unaprijed poznate na frontendu, pa se tabela gradi dinamički iz ključeva reda.
 type RacunRed = Record<string, unknown>;
+
+// Isti izvor/oblik kao "Podgrupa računa" u racuniGotovinski.tsx (GET /api/racuni/podgrupe).
+interface RacunPodgrupa {
+  sifra_podgrupe: number;
+  opis_podgrupe: string;
+  obracunava_se_pdv: number;
+}
 
 // Normalizacija naziva kolone za poređenje — mala slova, bez donjih crta/razmaka —
 // jer tačan zapis (velika/mala slova, "_" ili razmak) iz procedure nije unaprijed poznat.
@@ -79,21 +87,21 @@ const PODESAVANJA_PREGLED: Record<string, PodesavanjeKolone> = {
   // i NASLOVI_U_DVA_REDA) — naziv ovdje se ne koristi (zaglavlje je ručno).
   br_fiskalnog: { naziv: "Br Fiskalnog", sakrij: false, pozicija: 25 },
 
-  vrednost: { naziv: "Vrednost", sakrij: false, pozicija: 31 },
-  vp1: { naziv: "Vp1", sakrij: false, pozicija: 27 },
-  rab1: { naziv: "Rab1", sakrij: false, pozicija: 28 },
-  vp2: { naziv: "Vp2", sakrij: false, pozicija: 29 },
-  rab2: { naziv: "Rab2", sakrij: false, pozicija: 30 },
-  rab3: { naziv: "Rab3", sakrij: false, pozicija: 32 },
+  vrednost: { naziv: "Vrednost", sakrij: false, pozicija: 27 },
+  vp1: { naziv: "VP", sakrij: false, pozicija: 29 },
+  rab1: { naziv: "RAB", sakrij: false, pozicija: 28 },
+  vp2: { naziv: "VP", sakrij: false, pozicija: 31 },
+  rab2: { naziv: "RAB", sakrij: false, pozicija: 30 },
+  rab3: { naziv: "RAB", sakrij: false, pozicija: 32 },
   osnova_za_obracun_pdv: {
-    naziv: "Osnova za PDV",
+    naziv: "OSNOVA",
     sakrij: false,
     pozicija: 33,
   },
-  pdv: { naziv: "Pdv", sakrij: false, pozicija: 34 },
-  ukupno: { naziv: "Ukupno", sakrij: false, pozicija: 36 },
-  rabat_km: { naziv: "Rabat Km", sakrij: false, pozicija: 35 },
-  slovima: { naziv: "Slovima", sakrij: true, pozicija: 37 },
+  pdv: { naziv: "PDV", sakrij: false, pozicija: 34 },
+  ukupno: { naziv: "UKUPNO", sakrij: false, pozicija: 36 },
+  rabat_km: { naziv: "RABAT KM", sakrij: false, pozicija: 35 },
+  slovima: { naziv: "SLOVIMA", sakrij: true, pozicija: 37 },
   // Nije duplikat "vreme" polja — različita uloga (fiskalni datum/vrijeme).
   // Spojeno u ćeliju "br_fiskalnog" (pozicija/sakrij ovdje se ne koriste).
   datum_vreme_fiskalnog: {
@@ -102,68 +110,72 @@ const PODESAVANJA_PREGLED: Record<string, PodesavanjeKolone> = {
     pozicija: 26,
   },
   storniran_racun: { naziv: "Storniran Racun", sakrij: true, pozicija: 38 },
-  // Prikazuje se kao ikonica (kvačica) na kraju tabele kad je racun_placen === "DA".
-  racun_placen: { naziv: "Plaćeno", sakrij: false, naKraju: true },
+  // Ne prikazuje se kao zasebna kolona — spojeno sa "Štampa" kolonom na kraju
+  // tabele (ikonica kvačice ispod ikonice štampača kad je racun_placen === "DA").
+  racun_placen: { naziv: "Plaćeno", sakrij: true },
 };
 
 // --- erp.sp_racuni_po_pregled — stavke (proizvodi) jednog računa ---
 // Redoslijed pozicija prati tačan redoslijed kolona iz procedure.
 const PODESAVANJA_STAVKE: Record<string, PodesavanjeKolone> = {
-  sifra_tabele: { naziv: "Sifra Tabele", sakrij: false, pozicija: 1 },
-  sifra_proizvoda: { naziv: "Sifra Proizvoda", sakrij: false, pozicija: 2 },
-  naziv_proizvoda: { naziv: "Naziv Proizvoda", sakrij: false, pozicija: 3 },
-  jm: { naziv: "Jm", sakrij: false, pozicija: 4 },
-  kolicina: { naziv: "Kolicina", sakrij: false, pozicija: 5 },
-  nabavna_cijena: { naziv: "Nabavna Cijena", sakrij: false, pozicija: 6 },
-  vpc: { naziv: "Vpc", sakrij: false, pozicija: 7 },
-  rabat_proc: { naziv: "Rabat Proc", sakrij: false, pozicija: 8 },
-  cijena_sa_rab: { naziv: "Cijena Sa Rab", sakrij: false, pozicija: 9 },
-  prodajna_cijena: { naziv: "Prodajna Cijena", sakrij: false, pozicija: 10 },
-  nabavna_vrednost: { naziv: "Nabavna Vrednost", sakrij: false, pozicija: 11 },
-  vpc_vrednost: { naziv: "Vpc Vrednost", sakrij: false, pozicija: 12 },
-  rabat_km: { naziv: "Rabat Km", sakrij: false, pozicija: 13 },
+  sifra_tabele: { naziv: "Sifra Tabele", sakrij: true, pozicija: 1 },
+  sifra_proizvoda: { naziv: "Šifra", sakrij: false, pozicija: 2 },
+  naziv_proizvoda: { naziv: "Naziv artikla", sakrij: false, pozicija: 3 },
+  jm: { naziv: "JM", sakrij: false, pozicija: 4 },
+  kolicina: { naziv: "Količina", sakrij: false, pozicija: 5 },
+  nabavna_cijena: { naziv: "Nabavna Cijena", sakrij: true, pozicija: 6 },
+  vpc_bez_rabata: { naziv: "VPC", sakrij: false, pozicija: 7 },
+  vpc_vrednost_bez_rabata: {
+    naziv: "VP Vrednost",
+    sakrij: true,
+    pozicija: 8,
+  },
+
+  vpc: { naziv: "VPC", sakrij: true, pozicija: 9 },
+  vpc_vrednost: { naziv: "VP", sakrij: true, pozicija: 10 },
+  rabat_proc: { naziv: "Rabat Proc", sakrij: true, pozicija: 12 },
+  cijena_sa_rab: { naziv: "CIJENA", sakrij: false, pozicija: 12 },
+  prodajna_cijena: { naziv: "MPC", sakrij: false, pozicija: 13 },
+  nabavna_vrednost: { naziv: "Nabavna Vrednost", sakrij: true, pozicija: 15 },
+
   prodajna_vrednost: {
-    naziv: "Prodajna Vrednost",
+    naziv: "UKUPNO",
     sakrij: false,
     pozicija: 14,
   },
-  ruc: { naziv: "Ruc", sakrij: false, pozicija: 15 },
-  fiskalni_racun: { naziv: "Fiskalni Racun", sakrij: false, pozicija: 16 },
-  sifra_grupe: { naziv: "Sifra Grupe", sakrij: false, pozicija: 17 },
-  naziv_grupe: { naziv: "Naziv Grupe", sakrij: false, pozicija: 18 },
-  vrsta: { naziv: "Vrsta", sakrij: false, pozicija: 19 },
-  stornirano: { naziv: "Stornirano", sakrij: false, pozicija: 20 },
-  procenat: { naziv: "Procenat", sakrij: false, pozicija: 21 },
-  vpc_bez_rabata: { naziv: "Vpc Bez Rabata", sakrij: false, pozicija: 22 },
-  vpc_vrednost_bez_rabata: {
-    naziv: "Vpc Vrednost Bez Rabata",
-    sakrij: false,
-    pozicija: 23,
-  },
-  vpc_rabat_1: { naziv: "Vpc Rabat 1", sakrij: false, pozicija: 24 },
-  vp_1: { naziv: "Vp 1", sakrij: false, pozicija: 25 },
-  rabat_proc_2: { naziv: "Rabat Proc 2", sakrij: false, pozicija: 26 },
-  rabat_km_2: { naziv: "Rabat Km 2", sakrij: false, pozicija: 27 },
-  vpc_sa_rab_2: { naziv: "Vpc Sa Rab 2", sakrij: false, pozicija: 28 },
-  vp_2: { naziv: "Vp 2", sakrij: false, pozicija: 29 },
-  rab_proc_3: { naziv: "Rab Proc 3", sakrij: false, pozicija: 30 },
-  rabat_km_3: { naziv: "Rabat Km 3", sakrij: false, pozicija: 31 },
-  barkod: { naziv: "Barkod", sakrij: false, pozicija: 32 },
+  rabat_km: { naziv: "RABAT", sakrij: false, pozicija: 11 },
+  ruc: { naziv: "Ruc", sakrij: true, pozicija: 17 },
+  fiskalni_racun: { naziv: "Fiskalni Racun", sakrij: true, pozicija: 18 },
+  sifra_grupe: { naziv: "Sifra Grupe", sakrij: true, pozicija: 19 },
+  naziv_grupe: { naziv: "Naziv Grupe", sakrij: true, pozicija: 20 },
+  vrsta: { naziv: "Vrsta", sakrij: true, pozicija: 21 },
+  stornirano: { naziv: "Stornirano", sakrij: true, pozicija: 22 },
+  procenat: { naziv: "Procenat", sakrij: true, pozicija: 23 },
+
+  vpc_rabat_1: { naziv: "Vpc Rabat 1", sakrij: true, pozicija: 24 },
+  vp_1: { naziv: "Vp 1", sakrij: true, pozicija: 25 },
+  rabat_proc_2: { naziv: "Rabat Proc 2", sakrij: true, pozicija: 26 },
+  rabat_km_2: { naziv: "Rabat Km 2", sakrij: true, pozicija: 27 },
+  vpc_sa_rab_2: { naziv: "Vpc Sa Rab 2", sakrij: true, pozicija: 28 },
+  vp_2: { naziv: "Vp 2", sakrij: true, pozicija: 29 },
+  rab_proc_3: { naziv: "Rab Proc 3", sakrij: true, pozicija: 30 },
+  rabat_km_3: { naziv: "Rabat Km 3", sakrij: true, pozicija: 31 },
+  barkod: { naziv: "Barkod", sakrij: true, pozicija: 32 },
   nabavna_cijena_proizvoda: {
     naziv: "Nabavna Cijena Proizvoda",
-    sakrij: false,
+    sakrij: true,
     pozicija: 33,
   },
   nabavna_vrednost_proizvoda: {
     naziv: "Nabavna Vrednost Proizvoda",
-    sakrij: false,
+    sakrij: true,
     pozicija: 34,
   },
-  ruc_2: { naziv: "Ruc 2", sakrij: false, pozicija: 35 },
-  pdv_po_artiklu: { naziv: "Pdv Po Artiklu", sakrij: false, pozicija: 36 },
+  ruc_2: { naziv: "Ruc 2", sakrij: true, pozicija: 35 },
+  pdv_po_artiklu: { naziv: "Pdv Po Artiklu", sakrij: true, pozicija: 36 },
   nabavna_vrednost_za_ruc: {
     naziv: "Nabavna Vrednost Za Ruc",
-    sakrij: false,
+    sakrij: true,
     pozicija: 37,
   },
 };
@@ -225,23 +237,68 @@ const PARTNER_POLJA = [
 ];
 // Parovi kolona spojeni u jednu ćeliju (gornji_ključ -> donji_ključ). Donji
 // ključ se izbacuje iz generičkog prikaza kolona (prikazan je samo unutar
-// ćelije gornjeg ključa). Dodaj novi par ovdje + naslov u NASLOVI_U_DVA_REDA.
+// ćelije gornjeg ključa). Zaglavlje (dva reda) se izvodi iz "naziv" polja OBA
+// ključa u PODESAVANJA_PREGLED — nema posebne liste naslova za održavanje,
+// promijeni "naziv" gore ili dolje ključa i zaglavlje se samo ažurira.
 const PAROVI_CELIJA: Record<string, string> = {
   vrsta_racuna_novo: "datum_racuna",
   br_fiskalnog: "datum_vreme_fiskalnog",
-  vp1: "rab1",
-  vp2: "rab2",
-  vrednost: "rab3",
+  vp1: "rab2",
+  vp2: "rab3",
+  vrednost: "rab1",
   osnova_za_obracun_pdv: "pdv",
 };
-// Zaglavlja spojenih ćelija — prikazuju se u dva reda umjesto jednog naziva.
-const NASLOVI_U_DVA_REDA: Record<string, [string, string]> = {
-  vrsta_racuna_novo: ["Broj računa", "Datum računa"],
-  br_fiskalnog: ["Br. fiskalnog", "Datum fiskalnog"],
-  vp1: ["Vp1", "Rab1"],
-  vp2: ["Vp2", "Rab2"],
-  vrednost: ["Vrednost", "Rab3"],
-  osnova_za_obracun_pdv: ["Osnova za PDV", "PDV"],
+// Kolone kod kojih je razmak prema susjednoj koloni sveden na 5px (5+5=10px
+// ukupno), da bi niz Broj računa..Osnova za PDV bio vizuelno zbijen.
+const TIJESAN_RAZMAK_LIJEVO = new Set([
+  "br_fiskalnog",
+  "vrednost",
+  "vp1",
+  "vp2",
+  "osnova_za_obracun_pdv",
+]);
+const TIJESAN_RAZMAK_DESNO = new Set([
+  "vrsta_racuna_novo",
+  "br_fiskalnog",
+  "vrednost",
+  "vp1",
+  "vp2",
+]);
+// Stavke tabela: numeričke kolone od "Količina" do "MPV" — sveden razmak
+// (uže od podrazumijevanog px-3) i poravnate desno, da "Naziv artikla" dobije
+// više prostora a ovaj blok djeluje zbijeno, gurnut uz desnu ivicu tabele.
+const STAVKE_ZBIJENE_KOLONE = new Set([
+  "kolicina",
+  "vpc_bez_rabata",
+  "vpc_vrednost_bez_rabata",
+  "vpc",
+  "vpc_vrednost",
+  "rabat_km",
+  "cijena_sa_rab",
+  "prodajna_cijena",
+  "prodajna_vrednost",
+]);
+// Kolone ograničene na širinu od 6 karaktera (Šifra, JM) — kratke vrijednosti,
+// nema potrebe da zauzimaju više prostora.
+const STAVKE_USKE_KOLONE = new Set(["sifra_proizvoda", "jm"]);
+// Fiksna širina (u broju karaktera) za pojedine kolone stavki — dodaje se kao
+// max-width preko style-a, bez obzira na to koju className/padding kolona ima.
+const STAVKE_SIRINA_KARAKTERA: Record<string, number> = {
+  sifra_proizvoda: 6,
+  jm: 6,
+  kolicina: 20,
+  vpc_bez_rabata: 12,
+  rabat_km: 12,
+  cijena_sa_rab: 12,
+  prodajna_cijena: 12,
+  prodajna_vrednost: 20,
+};
+// MPC (prodajna_cijena) i UKUPNO (prodajna_vrednost) — razmak između njih
+// dodatno smanjen (3px) da djeluju primaknuto jedno drugom.
+const stavkeRazmak = (k: string) => {
+  if (k === "prodajna_cijena") return "pl-1.5 pr-[3px]";
+  if (k === "prodajna_vrednost") return "pl-[3px] pr-1.5";
+  return "px-1.5";
 };
 // vrsta_racuna_novi se koristi da vizuelno razdvoji račune po vrsti (1 = MP, 2 = VP).
 const BOJA_PO_VRSTI_RACUNA: Record<string, string> = {
@@ -250,6 +307,10 @@ const BOJA_PO_VRSTI_RACUNA: Record<string, string> = {
 };
 const bojaVrsteRacuna = (v: unknown) =>
   BOJA_PO_VRSTI_RACUNA[String(v)] ?? "#9ca3af";
+// Storniran račun ima prioritet nad bojom po vrsti_racuna_novi — cijeli red se
+// oboji ovom bojom bez obzira na MP/VP.
+const BOJA_STORNIRANO = "#ef4444";
+const jeStorniranRacun = (v: unknown) => Number(v) === 1;
 
 const nadjiSifruTabele = (red: RacunRed): string | number | null => {
   for (const kljuc of KLJUC_SIFRE) {
@@ -287,6 +348,10 @@ const formatDatumVrijemeDMY = (v: unknown): string => {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+// Kolone koje uvijek prikazuju 2 decimale, bez obzira na to da li vrijednost
+// stiže kao broj ili string (npr. kad SQL agregacija vrati čist JS broj).
+const KOLONE_UVIJEK_DECIMALNE = ["ukupno"];
+
 const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   if (kljuc === "datum_racuna") return formatDatumDMY(v);
   if (kljuc === "datum_vreme_fiskalnog") return formatDatumVrijemeDMY(v);
@@ -296,7 +361,9 @@ const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
     // DECIMAL kolone dolaze iz baze kao string sa tačkom (npr. "150.00") čak i
     // kad je vrijednost cio broj — zadrži 2 decimale u tom slučaju. INT kolone
     // dolaze kao broj (bez tačke u zapisu) i ostaju prikazane bez decimala.
-    const jeDecimalno = typeof v === "string" && v.includes(".");
+    const jeDecimalno =
+      (typeof v === "string" && v.includes(".")) ||
+      (kljuc !== undefined && KOLONE_UVIJEK_DECIMALNE.includes(kljuc));
     return Number.isInteger(n) && !jeDecimalno ? String(n) : n.toFixed(2);
   }
   return String(v);
@@ -306,11 +373,25 @@ function GenericnaTabela({
   redovi,
   podesavanja,
   onKlik,
+  prosireniKljuc,
+  prosireniSadrzaj,
+  varijanta = "racuni",
+  onStampaj,
 }: {
   redovi: RacunRed[];
   podesavanja: Record<string, PodesavanjeKolone>;
   onKlik?: (red: RacunRed) => void;
+  // Šifra tabele reda čije su stavke trenutno prikazane ispod njega (accordion).
+  prosireniKljuc?: string | number | null;
+  // Sadržaj ubačen u dodatni red ispod prosirenog reda (tabela stavki / spinner).
+  prosireniSadrzaj?: ReactNode;
+  // "stavke" dobija vizuelno drugačiju (zelenkastu) paletu da se jasno razlikuje
+  // od glavne tabele računa kad je prikazana ugniježđeno ispod izabranog reda.
+  varijanta?: "racuni" | "stavke";
+  // Klik na ikonicu štampača u koloni "Štampa" (samo glavna tabela računa).
+  onStampaj?: (red: RacunRed) => void;
 }) {
+  const jeStavke = varijanta === "stavke";
   const imaPartnera =
     redovi.length > 0 && PARTNER_POLJA.some((k) => k in redovi[0]);
 
@@ -340,23 +421,65 @@ function GenericnaTabela({
     <div className="overflow-x-auto">
       <table className="w-full text-xs border-collapse">
         <thead>
-          <tr className="sticky top-0 z-10 bg-[#f4f1f9] dark:bg-[#1e1a2d] text-gray-500 dark:text-[#7d7498]">
+          <tr
+            className={`sticky top-0 z-10 ${
+              jeStavke
+                ? "bg-[#e9f5da] dark:bg-[#1b2712] text-[#4d7a1f] dark:text-[#a3d474]"
+                : "bg-[#785E9E] dark:bg-[#5b4a7d] text-white dark:text-[#f0ecfa]"
+            }`}
+          >
             {imaPartnera && (
-              <th className="text-left pl-3 pr-[5px] py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] whitespace-nowrap">
+              <th
+                className={`text-left pl-3 pr-[5px] py-2 font-bold whitespace-nowrap border-b ${
+                  jeStavke
+                    ? "border-[#8FC74A]/40 dark:border-[#8FC74A]/30"
+                    : "border-[#634c86] dark:border-[#4a3c69]"
+                }`}
+                style={
+                  !jeStavke ? { borderLeft: "4px solid #8FC74A" } : undefined
+                }
+              >
                 Partner
               </th>
             )}
-            {kolone.map((k) => {
-              const dvaReda = NASLOVI_U_DVA_REDA[k];
+            {kolone.map((k, idx) => {
+              const donjiKljuc = PAROVI_CELIJA[k];
+              const jePrvaCelija = !imaPartnera && idx === 0;
+              const jeZbijena = jeStavke && STAVKE_ZBIJENE_KOLONE.has(k);
+              const jeUska = jeStavke && STAVKE_USKE_KOLONE.has(k);
               return (
                 <th
                   key={k}
-                  className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] whitespace-nowrap"
+                  className={`py-2 font-bold whitespace-nowrap border-b ${
+                    jeUska
+                      ? "text-left px-1.5"
+                      : jeZbijena
+                        ? `text-right ${stavkeRazmak(k)}`
+                        : "text-left px-3"
+                  } ${
+                    jeStavke
+                      ? "border-[#8FC74A]/40 dark:border-[#8FC74A]/30"
+                      : "border-[#634c86] dark:border-[#4a3c69]"
+                  }`}
+                  style={{
+                    ...(!jeStavke && jePrvaCelija
+                      ? { borderLeft: "4px solid #8FC74A" }
+                      : undefined),
+                    ...(jeStavke && k === "naziv_proizvoda"
+                      ? { minWidth: "260px" }
+                      : undefined),
+                    ...(jeStavke && STAVKE_SIRINA_KARAKTERA[k]
+                      ? {
+                          width: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
+                          maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
+                        }
+                      : undefined),
+                  }}
                 >
-                  {dvaReda ? (
+                  {donjiKljuc ? (
                     <>
-                      <div>{dvaReda[0]}</div>
-                      <div>{dvaReda[1]}</div>
+                      <div>{lijepNazivKolone(podesavanja, k)}</div>
+                      <div>{lijepNazivKolone(podesavanja, donjiKljuc)}</div>
                     </>
                   ) : (
                     lijepNazivKolone(podesavanja, k)
@@ -364,84 +487,231 @@ function GenericnaTabela({
                 </th>
               );
             })}
+            {!jeStavke && (
+              <th className="px-3 py-2 border-b border-[#634c86] dark:border-[#4a3c69]" />
+            )}
           </tr>
         </thead>
         <tbody>
           {redovi.map((red, i) => {
-            const boja = bojaVrsteRacuna(red.vrsta_racuna_novi);
+            const storniran = jeStorniranRacun(red.storniran_racun);
+            const boja = jeStavke
+              ? ACCENT
+              : storniran
+                ? BOJA_STORNIRANO
+                : bojaVrsteRacuna(red.vrsta_racuna_novi);
+            const sifraTabele = nadjiSifruTabele(red);
+            const sifraProizvoda = red.sifra_proizvoda;
+            const brojRacuna = red.broj_racuna;
+            const keyBase =
+              sifraTabele ?? sifraProizvoda ?? brojRacuna ?? "red";
+            const jeProsiren =
+              sifraTabele !== null &&
+              prosireniKljuc !== undefined &&
+              prosireniKljuc !== null &&
+              String(sifraTabele) === String(prosireniKljuc);
+            // Crveni obrub oko cijelog "para" (header red + red sa stavkama ispod
+            // njega) — vrh i lijeva/desna ivica idu na header ćelije, dno na
+            // ćeliju reda sa stavkama (vidi ispod, poslije kolone.map).
+            const prvaKolona = imaPartnera ? null : (kolone[0] ?? null);
+            const zadnjaKolona = kolone[kolone.length - 1] ?? null;
+            const obrubCelije = (
+              k: string,
+            ): React.CSSProperties | undefined => {
+              if (!jeProsiren) return undefined;
+              const stil: React.CSSProperties = {
+                borderTop: "2px solid #ef4444",
+              };
+              if (k === prvaKolona) stil.borderLeft = "2px solid #ef4444";
+              // Kad postoji dodatna "Štampa" kolona (samo glavna tabela), ona
+              // nosi desnu ivicu umjesto zadnje podatkovne kolone.
+              if (k === zadnjaKolona && jeStavke)
+                stil.borderRight = "2px solid #ef4444";
+              return stil;
+            };
+            const obrubStampe: React.CSSProperties | undefined = jeProsiren
+              ? {
+                  borderTop: "2px solid #ef4444",
+                  borderRight: "2px solid #ef4444",
+                }
+              : undefined;
             return (
-              <tr
-                key={nadjiSifruTabele(red) ?? i}
-                onClick={() => onKlik?.(red)}
-                style={{ borderLeft: `3px solid ${boja}` }}
-                className={`border-b border-gray-100 dark:border-[#2a2340] ${
-                  i % 2 === 0
-                    ? "bg-white dark:bg-[#1a1528]"
-                    : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
-                } ${onKlik ? "cursor-pointer hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]" : ""}`}
-              >
-                {imaPartnera && (
-                  <td className="pl-3 pr-[5px] py-1.5 whitespace-nowrap">
-                    <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
-                      {formatirajVrijednost(red.naziv_partnera)}
-                    </div>
-                    <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                      Šifra: {formatirajVrijednost(red.sifra_partnera)} ·{" "}
-                      {formatirajVrijednost(red.adresa_partnera)} ·{" "}
-                      {formatirajVrijednost(red.naziv_grada)}
-                    </div>
-                  </td>
-                )}
-                {kolone.map((k) => {
-                  if (k === "racun_placen") {
-                    const placen = String(red[k] ?? "").trim().toUpperCase() === "DA";
-                    return (
-                      <td key={k} className="px-3 py-1.5 text-center">
-                        {placen && (
-                          <CheckCircle2
-                            size={15}
-                            className="inline-block text-emerald-500"
-                          />
-                        )}
-                      </td>
-                    );
-                  }
-                  const donjiKljuc = PAROVI_CELIJA[k];
-                  if (donjiKljuc) {
+              <Fragment key={`${String(keyBase)}-${i}`}>
+                <tr
+                  onClick={() => onKlik?.(red)}
+                  style={{
+                    borderLeft: `4px solid ${jeProsiren ? PRIMARY : boja}`,
+                  }}
+                  className={`border-b ${
+                    jeProsiren
+                      ? "border-[#785E9E]/30 dark:border-[#785E9E]/40 bg-[#785E9E]/15 dark:bg-[#785E9E]/25 shadow-[inset_0_0_0_1px_rgba(120,94,158,0.35)]"
+                      : jeStavke
+                        ? `border-[#8FC74A]/25 dark:border-[#8FC74A]/20 ${
+                            i % 2 === 0
+                              ? "bg-white dark:bg-[#161c10]"
+                              : "bg-[#f4faec] dark:bg-[#1b2712]"
+                          }`
+                        : `border-gray-100 dark:border-[#2a2340] ${
+                            storniran
+                              ? "bg-red-50/70 dark:bg-red-950/20"
+                              : i % 2 === 0
+                                ? "bg-white dark:bg-[#1a1528]"
+                                : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                          }`
+                  } ${onKlik ? "cursor-pointer hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]" : ""}`}
+                >
+                  {imaPartnera && (
+                    <td
+                      className="pl-3 pr-[5px] py-1.5 whitespace-nowrap"
+                      style={
+                        jeProsiren
+                          ? {
+                              borderTop: "2px solid #ef4444",
+                              borderLeft: "2px solid #ef4444",
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                        {formatirajVrijednost(red.naziv_partnera)}
+                      </div>
+                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                        Šifra: {formatirajVrijednost(red.sifra_partnera)} ·{" "}
+                        {formatirajVrijednost(red.adresa_partnera)} ·{" "}
+                        {formatirajVrijednost(red.naziv_grada)}
+                      </div>
+                    </td>
+                  )}
+                  {kolone.map((k) => {
+                    const donjiKljuc = PAROVI_CELIJA[k];
+                    if (donjiKljuc) {
+                      const padding = `${TIJESAN_RAZMAK_LIJEVO.has(k) ? "pl-[5px]" : "pl-3"} ${
+                        TIJESAN_RAZMAK_DESNO.has(k) ? "pr-[5px]" : "pr-3"
+                      }`;
+                      const jeRabatDonji =
+                        normalizujKljuc(donjiKljuc).startsWith("rab");
+                      return (
+                        <td
+                          key={k}
+                          className={`${padding} py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]`}
+                          style={obrubCelije(k)}
+                        >
+                          <div
+                            className="font-semibold"
+                            style={{ color: PRIMARY }}
+                          >
+                            {formatirajVrijednost(red[k], k)}
+                          </div>
+                          <div
+                            className={`text-[10px] ${jeRabatDonji ? "font-semibold" : "text-gray-400 dark:text-[#5f5878]"}`}
+                            style={jeRabatDonji ? { color: ACCENT } : undefined}
+                          >
+                            {formatirajVrijednost(red[donjiKljuc], donjiKljuc)}
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (k === "napomena") {
+                      return (
+                        <td
+                          key={k}
+                          className="px-3 py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]"
+                          style={obrubCelije(k)}
+                        >
+                          {formatirajVrijednost(red[k], k)}
+                        </td>
+                      );
+                    }
+                    const jeZbijena = jeStavke && STAVKE_ZBIJENE_KOLONE.has(k);
+                    const jeUska = jeStavke && STAVKE_USKE_KOLONE.has(k);
                     return (
                       <td
                         key={k}
-                        className="px-3 py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]"
+                        className={`py-1.5 whitespace-nowrap ${
+                          jeUska
+                            ? "px-1.5"
+                            : jeZbijena
+                              ? `text-right ${stavkeRazmak(k)}`
+                              : "px-3"
+                        } ${
+                          k === "vrsta_racuna_novi"
+                            ? "font-bold"
+                            : k === "ukupno"
+                              ? "font-bold text-sm"
+                              : k === "rabat_km"
+                                ? "font-semibold"
+                                : "text-gray-700 dark:text-[#c5bfd8]"
+                        }`}
+                        style={{
+                          ...(k === "vrsta_racuna_novi" || k === "ukupno"
+                            ? { color: boja }
+                            : k === "rabat_km"
+                              ? { color: ACCENT }
+                              : undefined),
+                          ...(jeStavke && k === "naziv_proizvoda"
+                            ? { minWidth: "260px" }
+                            : undefined),
+                          ...(jeStavke && STAVKE_SIRINA_KARAKTERA[k]
+                            ? {
+                                width: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
+                                maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
+                              }
+                            : undefined),
+                          ...obrubCelije(k),
+                        }}
                       >
-                        <div
-                          className="font-semibold"
-                          style={{ color: PRIMARY }}
-                        >
-                          {formatirajVrijednost(red[k], k)}
-                        </div>
-                        <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                          {formatirajVrijednost(red[donjiKljuc], donjiKljuc)}
-                        </div>
+                        {formatirajVrijednost(red[k], k)}
                       </td>
                     );
-                  }
-                  return (
-                    <td
-                      key={k}
-                      className={`px-3 py-1.5 whitespace-nowrap ${
-                        k === "vrsta_racuna_novi"
-                          ? "font-bold"
-                          : "text-gray-700 dark:text-[#c5bfd8]"
-                      }`}
-                      style={
-                        k === "vrsta_racuna_novi" ? { color: boja } : undefined
-                      }
-                    >
-                      {formatirajVrijednost(red[k], k)}
+                  })}
+                  {!jeStavke && (
+                    <td className="px-3 py-1.5 text-center" style={obrubStampe}>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onStampaj?.(red);
+                          }}
+                          className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10"
+                        >
+                          <Printer
+                            size={14}
+                            className="text-gray-400 dark:text-[#7d7498]"
+                          />
+                        </button>
+                        {String(red.racun_placen ?? "")
+                          .trim()
+                          .toUpperCase() === "DA" && (
+                          <CheckCircle2
+                            size={13}
+                            className="text-emerald-500"
+                          />
+                        )}
+                      </div>
                     </td>
-                  );
-                })}
-              </tr>
+                  )}
+                </tr>
+                {jeProsiren && (
+                  <tr className="border-b border-gray-100 dark:border-[#2a2340]">
+                    <td
+                      colSpan={
+                        kolone.length +
+                        (imaPartnera ? 1 : 0) +
+                        (jeStavke ? 0 : 1)
+                      }
+                      className="p-0 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                      style={{
+                        borderLeft: "2px solid #ef4444",
+                        borderRight: "2px solid #ef4444",
+                        borderBottom: "2px solid #ef4444",
+                      }}
+                    >
+                      {prosireniSadrzaj}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
@@ -451,14 +721,44 @@ function GenericnaTabela({
 }
 
 export function RacuniPregled() {
+  const { openPrint } = usePrint();
   const [racuni, setRacuni] = useState<RacunRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
 
-  const [odabraniRacun, setOdabraniRacun] = useState<RacunRed | null>(null);
+  // Šifra tabele reda čije su stavke trenutno prikazane ispod njega (accordion).
+  const [prosirenaSifra, setProsirenaSifra] = useState<string | number | null>(
+    null,
+  );
   const [stavke, setStavke] = useState<RacunRed[]>([]);
   const [loadingStavke, setLoadingStavke] = useState(false);
+
+  const [podgrupe, setPodgrupe] = useState<RacunPodgrupa[]>([]);
+  const [loadingPodgrupe, setLoadingPodgrupe] = useState(true);
+  const [odabranaPodgrupa, setOdabranaPodgrupa] = useState<number | null>(null);
+
+  const [odabranoPlaceno, setOdabranoPlaceno] = useState<"" | "DA" | "NE">("");
+  const [odabranoStornirano, setOdabranoStornirano] = useState<
+    "" | "DA" | "NE"
+  >("");
+
+  useEffect(() => {
+    const fetchPodgrupe = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/racuni/podgrupe`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setPodgrupe(d.data ?? []);
+        }
+      } finally {
+        setLoadingPodgrupe(false);
+      }
+    };
+    void fetchPodgrupe();
+  }, []);
 
   useEffect(() => {
     const fetchRacune = async () => {
@@ -485,19 +785,47 @@ export function RacuniPregled() {
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
-    if (!q) return racuni;
-    return racuni.filter((red) =>
-      Object.values(red).some(
-        (v) =>
-          v !== null && v !== undefined && String(v).toLowerCase().includes(q),
-      ),
-    );
-  }, [racuni, pretraga]);
+    return racuni.filter((red) => {
+      const odgovaraPretrazi =
+        !q ||
+        Object.values(red).some(
+          (v) =>
+            v !== null &&
+            v !== undefined &&
+            String(v).toLowerCase().includes(q),
+        );
+      const odgovaraPodgrupi =
+        odabranaPodgrupa === null ||
+        Number(red.vrsta_racuna_pod) === odabranaPodgrupa;
+      const placeno =
+        String(red.racun_placen ?? "")
+          .trim()
+          .toUpperCase() === "DA";
+      const odgovaraPlaceno =
+        odabranoPlaceno === "" || (odabranoPlaceno === "DA") === placeno;
+      const stornirano = jeStorniranRacun(red.storniran_racun);
+      const odgovaraStornirano =
+        odabranoStornirano === "" ||
+        (odabranoStornirano === "DA") === stornirano;
+      return (
+        odgovaraPretrazi &&
+        odgovaraPodgrupi &&
+        odgovaraPlaceno &&
+        odgovaraStornirano
+      );
+    });
+  }, [racuni, pretraga, odabranaPodgrupa, odabranoPlaceno, odabranoStornirano]);
 
   const handleKlikRacun = async (red: RacunRed) => {
     const sifraTabele = nadjiSifruTabele(red);
     if (sifraTabele === null) return;
-    setOdabraniRacun(red);
+    // Klik na već prošireni red ga zatvara (accordion ponašanje).
+    if (String(sifraTabele) === String(prosirenaSifra)) {
+      setProsirenaSifra(null);
+      setStavke([]);
+      return;
+    }
+    setProsirenaSifra(sifraTabele);
     setLoadingStavke(true);
     try {
       const res = await fetch(
@@ -513,6 +841,67 @@ export function RacuniPregled() {
     } finally {
       setLoadingStavke(false);
     }
+  };
+
+  // Štampa A5 računa (zaglavlje + stavke) preko print servisa — vidi PrintModal/PrintContext.
+  // A5 template trenutno pokriva samo vrsta_racuna_novi 1 (MP) i 3 — za ostale
+  // vrste (npr. 2 = VP) samo obavijesti korisnika, dok se ne doda odgovarajući template.
+  const handleStampaj = async (red: RacunRed) => {
+    const vrsta = Number(red.vrsta_racuna_novi);
+    if (vrsta !== 1 && vrsta !== 3) {
+      alert("Štampa A5 trenutno nije dostupna za ovu vrstu računa.");
+      return;
+    }
+    const sifraTabele = nadjiSifruTabele(red);
+    if (sifraTabele === null) return;
+    let stavkeZaStampu: RacunRed[] = [];
+    try {
+      const res = await fetch(
+        `${API_URL}/api/racuni/pregled-stavke?sifraTabele=${sifraTabele}`,
+        { credentials: "include" },
+      );
+      const json = await res.json();
+      stavkeZaStampu = res.ok && json.success ? (json.data ?? []) : [];
+    } catch {
+      alert("Greška pri učitavanju stavki za štampu.");
+      return;
+    }
+
+    const brojRacuna = String(red.vrsta_racuna_novo ?? "-");
+    openPrint({
+      title: `Račun ${brojRacuna}`,
+      component: (
+        <RacunA5
+          racun={{
+            broj_racuna: brojRacuna,
+            datum_racuna: String(red.datum_racuna ?? ""),
+            naziv_partnera: String(red.naziv_partnera ?? "-"),
+            sifra_partnera: (red.sifra_partnera as string | number) ?? "-",
+            adresa_partnera: (red.adresa_partnera as string | null) ?? null,
+            naziv_grada: (red.naziv_grada as string | null) ?? null,
+            napomena: (red.napomena as string | null) ?? null,
+            osnova_za_obracun_pdv:
+              (red.osnova_za_obracun_pdv as number | string | null) ?? null,
+            pdv: (red.pdv as number | string | null) ?? null,
+            ukupno: (red.ukupno as number | string) ?? 0,
+            rabat_km: (red.rabat_km as number | string | null) ?? null,
+            slovima: (red.slovima as string | null) ?? null,
+            br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+          }}
+          stavke={stavkeZaStampu.map((s) => ({
+            sifra_proizvoda: (s.sifra_proizvoda as string | number) ?? "",
+            naziv_proizvoda: String(s.naziv_proizvoda ?? ""),
+            jm: String(s.jm ?? ""),
+            kolicina: (s.kolicina as number | string) ?? 0,
+            prodajna_cijena:
+              (s.prodajna_cijena as number | string) ??
+              (s.cijena_sa_rab as number | string) ??
+              0,
+            prodajna_vrednost: (s.prodajna_vrednost as number | string) ?? 0,
+          }))}
+        />
+      ),
+    });
   };
 
   return (
@@ -534,18 +923,73 @@ export function RacuniPregled() {
       </div>
 
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="relative max-w-xs">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
-          />
-          <input
-            type="text"
-            placeholder="Pretraži račune..."
-            value={pretraga}
-            onChange={(e) => setPretraga(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative max-w-xs flex-1 min-w-[200px]">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+            />
+            <input
+              type="text"
+              placeholder="Pretraži račune..."
+              value={pretraga}
+              onChange={(e) => setPretraga(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
+            />
+          </div>
+          <select
+            value={odabranaPodgrupa ?? ""}
+            onChange={(e) =>
+              setOdabranaPodgrupa(
+                e.target.value === "" ? null : Number(e.target.value),
+              )
+            }
+            disabled={loadingPodgrupe}
+            className={`ml-auto px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+              odabranaPodgrupa !== null
+                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+            }`}
+          >
+            <option value="">
+              {loadingPodgrupe ? "Učitavanje..." : "Sve podgrupe"}
+            </option>
+            {podgrupe.map((p) => (
+              <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
+                {p.opis_podgrupe} ({p.sifra_podgrupe})
+              </option>
+            ))}
+          </select>
+          <select
+            value={odabranoPlaceno}
+            onChange={(e) =>
+              setOdabranoPlaceno(e.target.value as "" | "DA" | "NE")
+            }
+            className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+              odabranoPlaceno !== ""
+                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+            }`}
+          >
+            <option value="">Plaćeno: svi</option>
+            <option value="DA">Plaćeno: Da</option>
+            <option value="NE">Plaćeno: Ne</option>
+          </select>
+          <select
+            value={odabranoStornirano}
+            onChange={(e) =>
+              setOdabranoStornirano(e.target.value as "" | "DA" | "NE")
+            }
+            className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+              odabranoStornirano !== ""
+                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+            }`}
+          >
+            <option value="">Storniran: svi</option>
+            <option value="DA">Storniran: Da</option>
+            <option value="NE">Storniran: Ne</option>
+          </select>
         </div>
       </div>
 
@@ -570,58 +1014,27 @@ export function RacuniPregled() {
             redovi={filtrirani}
             podesavanja={PODESAVANJA_PREGLED}
             onKlik={handleKlikRacun}
-          />
-        )}
-      </div>
-
-      {odabraniRacun &&
-        ReactDOM.createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.45)" }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setOdabraniRacun(null);
-            }}
-          >
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[900px] max-w-[95vw] max-h-[80vh] flex flex-col overflow-hidden">
-              <div
-                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
-                style={{ background: PRIMARY }}
-              >
-                <Receipt size={18} className="text-white flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-white text-base truncate">
-                    Stavke računa
-                  </div>
-                  <div className="text-white/70 text-xs mt-0.5">
-                    Šifra tabele: {nadjiSifruTabele(odabraniRacun)}
-                  </div>
+            onStampaj={handleStampaj}
+            prosireniKljuc={prosirenaSifra}
+            prosireniSadrzaj={
+              loadingStavke ? (
+                <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-sm">Učitavanje...</span>
                 </div>
-                <button
-                  onClick={() => setOdabraniRacun(null)}
-                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-auto">
-                {loadingStavke ? (
-                  <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span className="text-sm">Učitavanje...</span>
-                  </div>
-                ) : (
+              ) : (
+                <div className="max-h-[45vh] overflow-auto border-t-2 border-[#8FC74A]">
                   <GenericnaTabela
                     redovi={stavke}
                     podesavanja={PODESAVANJA_STAVKE}
+                    varijanta="stavke"
                   />
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body,
+                </div>
+              )
+            }
+          />
         )}
+      </div>
     </div>
   );
 }

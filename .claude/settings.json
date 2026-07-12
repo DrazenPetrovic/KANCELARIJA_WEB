@@ -57,7 +57,16 @@
       "Read(//d/WEB_KOMERCIJALA/KANCELARIA_WEB/src/routes/**)",
       "Bash(node --check src/controllers/racuni.controller.js)",
       "Bash(node --check src/routes/racuni.routes.js)",
-      "Bash(node --check src/controllers/pregledi.controller.js)"
+      "Bash(node --check src/controllers/pregledi.controller.js)",
+      "Bash(echo \"TSC_EXIT:$?\")",
+      "Bash(echo \"TSC:$?\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/tailwindcss/package.json'\\).version\\)\")",
+      "Bash(cd \"d:/WEB_KOMERCIJALA/PRODAJA_WEB\" && find . -path ./node_modules -prune -o -iname \"*print*\" -print 2>/dev/null | head -80)",
+      "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/**)",
+      "Bash(cd \"d:/WEB_KOMERCIJALA/PRODAJA_WEB\" && grep -ril \"A5\" --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" src 2>/dev/null | grep -v node_modules)",
+      "Bash(cd \"d:/WEB_KOMERCIJALA/PRODAJA_WEB\" && ls -la src/components/print/templates && echo \"---\" && ls -la src/components/print)",
+      "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/components/print/templates/**)",
+      "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/utils/**)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"
