@@ -124,6 +124,23 @@ const jeOkPacket = (obj) => {
   return kljucevi.every((k) => Object.prototype.hasOwnProperty.call(obj, k));
 };
 
+export const azurirajFiskalnePodatke = async (
+  sifraTabele,
+  brojFiskalnog,
+  datumFiskalnog,
+) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_racun_azuriranje_fiskalnog(?, ?, ?)",
+      [sifraTabele, brojFiskalnog, datumFiskalnog],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : null;
+  });
+};
+
 export const unosRacuna = async (podaci) => {
   return withConnection(async (connection) => {
     try {

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Download,
+  Eye,
   History,
   Loader2,
   Lock,
@@ -24,12 +25,16 @@ import {
 } from "lucide-react";
 import {
   preuzmiStatusEsira,
+  izdajFiskalniRacun,
+  izdvojiFiskalnePodatke,
+  posaljiEsirDebugZahtjev,
   ESIR_OZNAKA_SA_PDV,
   ESIR_SLIP_PRESET_58MM,
   type EsirStavka,
   type EsirPlacanje,
   type EsirInvoiceRequest,
   type EsirOpcijeStampe,
+  type EsirInvoiceResponse,
 } from "./fiskalniRacuni";
 import { brojUSlovima } from "../utils/brojUSlovima";
 import { getCurrentUser } from "../utils/auth";
@@ -44,6 +49,17 @@ const ACCENT = "#8FC74A";
 const VRSTA_RACUNA = "g";
 const VRSTA_RACUNA_NOVI = 1;
 
+// Koraci procesa čuvanja računa (redoslijed prati handleSacuvajRacun) — indeks
+// u nizu + 1 = vrijednost koju drži korakCuvanja state dok je taj korak aktivan.
+const KORACI_CUVANJA = [
+  "Unos podataka za račun",
+  "Dobijanje šifre tabele",
+  "Ažuriranje dostave",
+  "Slanje ka ESIR-u",
+  "Prihvat JSON-a od ESIR-a",
+];
+
+
 // Stopa PDV-a — MPC je osnova obračuna, VPC = MPC / (1 + STOPA_PDV).
 const STOPA_PDV = 0.17;
 
@@ -54,8 +70,10 @@ const formatDatumIso = (d: Date) =>
 const formatVremeIso = (d: Date) =>
   `${formatDatumIso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-const formatZaNazivFajla = (d: Date) =>
-  `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+// Format naziva fajla za ESIR debug dump: yyyy-MM-dd_HH_mm_ss (šifra tabele se
+// dodaje posebno, vidi sacuvajEsirGreskuJson).
+const formatDatumZaNazivFajla = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}_${pad(d.getMinutes())}_${pad(d.getSeconds())}`;
 
 const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
@@ -135,6 +153,7 @@ interface Teren {
 }
 
 interface NarudzbaZavrsenaProizvod {
+  sifra_tabele: number;
   sifra_proizvoda: string;
   naziv_proizvoda: string;
   jm: string;
@@ -254,7 +273,19 @@ interface Partner {
 }
 
 export function GotovinskiRacuni() {
-  const { openPrint } = usePrint();
+  const { openPrint, printDirectly, selectedPrinter } = usePrint();
+  // Kad je uključeno, "Sačuvaj i štampaj" šalje A5 obrazac direktno na izabrani
+  // štampač (bez otvaranja print modala da korisnik klikne štampaj).
+  const [stampajDirektno, setStampajDirektno] = useState(false);
+  // Privremeno (debug) — modal koji prikazuje tačan zahtjev koji se šalje ESIR
+  // uređaju (esirFetch/izdajFiskalniRacun), da se vidi šta stvarno ide preko wire-a.
+  const [pokaziEsirDebug, setPokazuiEsirDebug] = useState(false);
+  const [esirDebugSalje, setEsirDebugSalje] = useState(false);
+  const [esirDebugOdgovor, setEsirDebugOdgovor] = useState<{
+    ok: boolean;
+    status: number;
+    tekst: string;
+  } | null>(null);
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [odabraniPartner, setOdabraniPartner] = useState<Partner | null>(null);
@@ -320,6 +351,11 @@ export function GotovinskiRacuni() {
     useState<NarudzbaZavrsenaKupac | null>(null);
   const [pendingUvozNarudzbe, setPendingUvozNarudzbe] =
     useState<NarudzbaZavrsenaKupac | null>(null);
+  // Šifre tabele (tmp_pregled_narucenig_proizvoda) uvezenog kupca — spremne da se
+  // kasnije pošalju proceduri koja ažurira polje "stampano" nakon čuvanja računa.
+  const [sifreTabeleZaStampano, setSifreTabeleZaStampano] = useState<
+    { sifra_tabele: number }[]
+  >([]);
 
   const [stavke, setStavke] = useState<StavkaRacuna[]>([]);
   const [artikalZaUnos, setArtikalZaUnos] = useState<Artikal | null>(null);
@@ -334,6 +370,19 @@ export function GotovinskiRacuni() {
 
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
+  // Upozorenje kad je fiskalizacija uspjela ali uređaj javlja sporedan problem
+  // (npr. printer nije odštampao paragon) — nije greška, samo obavještenje.
+  const [spremanjeUpozorenje, setSpremanjeUpozorenje] = useState<
+    string | null
+  >(null);
+  // Broj fiskalnog računa (br_fiskalnog) nakon uspješne fiskalizacije zadnjeg
+  // sačuvanog računa — prikazuje se ispod dugmadi Sačuvaj/Sačuvaj i štampaj.
+  const [posljednjiBrojFiskalnog, setPosljednjiBrojFiskalnog] = useState<
+    string | null
+  >(null);
+  // Koraci čuvanja računa — prikazuju se kao status-bar preko liste stavki dok
+  // traje handleSacuvajRacun, da operater vidi u kojoj je fazi (0 = neaktivno).
+  const [korakCuvanja, setKorakCuvanja] = useState(0);
 
   const [statusKase, setStatusKase] = useState<
     "provjera" | "dostupna" | "nedostupna"
@@ -587,6 +636,9 @@ export function GotovinskiRacuni() {
     setOdabraniPartner(p);
     setPretraga("");
     setPokazuiDropdown(false);
+    // Nova selekcija partnera — poruka o fiskalnom broju sa prethodnog računa
+    // više nije relevantna.
+    setPosljednjiBrojFiskalnog(null);
   };
 
   const filtriraniRazni = useMemo(() => {
@@ -612,6 +664,9 @@ export function GotovinskiRacuni() {
     setPokazuiModalRazni(false);
     setPretragaRazni("");
     setPrikaziNoviRazniForm(false);
+    // Nova selekcija kupca — poruka o fiskalnom broju sa prethodnog računa
+    // više nije relevantna.
+    setPosljednjiBrojFiskalnog(null);
   };
 
   const handleOtvoriNoviRazniForm = () => {
@@ -888,7 +943,7 @@ export function GotovinskiRacuni() {
       VP_2: vpVrednost,
       vrsta_racuna_novi: VRSTA_RACUNA_NOVI,
       vrsta_racuna_pod: odabranaPodgrupa?.sifra_podgrupe ?? 0,
-      sifra_terena: odabraniTeren?.sifra_terena ?? 0,
+      sifra_terena: odabraniTeren?.sifra_terena_dostava ?? 0,
     };
 
     return { header, items };
@@ -966,14 +1021,20 @@ export function GotovinskiRacuni() {
     ...ESIR_SLIP_PRESET_58MM,
   };
 
-  const sacuvajJsonFajl = (prefix: string, podaci: unknown) => {
+  // Download JSON dump-a se dešava SAMO kad ESIR fiskalizacija/štampa ne uspije
+  // (debug pomoć) — naziv fajla: yyyy-MM-dd_HH_mm_ss_<šifra tabele>.json.
+  const sacuvajEsirGreskuJson = (
+    sifraTabele: unknown,
+    podaci: unknown,
+  ) => {
+    const naziv = `${formatDatumZaNazivFajla(new Date())}_${sifraTabele ?? "nepoznato"}`;
     const blob = new Blob([JSON.stringify(podaci, null, 2)], {
       type: "application/json;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${prefix}_${formatZaNazivFajla(new Date())}.json`;
+    link.download = `${naziv}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1123,6 +1184,7 @@ export function GotovinskiRacuni() {
           kupciMap.set(sifraKupca, kupac);
         }
         kupac.proizvodi.push({
+          sifra_tabele: Number(row.sifra_tabele),
           sifra_proizvoda: String(row.sifra_proizvoda),
           naziv_proizvoda: row.naziv_proizvoda,
           jm: row.jm,
@@ -1176,6 +1238,21 @@ export function GotovinskiRacuni() {
     setPendingUvozNarudzbe(k);
     setPokazuiModalNarudzbe(false);
     setOdabraniKupacNarudzbe(null);
+    // Novi podaci povučeni iz terena — poruka o fiskalnom broju sa prethodnog
+    // računa više nije relevantna.
+    setPosljednjiBrojFiskalnog(null);
+
+    // Priprema JSON sa svim sifra_tabele iz uvezene narudžbe — kasnije se šalje
+    // proceduri koja ažurira "stampano" (nakon što se račun sačuva). Oblik:
+    // [{ "sifra_tabele": 125 }, { "sifra_tabele": 126 }, ...]
+    const sifreTabele = k.proizvodi.map((p) => ({
+      sifra_tabele: p.sifra_tabele,
+    }));
+    setSifreTabeleZaStampano(sifreTabele);
+    console.log(
+      "Sifre tabele za ažuriranje 'stampano' (uvoz narudžbe):",
+      JSON.stringify(sifreTabele),
+    );
   };
 
   // Kad odabraniPartner stvarno stigne na traženog kupca (ili na 300 za razni), puni
@@ -1254,10 +1331,11 @@ export function GotovinskiRacuni() {
     if (stavke.length === 0) return;
     setSpremanjeLoading(true);
     setSpremanjeGreska(null);
+    setSpremanjeUpozorenje(null);
+    setPosljednjiBrojFiskalnog(null);
+    setKorakCuvanja(1); // Unos podataka za račun
     try {
       const podaci = pripremiRacunZaUnos();
-      // Privremeno: sačuvaj tačan payload koji se šalje proceduri erp.sp_racuni_unos.
-      sacuvajJsonFajl("racun_unos_payload_gotovinski", podaci);
       const res = await fetch(`${API_URL}/api/racuni/unos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1310,20 +1388,107 @@ export function GotovinskiRacuni() {
         return;
       }
 
-      const esirZahtjevZaFajl = {
-        ...esirOpcijeStampe,
-        invoiceRequest: pripremiEsirZahtjev(),
-      };
+      setKorakCuvanja(2); // Dobijanje šifre tabele
 
-      alert(
-        `Račun je uspješno sačuvan. Broj računa: ${json.broj_racuna ?? "-"}. Potvrda: ${
-          imaBrojRacuna
-            ? "broj_racuna"
-            : `affected_rows=${affectedRows} (${json.response_source ?? "n/a"})`
-        }`,
-      );
-      // Privremeno: nakon uspješnog čuvanja, skini finalni ESIR JSON za poređenje.
-      sacuvajJsonFajl("esir_zahtjev_gotovinski", esirZahtjevZaFajl);
+      // Ako je račun napunjen uvozom narudžbe, prije ESIR-a ažuriraj "stampano"
+      // (0 -> 1) za sve stavke te narudžbe — best-effort, ne blokira dalje korake.
+      if (sifreTabeleZaStampano.length > 0) {
+        setKorakCuvanja(3); // Ažuriranje dostave
+        try {
+          await fetch(`${API_URL}/api/narudzbe/azuriraj-stampano`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ sifre_tabele: sifreTabeleZaStampano }),
+          });
+        } catch (stampanoError) {
+          console.error(
+            "Ažuriranje 'stampano' za narudžbu nije uspjelo:",
+            stampanoError,
+          );
+        }
+        setSifreTabeleZaStampano([]);
+      }
+
+      // Uhvaćeno van try/catch da bude dostupno kasnije za A5 print (npr. QR
+      // kod za verifikaciju) — ostaje null ako fiskalizacija ne uspije.
+      let esirInvoiceResponse: EsirInvoiceResponse | null = null;
+
+      // Fiskalizacija (ESIR) — best-effort korak nakon što je račun već sačuvan u
+      // bazi: ako ESIR ili upis fiskalnih podataka ne uspiju, ne diramo već
+      // potvrđeno čuvanje računa, samo prijavimo grešku (detaljno rukovanje
+      // greškama ESIR-a rješavamo naknadno).
+      try {
+        setKorakCuvanja(4); // Slanje ka ESIR-u
+        const esirRezultat = await izdajFiskalniRacun(
+          "gotovinski",
+          pripremiEsirZahtjev(),
+          esirOpcijeStampe,
+          json.sifra_tabele !== undefined && json.sifra_tabele !== null
+            ? String(json.sifra_tabele)
+            : undefined,
+        );
+        setKorakCuvanja(5); // Prihvat JSON-a od ESIR-a
+        esirInvoiceResponse = esirRezultat.invoiceResponse;
+        const { brFiskalnog, datumVremeFiskalnog } = izdvojiFiskalnePodatke(
+          esirRezultat.invoiceResponse,
+        );
+
+        // Fiskalizacija je uspjela iako uređaj možda prijavi sporedan problem
+        // (npr. štampač) — to nije razlog da odbacimo fiskalne podatke.
+        if (esirRezultat.upozorenje) {
+          console.warn(
+            "ESIR upozorenje (fiskalizacija ipak uspjela):",
+            esirRezultat.upozorenje,
+          );
+          setSpremanjeUpozorenje(
+            `Fiskalizacija je uspjela, ali uređaj javlja: ${esirRezultat.upozorenje}`,
+          );
+        }
+
+        if (json.sifra_tabele) {
+          const resFiskalno = await fetch(
+            `${API_URL}/api/racuni/azuriraj-fiskalne-podatke`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                sifra_tabele: json.sifra_tabele,
+                br_fiskalnog: brFiskalnog,
+                datum_vreme_fiskalnog: datumVremeFiskalnog,
+              }),
+            },
+          );
+          if (!resFiskalno.ok) {
+            const greska = await resFiskalno.json().catch(() => null);
+            throw new Error(
+              greska?.error || "Greška pri upisu fiskalnih podataka",
+            );
+          }
+          setPosljednjiBrojFiskalnog(brFiskalnog);
+        }
+      } catch (esirError) {
+        console.error("Fiskalizacija (ESIR) nije uspjela:", esirError);
+        // Privremeno vidljivo u UI (ne samo u konzoli) dok se ne utvrdi tačan
+        // uzrok razlike u odnosu na Postman (najčešće CORS — browser fetch šalje
+        // preflight OPTIONS zbog Authorization/RequestId headera, Postman ne).
+        setSpremanjeGreska(
+          `Račun je sačuvan, ali ESIR fiskalizacija nije uspjela: ${
+            esirError instanceof Error ? esirError.message : String(esirError)
+          }`,
+        );
+        // Debug dump samo kod neuspjeha — sadrži tačan zahtjev koji je poslat
+        // ESIR-u i grešku, da se problem može analizirati/reprodukovati.
+        sacuvajEsirGreskuJson(json.sifra_tabele, {
+          zahtjev: {
+            ...esirOpcijeStampe,
+            invoiceRequest: pripremiEsirZahtjev(),
+          },
+          greska:
+            esirError instanceof Error ? esirError.message : String(esirError),
+        });
+      }
 
       if (stampaj) {
         const jeRazniKupac =
@@ -1335,38 +1500,64 @@ export function GotovinskiRacuni() {
           ? odabraniRazni!.sifra_partnera
           : (odabraniPartner?.sifra_partnera ?? "-");
         const stavkeZaPrint = stavke;
-        openPrint({
-          title: `Račun ${json.broj_racuna ?? "-"}`,
-          component: (
-            <RacunA5
-              racun={{
-                broj_racuna: String(json.broj_racuna ?? "-"),
-                datum_racuna: podaci.header.datum_racuna,
-                naziv_partnera: nazivZaPrint,
-                sifra_partnera: sifraZaPrint,
-                adresa_partnera: jeRazniKupac
-                  ? null
-                  : (odabraniPartner?.adresa_partnera ?? null),
-                naziv_grada: jeRazniKupac
-                  ? null
-                  : (odabraniPartner?.naziv_grada ?? null),
-                napomena: podaci.header.napomena || null,
-                ukupno: podaci.header.ukupno,
-              }}
-              stavke={stavkeZaPrint.map((s) => ({
-                sifra_proizvoda: s.sifra_proizvoda,
-                naziv_proizvoda: s.naziv_proizvoda,
-                jm: s.jm,
-                kolicina: s.kolicina,
-                prodajna_cijena: s.mpc,
-                prodajna_vrednost: s.ukupno,
-              }))}
-            />
-          ),
-        });
+        const racunA5 = (
+          <RacunA5
+            racun={{
+              broj_racuna: String(json.broj_racuna ?? "-"),
+              datum_racuna: podaci.header.datum_racuna,
+              naziv_partnera: nazivZaPrint,
+              sifra_partnera: sifraZaPrint,
+              adresa_partnera: jeRazniKupac
+                ? null
+                : (odabraniPartner?.adresa_partnera ?? null),
+              naziv_grada: jeRazniKupac
+                ? null
+                : (odabraniPartner?.naziv_grada ?? null),
+              napomena: podaci.header.napomena || null,
+              ukupno: podaci.header.ukupno,
+              br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
+              verifikacioni_qr:
+                esirInvoiceResponse?.verificationQRCode ?? null,
+            }}
+            stavke={stavkeZaPrint.map((s) => ({
+              sifra_proizvoda: s.sifra_proizvoda,
+              naziv_proizvoda: s.naziv_proizvoda,
+              jm: s.jm,
+              kolicina: s.kolicina,
+              prodajna_cijena: s.mpc,
+              prodajna_vrednost: s.ukupno,
+            }))}
+          />
+        );
+
+        if (stampajDirektno) {
+          try {
+            await printDirectly(racunA5, {
+              printerName: selectedPrinter,
+              format: "A5",
+              orientation: "portrait",
+              documentType: "racun",
+            });
+          } catch (printError) {
+            setSpremanjeGreska(
+              `Račun je sačuvan, ali direktna štampa nije uspjela: ${
+                printError instanceof Error
+                  ? printError.message
+                  : "nepoznata greška"
+              }`,
+            );
+          }
+        } else {
+          openPrint({
+            title: `Račun ${json.broj_racuna ?? "-"}`,
+            component: racunA5,
+          });
+        }
       }
 
-      setStavke([]);
+      // Vraća i partnera na podrazumijevanog (300) — spriječava da ime prethodnog
+      // kupca ostane prikazano na vrhu forme za sljedeći račun.
+      resetujRacunZaPromjenuTerena();
       setNapomena("");
     } catch (error) {
       setSpremanjeGreska(
@@ -1374,6 +1565,7 @@ export function GotovinskiRacuni() {
       );
     } finally {
       setSpremanjeLoading(false);
+      setKorakCuvanja(0);
     }
   };
 
@@ -1911,76 +2103,156 @@ export function GotovinskiRacuni() {
 
           {/* Desni panel — stavke računa */}
           <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
-            {/* Header tabele */}
-            <div className="flex items-center px-3 py-2 bg-[#f4f1f9] dark:bg-[#1e1a2d] border-b border-gray-200 dark:border-[#2d2648] flex-shrink-0">
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide flex-1">
-                Naziv artikla
-              </span>
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide w-16 text-right">
-                JM
-              </span>
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide w-20 text-right">
-                Kol.
-              </span>
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide w-20 text-right">
-                MPC
-              </span>
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide w-24 text-right">
-                Ukupno
-              </span>
-              <span className="w-7" />
-            </div>
-
-            {/* Lista stavki — 2/3 visine */}
-            <div className="overflow-y-auto" style={{ flex: 2 }}>
-              {stavke.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-300 dark:text-[#3a3158]">
-                  <Package size={28} />
-                  <span className="text-sm">Nema stavki</span>
-                </div>
-              ) : (
-                stavke.map((s, i) => (
-                  <div
-                    key={s.sifra_proizvoda}
-                    className={`flex items-center px-3 py-2 border-b border-gray-50 dark:border-[#2a2340] ${i % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#1e1a2d]" : ""}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="text-sm font-semibold truncate"
-                        style={{ color: PRIMARY }}
-                      >
-                        {s.naziv_proizvoda}
-                      </div>
-                      <div className="text-xs text-gray-400 dark:text-[#5f5878]">
-                        {s.sifra_proizvoda}
-                      </div>
-                    </div>
-                    <div className="w-16 text-right text-sm text-gray-500 dark:text-[#7d7498]">
-                      {s.jm}
-                    </div>
-                    <div className="w-20 text-right text-sm font-medium text-gray-700 dark:text-[#c5bfd8]">
-                      {s.kolicina.toFixed(3)}
-                    </div>
-                    <div className="w-20 text-right text-sm text-gray-700 dark:text-[#c5bfd8]">
-                      {s.mpc.toFixed(2)}
-                    </div>
-                    <div
-                      className="w-24 text-right text-sm font-bold"
-                      style={{ color: PRIMARY }}
-                    >
-                      {s.ukupno.toFixed(2)}
-                    </div>
-                    <button
-                      onClick={() => handleUkloniStavku(s.sifra_proizvoda)}
-                      className="ml-2 flex-shrink-0 p-1.5 rounded-lg transition-all hover:brightness-110"
-                      style={{ background: PRIMARY }}
-                      title="Ukloni stavku"
-                    >
-                      <Trash2 size={13} className="text-white" />
-                    </button>
+            {/* Lista stavki (header + redovi u istoj tabeli — garantovano poravnanje
+                kolona, header je sticky unutar istog scroll kontejnera) — 2/3 visine */}
+            <div className="relative overflow-y-auto" style={{ flex: 2 }}>
+              {spremanjeLoading && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-white/90 dark:bg-[#1a1528]/90 backdrop-blur-sm">
+                  <Loader2
+                    size={32}
+                    className="animate-spin"
+                    style={{ color: PRIMARY }}
+                  />
+                  <div className="flex flex-col gap-1.5">
+                    {KORACI_CUVANJA.map((naziv, i) => {
+                      const korak = i + 1;
+                      const zavrsen = korakCuvanja > korak;
+                      const aktivan = korakCuvanja === korak;
+                      return (
+                        <div
+                          key={korak}
+                          className={`flex items-center gap-2 text-xs ${
+                            aktivan
+                              ? "font-bold"
+                              : zavrsen
+                                ? "text-gray-400 dark:text-[#5f5878]"
+                                : "text-gray-300 dark:text-[#3a3158]"
+                          }`}
+                          style={aktivan ? { color: PRIMARY } : undefined}
+                        >
+                          {zavrsen ? (
+                            <CheckCircle2
+                              size={13}
+                              className="text-emerald-500 flex-shrink-0"
+                            />
+                          ) : aktivan ? (
+                            <Loader2
+                              size={13}
+                              className="animate-spin flex-shrink-0"
+                            />
+                          ) : (
+                            <span className="w-[13px] h-[13px] rounded-full border border-gray-300 dark:border-[#3a3158] flex-shrink-0" />
+                          )}
+                          {korak}. {naziv}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
+                </div>
               )}
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="sticky top-0 z-10 bg-[#f4f1f9] dark:bg-[#1e1a2d]">
+                    <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide border-b border-gray-200 dark:border-[#2d2648]">
+                      Naziv artikla
+                    </th>
+                    <th
+                      style={{ width: "6ch", maxWidth: "6ch" }}
+                      className="text-center px-1.5 py-2 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide border-b border-gray-200 dark:border-[#2d2648]"
+                    >
+                      JM
+                    </th>
+                    <th
+                      style={{ width: "120px", maxWidth: "120px" }}
+                      className="text-right px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide border-b border-gray-200 dark:border-[#2d2648]"
+                    >
+                      Kol.
+                    </th>
+                    <th
+                      style={{ width: "68px", maxWidth: "68px" }}
+                      className="text-right px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide border-b border-gray-200 dark:border-[#2d2648]"
+                    >
+                      MPC
+                    </th>
+                    <th className="text-right px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide border-b border-gray-200 dark:border-[#2d2648]">
+                      Ukupno
+                    </th>
+                    {/* Prazna kolona — gura JM..Ukupno ulijevo (bliže nazivu artikla)
+                        i drži dugme za brisanje skroz desno. */}
+                    <th
+                      style={{ width: "10px" }}
+                      className="border-b border-gray-200 dark:border-[#2d2648]"
+                    />
+                    <th className="w-9 border-b border-gray-200 dark:border-[#2d2648]" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {stavke.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-10">
+                        <div className="flex flex-col items-center justify-center gap-2 text-gray-300 dark:text-[#3a3158]">
+                          <Package size={28} />
+                          <span className="text-sm">Nema stavki</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    stavke.map((s, i) => (
+                      <tr
+                        key={s.sifra_proizvoda}
+                        className={`border-b border-gray-50 dark:border-[#2a2340] ${i % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#1e1a2d]" : ""}`}
+                      >
+                        <td className="px-3 pt-2 pb-1 min-w-0">
+                          <div
+                            className="text-sm font-semibold truncate"
+                            style={{ color: PRIMARY }}
+                          >
+                            {s.naziv_proizvoda}
+                          </div>
+                          <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+                            {s.sifra_proizvoda}
+                          </div>
+                        </td>
+                        <td
+                          style={{ width: "6ch", maxWidth: "6ch" }}
+                          className="px-1.5 pt-2 pb-1 text-center text-sm text-gray-500 dark:text-[#7d7498] whitespace-nowrap"
+                        >
+                          {s.jm}
+                        </td>
+                        <td
+                          style={{ width: "120px", maxWidth: "120px" }}
+                          className="px-3 pt-2 pb-1 text-right text-sm font-medium text-gray-700 dark:text-[#c5bfd8] whitespace-nowrap"
+                        >
+                          {s.kolicina.toFixed(3)}
+                        </td>
+                        <td
+                          style={{ width: "68px", maxWidth: "68px" }}
+                          className="px-3 pt-2 pb-1 text-right text-sm text-gray-700 dark:text-[#c5bfd8] whitespace-nowrap"
+                        >
+                          {s.mpc.toFixed(2)}
+                        </td>
+                        <td
+                          className="px-3 pt-2 pb-1 text-right text-sm font-bold whitespace-nowrap"
+                          style={{ color: PRIMARY }}
+                        >
+                          {s.ukupno.toFixed(2)}
+                        </td>
+                        <td />
+                        <td className="px-2 pt-2 pb-1 text-center">
+                          <button
+                            onClick={() => handleUkloniStavku(s.sifra_proizvoda)}
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg transition-all hover:brightness-110"
+                            style={{ background: PRIMARY }}
+                            title="Ukloni stavku"
+                          >
+                            <Trash2 size={13} className="text-white" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
 
             {/* Linija + ukupno — 1/3 visine */}
@@ -2041,11 +2313,61 @@ export function GotovinskiRacuni() {
                     )}
                     Sačuvaj i štampaj
                   </button>
+                  <label
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-[#7d7498] select-none cursor-pointer"
+                    title="Kad je uključeno, A5 obrazac se šalje direktno na izabrani štampač, bez otvaranja prozora za štampu"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={stampajDirektno}
+                      onChange={(e) => setStampajDirektno(e.target.checked)}
+                      className="accent-purple-600"
+                    />
+                    Direktno
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setPokazuiEsirDebug(true)}
+                    disabled={stavke.length === 0}
+                    title="Prikaži tačan ESIR zahtjev (debug)"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Eye size={13} />
+                    ESIR JSON
+                  </button>
                 </div>
               </div>
-              {spremanjeGreska && (
-                <div className="px-6 pb-2 text-xs font-medium text-red-500">
-                  {spremanjeGreska}
+              {(spremanjeGreska ||
+                spremanjeUpozorenje ||
+                posljednjiBrojFiskalnog) && (
+                <div className="px-6 pb-2 flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    {spremanjeGreska && (
+                      <span className="text-xs font-medium text-red-500">
+                        {spremanjeGreska}
+                      </span>
+                    )}
+                    {spremanjeUpozorenje && (
+                      <span className="text-xs font-medium text-amber-500">
+                        {spremanjeUpozorenje}
+                      </span>
+                    )}
+                  </div>
+                  {posljednjiBrojFiskalnog && (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-right flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPosljednjiBrojFiskalnog(null)}
+                        title="Sakrij poruku"
+                        className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 dark:text-[#7d7498]"
+                      >
+                        <X size={12} />
+                      </button>
+                      <span style={{ color: PRIMARY }}>
+                        Fiskalni račun: {posljednjiBrojFiskalnog}
+                      </span>
+                    </span>
+                  )}
                 </div>
               )}
               <div className="border-t-2 border-gray-200 dark:border-[#2d2648]" />
@@ -2151,7 +2473,8 @@ export function GotovinskiRacuni() {
                   </select>
                   <button
                     onClick={handleOtvoriModalNarudzbe}
-                    className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:brightness-110"
+                    disabled={odabraniTeren === null}
+                    className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
                     style={{ background: ACCENT }}
                   >
                     <ClipboardCheck size={12} />
@@ -2999,6 +3322,9 @@ export function GotovinskiRacuni() {
                           setOdabraniPartner(p);
                           setPokazuiModal(false);
                           setPretragaModal("");
+                          // Nova selekcija partnera — poruka o fiskalnom broju sa
+                          // prethodnog računa više nije relevantna.
+                          setPosljednjiBrojFiskalnog(null);
                         }}
                         className={`cursor-pointer border-b border-gray-100 dark:border-[#2a2340] transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#2d2648] ${
                           i % 2 === 0
@@ -3402,6 +3728,195 @@ export function GotovinskiRacuni() {
                     );
                   })
                 )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Privremeno (debug) — tačan zahtjev koji ide ka ESIR-u (esirFetch). */}
+      {pokaziEsirDebug &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setPokazuiEsirDebug(false);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[640px] max-h-[85vh] flex flex-col overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
+                style={{ background: PRIMARY }}
+              >
+                <Eye size={18} className="text-white flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-white text-base truncate">
+                    ESIR zahtjev (debug)
+                  </div>
+                  <div className="text-white/70 text-xs mt-0.5">
+                    Tačno ono što esirFetch šalje ka uređaju
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPokazuiEsirDebug(false)}
+                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto p-5 space-y-4">
+                {(() => {
+                  const baseUrl =
+                    import.meta.env.VITE_ESIR_URL_GOTOVINSKI ||
+                    "http://127.0.0.1:3566";
+                  const apiKey =
+                    import.meta.env.VITE_ESIR_API_KEY_GOTOVINSKI || "";
+                  const bodyObj = {
+                    ...esirOpcijeStampe,
+                    invoiceRequest: pripremiEsirZahtjev(),
+                  };
+                  const bodyText = JSON.stringify(bodyObj, null, 2);
+                  return (
+                    <>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-1">
+                          Method + URL
+                        </div>
+                        <div className="text-xs font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] break-all">
+                          POST {baseUrl}/api/invoices
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-1">
+                          Headers
+                        </div>
+                        <div className="text-xs font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] break-all space-y-1">
+                          <div>Authorization: Bearer {apiKey}</div>
+                          <div>Content-Type: application/json; charset=UTF-8</div>
+                          <div>
+                            RequestId: (kod stvarnog čuvanja = sifra_tabele
+                            računa; ovdje, prije čuvanja, generiše se nasumičan
+                            UUID)
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878]">
+                            Body
+                          </div>
+                          <button
+                            onClick={() =>
+                              navigator.clipboard?.writeText(bodyText)
+                            }
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                          >
+                            Kopiraj
+                          </button>
+                        </div>
+                        <pre className="text-[11px] font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] whitespace-pre-wrap break-all">
+                          {bodyText}
+                        </pre>
+                      </div>
+
+                      <div>
+                        <button
+                          onClick={async () => {
+                            setEsirDebugSalje(true);
+                            setEsirDebugOdgovor(null);
+                            try {
+                              const odgovor = await posaljiEsirDebugZahtjev(
+                                "gotovinski",
+                                bodyObj.invoiceRequest,
+                                esirOpcijeStampe,
+                              );
+                              let tekst = odgovor.rawText;
+                              try {
+                                tekst = JSON.stringify(
+                                  JSON.parse(odgovor.rawText),
+                                  null,
+                                  2,
+                                );
+                              } catch {
+                                // Nije JSON — ostavi sirov tekst (npr. HTML greška).
+                              }
+                              setEsirDebugOdgovor({
+                                ok: odgovor.ok,
+                                status: odgovor.status,
+                                tekst,
+                              });
+                            } catch (err) {
+                              setEsirDebugOdgovor({
+                                ok: false,
+                                status: 0,
+                                tekst:
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                              });
+                            } finally {
+                              setEsirDebugSalje(false);
+                            }
+                          }}
+                          disabled={esirDebugSalje}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ background: ACCENT }}
+                        >
+                          {esirDebugSalje ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                          {esirDebugSalje
+                            ? "Šaljem ka ESIR uređaju..."
+                            : "Pošalji test ka ESIR-u i prikaži odgovor"}
+                        </button>
+                        <p className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-1.5">
+                          Ovo stvarno šalje zahtjev na uređaj (isti kao gore) —
+                          identično Postman testu.
+                        </p>
+                      </div>
+
+                      {esirDebugOdgovor && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <div
+                              className={`text-[10px] font-bold uppercase tracking-widest ${
+                                esirDebugOdgovor.ok
+                                  ? "text-emerald-500"
+                                  : "text-red-500"
+                              }`}
+                            >
+                              Odgovor uređaja — HTTP {esirDebugOdgovor.status || "?"}{" "}
+                              ({esirDebugOdgovor.ok ? "OK" : "GREŠKA"})
+                            </div>
+                            <button
+                              onClick={() =>
+                                navigator.clipboard?.writeText(
+                                  esirDebugOdgovor.tekst,
+                                )
+                              }
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                            >
+                              Kopiraj
+                            </button>
+                          </div>
+                          <pre
+                            className={`text-[11px] font-mono border rounded-lg px-3 py-2 whitespace-pre-wrap break-all ${
+                              esirDebugOdgovor.ok
+                                ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200"
+                                : "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900 text-red-800 dark:text-red-200"
+                            }`}
+                          >
+                            {esirDebugOdgovor.tekst}
+                          </pre>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>,

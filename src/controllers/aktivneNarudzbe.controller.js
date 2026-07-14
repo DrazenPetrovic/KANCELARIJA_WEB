@@ -7,4 +7,5 @@ export {
   createNarudzba,
   narudzbaBrisanjePartnera,
   narudzbaBrisanjePartneraProizvoda,
+  azurirajStampanoNarudzbe,
 } from "./narudzbe.controller.js";

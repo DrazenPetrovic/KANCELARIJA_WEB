@@ -67,6 +67,28 @@ export const getZadnjiDanNarudzbe = async (req, res) => {
   }
 };
 
+export const azurirajStampanoNarudzbe = async (req, res) => {
+  try {
+    const { sifre_tabele } = req.body;
+    if (!Array.isArray(sifre_tabele) || sifre_tabele.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "sifre_tabele mora biti neprazan niz",
+      });
+    }
+
+    await NarudzbeService.azurirajStampanoNarudzbe(sifre_tabele);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Ažuriranje 'stampano' za narudžbe error:", error);
+    const detalj =
+      error?.sqlMessage ||
+      error?.message ||
+      "Greška pri ažuriranju statusa narudžbi";
+    return res.status(500).json({ success: false, error: detalj });
+  }
+};
+
 export const createNarudzba = async (req, res) => {
   try {
     const { referentniBroj, sifraKupca, sifraTerenaDostava, vrstaPlacanja, proizvodi, dodatnaLokacija } = req.body;

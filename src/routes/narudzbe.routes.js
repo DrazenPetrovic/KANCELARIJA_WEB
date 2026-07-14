@@ -27,6 +27,11 @@ router.get(
 );
 router.post("/create", verifyToken, NarudzbeController.createNarudzba);
 router.post(
+  "/azuriraj-stampano",
+  verifyToken,
+  NarudzbeController.azurirajStampanoNarudzbe,
+);
+router.post(
   "/obrisi-partnera",
   verifyToken,
   NarudzbeController.narudzbaBrisanjePartnera,

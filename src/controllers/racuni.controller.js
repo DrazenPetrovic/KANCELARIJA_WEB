@@ -77,6 +77,55 @@ export const getRacunPoPregled = async (req, res) => {
   }
 };
 
+export const azurirajFiskalnePodatke = async (req, res) => {
+  try {
+    const { sifra_tabele, br_fiskalnog, datum_vreme_fiskalnog } = req.body;
+    if (!sifra_tabele || !br_fiskalnog || !datum_vreme_fiskalnog) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Nedostaju obavezni podaci (sifra_tabele, br_fiskalnog, datum_vreme_fiskalnog)",
+      });
+    }
+
+    const rezultat = await RacuniService.azurirajFiskalnePodatke(
+      sifra_tabele,
+      br_fiskalnog,
+      datum_vreme_fiskalnog,
+    );
+
+    if (!rezultat) {
+      return res.status(500).json({
+        success: false,
+        error: "Nema odgovora od procedure za ažuriranje fiskalnih podataka",
+      });
+    }
+
+    const uspjesno = Number(rezultat.uspjesno) === 1;
+    if (!uspjesno) {
+      return res.status(404).json({
+        success: false,
+        error: rezultat.poruka || "Račun nije pronađen ili nema izmjena.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      poruka: rezultat.poruka,
+      sifra_tabele: rezultat.sifra_tabele,
+      broj_fiskalnog: rezultat.broj_fiskalnog,
+      datum_fiskalnog: rezultat.datum_fiskalnog,
+    });
+  } catch (error) {
+    console.error("Ažuriranje fiskalnih podataka error:", error);
+    const detalj =
+      error?.sqlMessage ||
+      error?.message ||
+      "Greška pri ažuriranju fiskalnih podataka";
+    return res.status(500).json({ success: false, error: detalj });
+  }
+};
+
 export const unosRacuna = async (req, res) => {
   try {
     const { header, items } = req.body;

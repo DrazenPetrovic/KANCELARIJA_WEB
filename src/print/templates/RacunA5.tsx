@@ -15,6 +15,9 @@ export interface RacunA5Zaglavlje {
   rabat_km?: number | string | null;
   slovima?: string | null;
   br_fiskalnog?: string | number | null;
+  // Base64 GIF slika QR koda (ESIR invoiceResponse.verificationQRCode) — samo
+  // za fiskalizovane račune.
+  verifikacioni_qr?: string | null;
 }
 
 export interface RacunA5Stavka {
@@ -227,15 +230,32 @@ export function RacunA5({ racun, stavke }: Props) {
         </table>
       </div>
 
-      {/* ── Broj fiskalnog računa ── */}
+      {/* ── Broj fiskalnog računa + QR kod za verifikaciju ── */}
       {racun.br_fiskalnog !== undefined &&
         racun.br_fiskalnog !== null &&
         racun.br_fiskalnog !== "" && (
-          <div style={{ fontSize: 9, color: "#444", marginBottom: 10 }}>
-            <span style={{ fontWeight: 700, color: PRIMARY }}>
-              Br. fiskalnog računa:{" "}
-            </span>
-            {racun.br_fiskalnog}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ fontSize: 9, color: "#444" }}>
+              <span style={{ fontWeight: 700, color: PRIMARY }}>
+                Br. fiskalnog računa:{" "}
+              </span>
+              {racun.br_fiskalnog}
+            </div>
+            {racun.verifikacioni_qr && (
+              <img
+                src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                alt="QR kod za verifikaciju"
+                style={{ width: 60, height: 60, flexShrink: 0 }}
+              />
+            )}
           </div>
         )}
 

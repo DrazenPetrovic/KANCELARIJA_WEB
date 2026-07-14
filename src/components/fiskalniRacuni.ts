@@ -254,28 +254,200 @@ export interface EsirInvoiceResponse {
   verificationUrl: string;
 }
 
+// Polja iz ESIR odgovora koja treba upisati u već sačuvan račun (br_fiskalnog /
+// datum_vreme_fiskalnog) — procedura za taj update na backend-u još ne postoji,
+// ovo samo priprema podatke da budu spremni čim procedura bude gotova.
+export interface FiskalniPodaciZaRacun {
+  brFiskalnog: string;
+  datumVremeFiskalnog: string;
+}
+
+export function izdvojiFiskalnePodatke(
+  odgovor: EsirInvoiceResponse,
+): FiskalniPodaciZaRacun {
+  return {
+    brFiskalnog: odgovor.invoiceNumber,
+    datumVremeFiskalnog: odgovor.sdcDateTime,
+  };
+}
+
 function generisiRequestId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : String(Date.now());
 }
 
+// Izdvaja poruku greške iz odgovora ESIR-a — pokriva i standardni .NET
+// ValidationProblemDetails oblik ({ title, errors: { Polje: ["greška"] } }),
+// ne samo ravno { message } / { messages }.
+function izdvojiEsirGresku(rawText: string, status: number): string {
+  let json: unknown = null;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    // Odgovor nije JSON — prikaži sirov tekst (ako postoji).
+    return rawText.trim() || `Greška pri fiskalizaciji računa (${status})`;
+  }
+
+  if (json && typeof json === "object") {
+    const obj = json as Record<string, unknown>;
+
+    if (typeof obj.messages === "string") return obj.messages;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.detail === "string") return obj.detail;
+
+    // .NET ValidationProblemDetails: { title, errors: { Polje: ["poruka", ...] } }
+    if (obj.errors && typeof obj.errors === "object") {
+      const detalji = Object.entries(
+        obj.errors as Record<string, unknown>,
+      ).map(([polje, poruke]) => {
+        const spisak = Array.isArray(poruke) ? poruke.join("; ") : String(poruke);
+        return `${polje}: ${spisak}`;
+      });
+      const naslov = typeof obj.title === "string" ? `${obj.title} — ` : "";
+      if (detalji.length > 0) return `${naslov}${detalji.join(" | ")}`;
+    }
+
+    if (typeof obj.title === "string") return obj.title;
+  }
+
+  return rawText.trim() || `Greška pri fiskalizaciji računa (${status})`;
+}
+
+export interface EsirFiskalizacijaRezultat {
+  invoiceResponse: EsirInvoiceResponse;
+  // Fiskalizacija je uspjela (imamo validan invoiceResponse), ali uređaj je
+  // uz to prijavio problem koji NIJE vezan za samu fiskalizaciju — npr. lokalni
+  // štampač nije uspio da odštampa paragon ("Printer error: ... printInit
+  // failed"). U tom slučaju ESIR vraća HTTP grešku sa oblikom
+  // { message, statusCode, invoiceResponse: {...} } umjesto ravnog objekta.
+  // Ovo polje nosi tu poruku da operater zna da paragon možda nije odštampan,
+  // iako je račun ispravno fiskalizovan.
+  upozorenje: string | null;
+}
+
+// Iz sirovog (parsiranog) JSON odgovora izdvaja stvarni invoiceResponse — bilo
+// da je odgovor RAVAN (normalan uspješan slučaj, cijeli objekat JE
+// invoiceResponse) ili OMOTAN (npr. { message, statusCode, invoiceResponse }
+// kod greške štampača dok je fiskalizacija ipak prošla).
+function izdvojiInvoiceResponse(parsed: unknown): {
+  invoiceResponse: EsirInvoiceResponse | null;
+  poruka: string | null;
+} {
+  if (!parsed || typeof parsed !== "object") {
+    return { invoiceResponse: null, poruka: null };
+  }
+  const obj = parsed as Record<string, unknown>;
+
+  if (obj.invoiceResponse && typeof obj.invoiceResponse === "object") {
+    const ugnijezdjeno = obj.invoiceResponse as Record<string, unknown>;
+    if (typeof ugnijezdjeno.invoiceNumber === "string") {
+      const poruka = typeof obj.message === "string" ? obj.message : null;
+      return {
+        invoiceResponse: ugnijezdjeno as unknown as EsirInvoiceResponse,
+        poruka,
+      };
+    }
+  }
+
+  if (typeof obj.invoiceNumber === "string") {
+    return { invoiceResponse: obj as unknown as EsirInvoiceResponse, poruka: null };
+  }
+
+  return { invoiceResponse: null, poruka: null };
+}
+
+// requestId — po preporuci treba biti sifra_tabele računa (dodijeljena tek kad
+// se račun uspješno sačuva u bazu), ne slučajan UUID: tako je zahtjev prirodno
+// idempotentan po računu (ponovni pokušaj za isti račun šalje isti RequestId,
+// pa ga ESIR prepoznaje kao istu transakciju umjesto duplikata). Ako
+// sifra_tabele još nije poznata (npr. debug test prije čuvanja), generiše se
+// nasumičan UUID kao fallback.
 export async function izdajFiskalniRacun(
   uredjaj: EsirUredjaj,
   invoiceRequest: EsirInvoiceRequest,
   opcijeStampe: EsirOpcijeStampe = {},
-): Promise<EsirInvoiceResponse> {
+  requestId?: string,
+): Promise<EsirFiskalizacijaRezultat> {
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
-    headers: { RequestId: generisiRequestId() },
+    headers: { RequestId: requestId || generisiRequestId() },
     body: JSON.stringify({ ...opcijeStampe, invoiceRequest }),
   });
-  const json = await res.json().catch(() => null);
-  if (!res.ok) {
-    const poruka =
-      (json && (json.messages || json.message)) ||
-      `Greška pri fiskalizaciji računa (${res.status})`;
-    throw new Error(poruka);
+  const rawText = await res.text();
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    parsed = null;
   }
-  return json as EsirInvoiceResponse;
+
+  const { invoiceResponse, poruka } = izdvojiInvoiceResponse(parsed);
+
+  // Fiskalizacija je uspjela (imamo invoiceResponse sa invoiceNumber) čak i ako
+  // je HTTP status "neuspješan" (npr. zbog greške štampača) — greška štampača
+  // NIJE isto što i neuspjela fiskalizacija.
+  if (invoiceResponse) {
+    return { invoiceResponse, upozorenje: poruka };
+  }
+
+  console.error("ESIR /api/invoices — sirov odgovor greške:", rawText);
+  throw new Error(izdvojiEsirGresku(rawText, res.status));
+}
+
+export interface EsirSirovOdgovor {
+  status: number;
+  ok: boolean;
+  rawText: string;
+}
+
+// Privremeno (debug) — šalje isti zahtjev kao izdajFiskalniRacun, ali NE baca
+// grešku i vraća sirov (neobrađen) tekst odgovora bez obzira na status, da bi
+// se tačan odgovor uređaja mogao prikazati korisniku (npr. u debug modalu),
+// isto ono što bi se vidjelo u Postman-u.
+export async function posaljiEsirDebugZahtjev(
+  uredjaj: EsirUredjaj,
+  invoiceRequest: EsirInvoiceRequest,
+  opcijeStampe: EsirOpcijeStampe = {},
+  requestId?: string,
+): Promise<EsirSirovOdgovor> {
+  const res = await esirFetch(uredjaj, "/api/invoices", {
+    method: "POST",
+    headers: { RequestId: requestId || generisiRequestId() },
+    body: JSON.stringify({ ...opcijeStampe, invoiceRequest }),
+  });
+  const rawText = await res.text();
+  return { status: res.status, ok: res.ok, rawText };
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/invoices/request/:requestId — provjera da li je fiskalizacija za dati
+// RequestId (isti koji je poslat u headeru prilikom /api/invoices poziva)
+// stvarno izvršena. Koristi se kad zahtjev za fiskalizaciju ne dobije odgovor
+// (mrežni problem/timeout), da se izbjegne duplirana fiskalizacija istog
+// računa — ako je fiskalizacija uspjela, vraća kompletan sadržaj računa; ako
+// nije, vraća null (prazan odgovor). Napomena: moguće provjeriti samo
+// posljednjih 100 zahtjeva.
+// ---------------------------------------------------------------------------
+
+export async function proveriFiskalizacijuPoRequestId(
+  uredjaj: EsirUredjaj,
+  requestId: string,
+): Promise<EsirInvoiceResponse | null> {
+  const res = await esirFetch(
+    uredjaj,
+    `/api/invoices/request/${encodeURIComponent(requestId)}`,
+    { method: "GET" },
+  );
+  const rawText = await res.text();
+  if (!res.ok) {
+    console.error(
+      "ESIR /api/invoices/request — sirov odgovor greške:",
+      rawText,
+    );
+    throw new Error(izdvojiEsirGresku(rawText, res.status));
+  }
+  if (!rawText.trim()) return null;
+  return JSON.parse(rawText) as EsirInvoiceResponse;
 }

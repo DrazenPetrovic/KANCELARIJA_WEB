@@ -120,6 +120,20 @@ export const createNarudzba = async (narudzbaData) => {
   });
 };
 
+// sifreTabele: [{ sifra_tabele: number }, ...] — procedura povećava polje
+// "stampano" za 1 (0 -> 1) za svaku navedenu stavku, poziva se nakon uspješnog
+// unosa računa u bazu, prije ESIR koraka.
+export const azurirajStampanoNarudzbe = async (sifreTabele) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify(sifreTabele);
+    const [rows] = await connection.query(
+      "CALL erp.sp_dostava_tereni_azuriranje_unosa(?)",
+      [json],
+    );
+    return rows;
+  });
+};
+
 export const obrisiNarudzbuPartnera = async ({
   p_sifra_terena,
   p_sifra_partnera,
