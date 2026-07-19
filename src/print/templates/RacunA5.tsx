@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+import JsBarcode from "jsbarcode";
+
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
@@ -18,6 +21,9 @@ export interface RacunA5Zaglavlje {
   // Base64 GIF slika QR koda (ESIR invoiceResponse.verificationQRCode) — samo
   // za fiskalizovane račune.
   verifikacioni_qr?: string | null;
+  // Šifra tabele (interni ključ zapisa) — kodira se u barkod 128 radi kasnijeg
+  // skeniranja u modulu za praćenje kretanja dokumenata.
+  sifra_tabele?: number | string | null;
 }
 
 export interface RacunA5Stavka {
@@ -50,6 +56,25 @@ function broj(v: number | string | null | undefined) {
 
 export function RacunA5({ racun, stavke }: Props) {
   const ukupno = Number(racun.ukupno) || 0;
+  const barkodRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const vrijednost =
+      racun.sifra_tabele !== undefined &&
+      racun.sifra_tabele !== null &&
+      racun.sifra_tabele !== ""
+        ? String(racun.sifra_tabele)
+        : null;
+    if (!vrijednost || !barkodRef.current) return;
+    JsBarcode(barkodRef.current, vrijednost, {
+      format: "CODE128",
+      width: 1.6,
+      height: 32,
+      displayValue: true,
+      fontSize: 10,
+      margin: 0,
+    });
+  }, [racun.sifra_tabele]);
 
   return (
     <div
@@ -85,25 +110,35 @@ export function RacunA5({ racun, stavke }: Props) {
         {/* ── Zaglavlje dokumenta ── */}
         <div
           style={{
-            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
             borderBottom: `2px solid ${PRIMARY}`,
             paddingBottom: 8,
             marginBottom: 12,
           }}
         >
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: PRIMARY,
-              letterSpacing: "normal",
-            }}
-          >
-            {racun.broj_racuna}
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: PRIMARY,
+                letterSpacing: "normal",
+              }}
+            >
+              {racun.broj_racuna}
+            </div>
+            <div style={{ fontSize: 9, color: "#666", marginTop: 3 }}>
+              Datum izdavanja: {formatDatum(racun.datum_racuna)}
+            </div>
           </div>
-          <div style={{ fontSize: 9, color: "#666", marginTop: 3 }}>
-            Datum izdavanja: {formatDatum(racun.datum_racuna)}
-          </div>
+          {racun.sifra_tabele !== undefined &&
+            racun.sifra_tabele !== null &&
+            racun.sifra_tabele !== "" && (
+              <canvas ref={barkodRef} style={{ flexShrink: 0 }} />
+            )}
         </div>
 
         {/* ── Podaci o partneru ── */}

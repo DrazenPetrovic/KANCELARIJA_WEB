@@ -70,6 +70,14 @@ const formatDatumIso = (d: Date) =>
 const formatVremeIso = (d: Date) =>
   `${formatDatumIso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
+// dd.MM.yyyy — za prikaz datuma dostave uz teren (npr. u padajućoj listi).
+const formatDatumDMY = (v: string | undefined | null): string | null => {
+  if (!v) return null;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}.`;
+};
+
 // Format naziva fajla za ESIR debug dump: yyyy-MM-dd_HH_mm_ss (šifra tabele se
 // dodaje posebno, vidi sacuvajEsirGreskuJson).
 const formatDatumZaNazivFajla = (d: Date) =>
@@ -1239,8 +1247,9 @@ export function GotovinskiRacuni() {
     setPokazuiModalNarudzbe(false);
     setOdabraniKupacNarudzbe(null);
     // Novi podaci povučeni iz terena — poruka o fiskalnom broju sa prethodnog
-    // računa više nije relevantna.
+    // računa, kao ni napomena, više nisu relevantni.
     setPosljednjiBrojFiskalnog(null);
+    setNapomena("");
 
     // Priprema JSON sa svim sifra_tabele iz uvezene narudžbe — kasnije se šalje
     // proceduri koja ažurira "stampano" (nakon što se račun sačuva). Oblik:
@@ -1350,6 +1359,7 @@ export function GotovinskiRacuni() {
         broj_racuna?: number | string;
         affected_rows?: number | null;
         response_source?: string;
+        sifra_tabele?: number;
       } | null = null;
       if (rawOdgovor) {
         try {
@@ -1359,6 +1369,7 @@ export function GotovinskiRacuni() {
             broj_racuna?: number | string;
             affected_rows?: number | null;
             response_source?: string;
+            sifra_tabele?: number;
           };
         } catch {
           json = null;
@@ -1500,10 +1511,18 @@ export function GotovinskiRacuni() {
           ? odabraniRazni!.sifra_partnera
           : (odabraniPartner?.sifra_partnera ?? "-");
         const stavkeZaPrint = stavke;
+        // Broj računa formatiran isto kao "Broj računa" u Pregledu računa (npr.
+        // "MP-10-3402 / 26") — POST /api/racuni/unos vraća samo sirov broj_racuna,
+        // pa se ovdje sklapa iz djelova koje već imamo (samo za štampu).
+        const prefiksVrsteRacuna = VRSTA_RACUNA_NOVI === 1 ? "MP" : "VP";
+        const godinaRacuna = String(
+          new Date(podaci.header.datum_racuna).getFullYear(),
+        ).slice(-2);
+        const brojRacunaZaStampu = `${prefiksVrsteRacuna}-${odabranaPodgrupa?.sifra_podgrupe ?? 0}-${json.broj_racuna ?? "-"} / ${godinaRacuna}`;
         const racunA5 = (
           <RacunA5
             racun={{
-              broj_racuna: String(json.broj_racuna ?? "-"),
+              broj_racuna: brojRacunaZaStampu,
               datum_racuna: podaci.header.datum_racuna,
               naziv_partnera: nazivZaPrint,
               sifra_partnera: sifraZaPrint,
@@ -1518,6 +1537,7 @@ export function GotovinskiRacuni() {
               br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
               verifikacioni_qr:
                 esirInvoiceResponse?.verificationQRCode ?? null,
+              sifra_tabele: json.sifra_tabele ?? null,
             }}
             stavke={stavkeZaPrint.map((s) => ({
               sifra_proizvoda: s.sifra_proizvoda,
@@ -1549,7 +1569,7 @@ export function GotovinskiRacuni() {
           }
         } else {
           openPrint({
-            title: `Račun ${json.broj_racuna ?? "-"}`,
+            title: `Račun ${brojRacunaZaStampu}`,
             component: racunA5,
           });
         }
@@ -1803,7 +1823,9 @@ export function GotovinskiRacuni() {
                     <span
                       className={`text-[10px] font-normal ${odabraniTeren ? "text-white/70" : "text-gray-400 dark:text-[#5f5878]"}`}
                     >
-                      ({odabraniTeren.sifra_terena_dostava})
+                      ({formatDatumDMY(odabraniTeren.datum_dostave) ??
+                        odabraniTeren.sifra_terena_dostava}
+                      )
                     </span>
                   </>
                 ) : (
@@ -1813,7 +1835,7 @@ export function GotovinskiRacuni() {
             </button>
 
             {pokaziDropdownTeren && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-[#261f38] border border-gray-200 dark:border-[#3a3158] rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-[#261f38] border border-gray-200 dark:border-[#3a3158] rounded-xl shadow-xl overflow-hidden max-h-80 overflow-y-auto">
                 <button
                   onClick={() => {
                     if (odabraniTeren !== null) resetujRacunZaPromjenuTerena();
@@ -1836,12 +1858,19 @@ export function GotovinskiRacuni() {
                       setOdabraniTeren(t);
                       setPokazuiDropdownTeren(false);
                     }}
-                    className="w-full flex items-center px-3 py-2 text-left hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all border-b border-gray-100 dark:border-[#2d2648] last:border-b-0"
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all border-b border-gray-100 dark:border-[#2d2648] last:border-b-0"
                   >
-                    <span className="text-xs font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
-                      {t.naziv_dana}
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
+                        {t.naziv_dana}
+                      </span>
+                      {formatDatumDMY(t.datum_dostave) && (
+                        <span className="text-[10px] font-normal text-gray-400 dark:text-[#5f5878]">
+                          {formatDatumDMY(t.datum_dostave)}
+                        </span>
+                      )}
                     </span>
-                    <span className="ml-1.5 text-[10px] font-normal text-gray-400 dark:text-[#5f5878] flex-shrink-0">
+                    <span className="text-[10px] font-normal text-gray-400 dark:text-[#5f5878] flex-shrink-0">
                       ({t.sifra_terena_dostava})
                     </span>
                   </button>

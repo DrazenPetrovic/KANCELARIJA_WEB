@@ -1,0 +1,113 @@
+JSON koji se šalje na POST /api/racuni/unos (racuniGotovinski.tsx -> pripremiRacunZaUnos)
+Procedura koja ga prima: erp.sp_racuni_unos
+Oblik: { header, items } — header je jedan objekat (glavna tabela računa),
+items je niz objekata (jedan po stavki/proizvodu na računu).
+
+Napomena (iz koda): MPC je uvijek osnova obračuna za gotovinski račun
+(ista vrijednost ide i na fiskalni račun). VPC = MPC / 1.17, PDV po artiklu = MPC - VPC.
+Polja vezana za rabate (rabat_proc, rabat_km, rabat_proc_2, rabat_km_2, rab_proc_3,
+rabat_km_3) su za gotovinski (maloprodajni) račun UVIJEK 0 — postoje u ovom obliku
+samo zato što ga dijeli sa žiralnim računom (koji rabate stvarno koristi).
+
+------------------------------------------------------------------------------
+POLJA U "header" (RacunHeader):
+------------------------------------------------------------------------------
+vrsta_racuna       - string, konstanta "g" (gotovinski)
+sifra_kupca        - broj, šifra partnera (300 = razni kupci)
+datum_racuna       - string, ISO datum (yyyy-MM-dd)
+ukupno             - broj, ukupan iznos računa (suma svih stavki)
+sifra_radnika      - broj, šifra ulogovanog radnika (kasira)
+slovima            - string, ukupan iznos ispisan slovima
+valuta             - string, ISO datum (u praksi isti kao datum_racuna)
+datum_isporuke     - string, ISO datum (u praksi isti kao datum_racuna)
+napomena           - string, napomena uz račun (kod raznih kupaca ovdje ide i ime/šifra)
+rabat_km           - broj, uvijek 0 za gotovinski
+vreme              - string, HH:mm:ss vrijeme izdavanja
+VP_vrednost        - broj, ukupna VPC vrijednost (suma vpc * kolicina po stavkama)
+vp_vrednost_original - broj, isto kao VP_vrednost (istorijsko polje)
+VP_1               - broj, isto kao VP_vrednost
+VP_2               - broj, isto kao VP_vrednost
+vrsta_racuna_novi  - broj, 1 = MP (maloprodaja), 2 = VP, 3 = MP (alternativna vrsta)
+vrsta_racuna_pod   - broj, šifra podgrupe računa (iz padajućeg menija "Podgrupa računa")
+sifra_terena       - broj, šifra terena dostave (0 ako nije izabran)
+
+------------------------------------------------------------------------------
+POLJA U SVAKOM ELEMENTU "items" (StavkaZaUnos):
+------------------------------------------------------------------------------
+sifra_proizvoda            - broj, šifra artikla
+cijena_proizvoda           - broj, VPC (= vpc, isto polje duplirano pod drugim imenom)
+prodajna_cijena            - broj, MPC (prodajna/maloprodajna cijena)
+kolicina                   - broj, količina artikla na računu
+rabat_proc                 - broj, rabat 1 u % — uvijek 0 za gotovinski
+rabat_km                   - broj, rabat 1 u KM — uvijek 0 za gotovinski
+vpc                        - broj, VPC (nabavna veleprodajna cijena bez PDV-a)
+vpc_bez_rabata             - broj, VPC prije rabata — kod gotovinskog isti kao vpc
+rabat_proc_2               - broj, rabat 2 u % — uvijek 0 za gotovinski
+rabat_km_2                 - broj, rabat 2 u KM — uvijek 0 za gotovinski
+rab_proc_3                 - broj, rabat 3 u % — uvijek 0 za gotovinski
+rabat_km_3                 - broj, rabat 3 u KM — uvijek 0 za gotovinski
+vpc_rabat_1                - broj, VPC nakon rabata 1 — kod gotovinskog isti kao vpc
+pdv_po_artiklu             - broj, PDV iznos po artiklu (MPC - VPC)
+nabavna_cijena_proizvoda   - broj, stvarna nabavna (kupovna) cijena artikla
+
+------------------------------------------------------------------------------
+DUMMY PRIMJER (kompletan JSON koji bi otišao na server):
+------------------------------------------------------------------------------
+{
+  "header": {
+    "vrsta_racuna": "g",
+    "sifra_kupca": 300,
+    "datum_racuna": "2026-07-15",
+    "ukupno": 45.90,
+    "sifra_radnika": 12,
+    "slovima": "četrdesetpet i 90/100 KM",
+    "valuta": "2026-07-15",
+    "datum_isporuke": "2026-07-15",
+    "napomena": "Marko Marković #10042",
+    "rabat_km": 0,
+    "vreme": "14:32:10",
+    "VP_vrednost": 39.23,
+    "vp_vrednost_original": 39.23,
+    "VP_1": 39.23,
+    "VP_2": 39.23,
+    "vrsta_racuna_novi": 1,
+    "vrsta_racuna_pod": 10,
+    "sifra_terena": 0
+  },
+  "items": [
+    {
+      "sifra_proizvoda": 10023,
+      "cijena_proizvoda": 8.55,
+      "prodajna_cijena": 10.00,
+      "kolicina": 2,
+      "rabat_proc": 0,
+      "rabat_km": 0,
+      "vpc": 8.55,
+      "vpc_bez_rabata": 8.55,
+      "rabat_proc_2": 0,
+      "rabat_km_2": 0,
+      "rab_proc_3": 0,
+      "rabat_km_3": 0,
+      "vpc_rabat_1": 8.55,
+      "pdv_po_artiklu": 1.45,
+      "nabavna_cijena_proizvoda": 6.20
+    },
+    {
+      "sifra_proizvoda": 10088,
+      "cijena_proizvoda": 21.13,
+      "prodajna_cijena": 24.72,
+      "kolicina": 1,
+      "rabat_proc": 0,
+      "rabat_km": 0,
+      "vpc": 21.13,
+      "vpc_bez_rabata": 21.13,
+      "rabat_proc_2": 0,
+      "rabat_km_2": 0,
+      "rab_proc_3": 0,
+      "rabat_km_3": 0,
+      "vpc_rabat_1": 21.13,
+      "pdv_po_artiklu": 3.59,
+      "nabavna_cijena_proizvoda": 15.80
+    }
+  ]
+}

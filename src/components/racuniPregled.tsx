@@ -1,7 +1,25 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import { CheckCircle2, Loader2, Printer, Receipt, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Printer,
+  Receipt,
+  Search,
+  XCircle,
+} from "lucide-react";
 import { usePrint } from "../context/PrintContext";
 import { RacunA5 } from "../print/templates/RacunA5";
+import {
+  izdajFiskalniRacun,
+  izdvojiFiskalnePodatke,
+  proveriFiskalizacijuPoRequestId,
+  ESIR_OZNAKA_SA_PDV,
+  ESIR_SLIP_PRESET_58MM,
+  type EsirInvoiceRequest,
+  type EsirStavka,
+  type EsirPlacanje,
+} from "./fiskalniRacuni";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -377,6 +395,7 @@ function GenericnaTabela({
   prosireniSadrzaj,
   varijanta = "racuni",
   onStampaj,
+  onDesniKlikFiskalni,
 }: {
   redovi: RacunRed[];
   podesavanja: Record<string, PodesavanjeKolone>;
@@ -390,6 +409,8 @@ function GenericnaTabela({
   varijanta?: "racuni" | "stavke";
   // Klik na ikonicu štampača u koloni "Štampa" (samo glavna tabela računa).
   onStampaj?: (red: RacunRed) => void;
+  // Desni klik na ćeliju "Br. fiskalnog" — otvara kontekst meni za fiskalizaciju.
+  onDesniKlikFiskalni?: (red: RacunRed, e: React.MouseEvent) => void;
 }) {
   const jeStavke = varijanta === "stavke";
   const imaPartnera =
@@ -590,6 +611,56 @@ function GenericnaTabela({
                       }`;
                       const jeRabatDonji =
                         normalizujKljuc(donjiKljuc).startsWith("rab");
+                      if (k === "br_fiskalnog") {
+                        const imaFiskalni =
+                          red.br_fiskalnog !== null &&
+                          red.br_fiskalnog !== undefined &&
+                          String(red.br_fiskalnog).trim() !== "";
+                        return (
+                          <td
+                            key={k}
+                            className={`${padding} py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8] ${onDesniKlikFiskalni ? "cursor-context-menu" : ""}`}
+                            style={obrubCelije(k)}
+                            onContextMenu={(e) => {
+                              if (!onDesniKlikFiskalni) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onDesniKlikFiskalni(red, e);
+                            }}
+                          >
+                            {imaFiskalni ? (
+                              <>
+                                <div
+                                  className="flex items-center gap-1 font-semibold"
+                                  style={{ color: PRIMARY }}
+                                >
+                                  <CheckCircle2
+                                    size={12}
+                                    className="flex-shrink-0 text-emerald-500"
+                                  />
+                                  {formatirajVrijednost(red[k], k)}
+                                </div>
+                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                                  {formatirajVrijednost(
+                                    red[donjiKljuc],
+                                    donjiKljuc,
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div
+                                className="flex items-center justify-center"
+                                title="Nema fiskalnog broja"
+                              >
+                                <AlertTriangle
+                                  size={18}
+                                  className="text-amber-500"
+                                />
+                              </div>
+                            )}
+                          </td>
+                        );
+                      }
                       return (
                         <td
                           key={k}
@@ -726,6 +797,22 @@ export function RacuniPregled() {
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
+
+  // Kontekst meni na desni klik iznad ćelije "Br. fiskalnog".
+  const [kontekstMeniFiskalni, setKontekstMeniFiskalni] = useState<{
+    x: number;
+    y: number;
+    red: RacunRed;
+  } | null>(null);
+  const [fiskalizacijaUToku, setFiskalizacijaUToku] = useState(false);
+  // Zamjena za window.alert/confirm — modal na sredini ekrana. Ako je
+  // "onPotvrdi" postavljen, prikazuju se dugmad Da/Ne (potvrda); inače samo "U redu".
+  const [fiskalnaPoruka, setFiskalnaPoruka] = useState<{
+    naslov: string;
+    poruka: string;
+    tip: "info" | "greska" | "uspjeh" | "pitanje";
+    onPotvrdi?: () => void;
+  } | null>(null);
 
   // Šifra tabele reda čije su stavke trenutno prikazane ispod njega (accordion).
   const [prosirenaSifra, setProsirenaSifra] = useState<string | number | null>(
@@ -887,6 +974,7 @@ export function RacuniPregled() {
             rabat_km: (red.rabat_km as number | string | null) ?? null,
             slovima: (red.slovima as string | null) ?? null,
             br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+            sifra_tabele: sifraTabele,
           }}
           stavke={stavkeZaStampu.map((s) => ({
             sifra_proizvoda: (s.sifra_proizvoda as string | number) ?? "",
@@ -902,6 +990,216 @@ export function RacuniPregled() {
         />
       ),
     });
+  };
+
+  const handleDesniKlikFiskalni = (red: RacunRed, e: React.MouseEvent) => {
+    setKontekstMeniFiskalni({ x: e.clientX, y: e.clientY, red });
+  };
+
+  // Upisuje br_fiskalnog/datum_vreme_fiskalnog i za red u trenutnoj listi (bez
+  // ponovnog učitavanja cijelog pregleda) i u bazu preko postojeće procedure.
+  const azurirajFiskalneUBaziIListi = async (
+    sifraTabele: string | number,
+    brFiskalnog: string,
+    datumVremeFiskalnog: string,
+  ) => {
+    const res = await fetch(`${API_URL}/api/racuni/azuriraj-fiskalne-podatke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        sifra_tabele: sifraTabele,
+        br_fiskalnog: brFiskalnog,
+        datum_vreme_fiskalnog: datumVremeFiskalnog,
+      }),
+    });
+    if (!res.ok) {
+      const g = await res.json().catch(() => null);
+      throw new Error(g?.error || "Greška pri upisu fiskalnih podataka.");
+    }
+    setRacuni((prev) =>
+      prev.map((r) =>
+        String(nadjiSifruTabele(r)) === String(sifraTabele)
+          ? { ...r, br_fiskalnog: brFiskalnog, datum_vreme_fiskalnog: datumVremeFiskalnog }
+          : r,
+      ),
+    );
+  };
+
+  // GTIN mora imati 8–14 znakova — ako artikal nema barkod, šifra proizvoda se
+  // dopunjava nulama slijeva do 13 cifara (isto kao u gotovinskom unosu).
+  const gtinZaStavkuPregled = (s: RacunRed): string => {
+    const barkod = String(s.barkod ?? "").trim();
+    if (barkod) return barkod;
+    const cifre = String(s.sifra_proizvoda ?? "").replace(/\D/g, "");
+    return cifre.padStart(13, "0").slice(-13);
+  };
+
+  // Ponovo šalje NOVI zahtjev za fiskalizaciju ka ESIR-u za istorijski račun
+  // (kad provjera po RequestId-u nije našla postojeću fiskalizaciju) — podaci
+  // se povlače iz reda pregleda + stavki (isti izvor kao za A5 štampu).
+  const kreirajNovuFiskalizaciju = async (
+    red: RacunRed,
+    sifraTabele: string | number,
+  ) => {
+    const resStavke = await fetch(
+      `${API_URL}/api/racuni/pregled-stavke?sifraTabele=${sifraTabele}`,
+      { credentials: "include" },
+    );
+    const jsonStavke = await resStavke.json();
+    const stavke: RacunRed[] =
+      resStavke.ok && jsonStavke.success ? (jsonStavke.data ?? []) : [];
+    if (stavke.length === 0) {
+      setFiskalnaPoruka({
+        naslov: "Nema stavki",
+        poruka: "Nema stavki za ovaj račun — ne mogu kreirati ESIR zahtjev.",
+        tip: "greska",
+      });
+      return;
+    }
+
+    const items: EsirStavka[] = stavke.map((s) => ({
+      name: String(s.naziv_proizvoda ?? ""),
+      gtin: gtinZaStavkuPregled(s),
+      labels: [ESIR_OZNAKA_SA_PDV],
+      totalAmount: Number(s.prodajna_vrednost) || 0,
+      unitPrice: Number(s.prodajna_cijena) || 0,
+      quantity: Number(s.kolicina) || 0,
+      discount: 0,
+      discountAmount: 0,
+    }));
+    const payment: EsirPlacanje[] = [
+      { amount: Number(red.ukupno) || 0, paymentType: "Cash" },
+    ];
+    const jeRazniKupac = Number(red.sifra_partnera) === 300;
+    const invoiceRequest: EsirInvoiceRequest = {
+      invoiceType: "Training",
+      transactionType: "Sale",
+      referentDocumentNumber: null,
+      referentDocumentDT: null,
+      buyerId: jeRazniKupac
+        ? "300"
+        : red.jib
+          ? String(red.jib)
+          : undefined,
+      buyerCostCenterId: String(red.naziv_partnera ?? "").slice(0, 50),
+      payment,
+      items,
+      cashier: String(red.naziv_radnika ?? "").toUpperCase(),
+    };
+
+    setFiskalizacijaUToku(true);
+    try {
+      const esirRezultat = await izdajFiskalniRacun(
+        "gotovinski",
+        invoiceRequest,
+        {
+          print: true,
+          renderReceiptImage: true,
+          receiptLayout: "Slip",
+          receiptImageFormat: "Png",
+          ...ESIR_SLIP_PRESET_58MM,
+        },
+        String(sifraTabele),
+      );
+      const { brFiskalnog, datumVremeFiskalnog } = izdvojiFiskalnePodatke(
+        esirRezultat.invoiceResponse,
+      );
+      await azurirajFiskalneUBaziIListi(
+        sifraTabele,
+        brFiskalnog,
+        datumVremeFiskalnog,
+      );
+      setFiskalnaPoruka({
+        naslov: "Fiskalizacija uspješna",
+        poruka: `Broj fiskalnog računa: ${brFiskalnog}${
+          esirRezultat.upozorenje
+            ? `\n\nUpozorenje uređaja: ${esirRezultat.upozorenje}`
+            : ""
+        }`,
+        tip: "uspjeh",
+      });
+    } catch (err) {
+      setFiskalnaPoruka({
+        naslov: "Fiskalizacija nije uspjela",
+        poruka: err instanceof Error ? err.message : String(err),
+        tip: "greska",
+      });
+    } finally {
+      setFiskalizacijaUToku(false);
+    }
+  };
+
+  // Desni klik na red BEZ br_fiskalnog — provjeri kod ESIR-a (preko RequestId =
+  // sifra_tabele) da li je fiskalizacija ipak izvršena (npr. mreža je pukla
+  // poslije uspješne fiskalizacije, pa upis u bazu nije prošao). Ako jeste,
+  // ponudi upis; ako nije, ponudi kreiranje novog zahtjeva.
+  const handleProveriFiskalizaciju = async (red: RacunRed) => {
+    const sifraTabele = nadjiSifruTabele(red);
+    if (sifraTabele === null) return;
+    setFiskalizacijaUToku(true);
+    try {
+      const pronadjeno = await proveriFiskalizacijuPoRequestId(
+        "gotovinski",
+        String(sifraTabele),
+      );
+      setFiskalizacijaUToku(false);
+
+      if (pronadjeno) {
+        setFiskalnaPoruka({
+          naslov: "Fiskalizacija pronađena",
+          poruka:
+            `Fiskalizacija JE pronađena na ESIR uređaju za ovaj račun:\n\n` +
+            `Broj: ${pronadjeno.invoiceNumber}\nDatum: ${pronadjeno.sdcDateTime}\n\n` +
+            `Upisati ove podatke u bazu za ovaj račun?`,
+          tip: "pitanje",
+          onPotvrdi: async () => {
+            setFiskalizacijaUToku(true);
+            try {
+              await azurirajFiskalneUBaziIListi(
+                sifraTabele,
+                pronadjeno.invoiceNumber,
+                pronadjeno.sdcDateTime,
+              );
+              setFiskalnaPoruka({
+                naslov: "Ažurirano",
+                poruka: "Fiskalni podaci su ažurirani.",
+                tip: "uspjeh",
+              });
+            } catch (err) {
+              setFiskalnaPoruka({
+                naslov: "Greška",
+                poruka: err instanceof Error ? err.message : String(err),
+                tip: "greska",
+              });
+            } finally {
+              setFiskalizacijaUToku(false);
+            }
+          },
+        });
+      } else {
+        setFiskalnaPoruka({
+          naslov: "Fiskalizacija nije pronađena",
+          poruka:
+            "Fiskalizacija NIJE pronađena na ESIR uređaju za ovaj račun " +
+            "(nikad nije poslata ili nije uspjela).\n\n" +
+            "Poslati NOVI zahtjev za fiskalizaciju sada?",
+          tip: "pitanje",
+          onPotvrdi: () => {
+            void kreirajNovuFiskalizaciju(red, sifraTabele);
+          },
+        });
+      }
+    } catch (err) {
+      setFiskalizacijaUToku(false);
+      setFiskalnaPoruka({
+        naslov: "Greška",
+        poruka: `Greška pri provjeri fiskalizacije: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        tip: "greska",
+      });
+    }
   };
 
   return (
@@ -1015,6 +1313,7 @@ export function RacuniPregled() {
             podesavanja={PODESAVANJA_PREGLED}
             onKlik={handleKlikRacun}
             onStampaj={handleStampaj}
+            onDesniKlikFiskalni={handleDesniKlikFiskalni}
             prosireniKljuc={prosirenaSifra}
             prosireniSadrzaj={
               loadingStavke ? (
@@ -1035,6 +1334,131 @@ export function RacuniPregled() {
           />
         )}
       </div>
+
+      {kontekstMeniFiskalni &&
+        (() => {
+          const red = kontekstMeniFiskalni.red;
+          const imaFiskalni =
+            red.br_fiskalnog !== null &&
+            red.br_fiskalnog !== undefined &&
+            String(red.br_fiskalnog).trim() !== "";
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-[9998]"
+                onClick={() => setKontekstMeniFiskalni(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setKontekstMeniFiskalni(null);
+                }}
+              />
+              <div
+                className="fixed z-[9999] bg-white dark:bg-[#261f38] rounded-xl shadow-2xl border border-gray-100 dark:border-[#2d2648] py-1 min-w-[240px]"
+                style={{
+                  top: kontekstMeniFiskalni.y,
+                  left: kontekstMeniFiskalni.x,
+                }}
+              >
+                {imaFiskalni ? (
+                  <button
+                    onClick={() => {
+                      setKontekstMeniFiskalni(null);
+                      setFiskalnaPoruka({
+                        naslov: "Uskoro",
+                        poruka: "Ponovno slanje na ESIR – funkcionalnost dolazi uskoro.",
+                        tip: "info",
+                      });
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
+                  >
+                    <Printer size={13} />
+                    Ponovo pošalji na ESIR
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setKontekstMeniFiskalni(null);
+                      void handleProveriFiskalizaciju(red);
+                    }}
+                    disabled={fiskalizacijaUToku}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
+                  >
+                    <XCircle size={13} />
+                    Provjeri / kreiraj fiskalizaciju
+                  </button>
+                )}
+              </div>
+            </>
+          );
+        })()}
+
+      {fiskalnaPoruka && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !fiskalnaPoruka.onPotvrdi) {
+              setFiskalnaPoruka(null);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[420px] max-w-[92vw] overflow-hidden">
+            <div
+              className="px-6 py-4 flex items-center gap-3"
+              style={{
+                background:
+                  fiskalnaPoruka.tip === "greska"
+                    ? "#ef4444"
+                    : fiskalnaPoruka.tip === "uspjeh"
+                      ? ACCENT
+                      : PRIMARY,
+              }}
+            >
+              {fiskalnaPoruka.tip === "greska" ? (
+                <XCircle size={18} className="text-white flex-shrink-0" />
+              ) : fiskalnaPoruka.tip === "uspjeh" ? (
+                <CheckCircle2 size={18} className="text-white flex-shrink-0" />
+              ) : null}
+              <div className="font-bold text-white text-base">
+                {fiskalnaPoruka.naslov}
+              </div>
+            </div>
+            <div className="px-6 py-5 text-sm text-gray-700 dark:text-[#c5bfd8] whitespace-pre-line">
+              {fiskalnaPoruka.poruka}
+            </div>
+            <div className="px-6 pb-5 flex justify-end gap-2">
+              {fiskalnaPoruka.onPotvrdi ? (
+                <>
+                  <button
+                    onClick={() => setFiskalnaPoruka(null)}
+                    className="px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-[#7d7498] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                  >
+                    Ne
+                  </button>
+                  <button
+                    onClick={() => {
+                      const onPotvrdi = fiskalnaPoruka.onPotvrdi;
+                      setFiskalnaPoruka(null);
+                      onPotvrdi?.();
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                    style={{ background: PRIMARY }}
+                  >
+                    Da
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setFiskalnaPoruka(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  U redu
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

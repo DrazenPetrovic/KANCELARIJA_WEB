@@ -16,6 +16,7 @@
     "@react-pdf/renderer": "^4.3.2",
     "@types/react-window": "^1.8.8",
     "html2canvas": "^1.4.1",
+    "jsbarcode": "^3.12.3",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.563.0",
