@@ -9,7 +9,9 @@
       "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
       "Bash(grep -E \"\\\\.js$\")",
       "Bash(Get-ChildItem -Path \"d:\\\\WEB_KOMERCIJALA\\\\KANCELARIJA_WEB\" -Directory -Force)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(node -e ' *)",
+      "Bash(node ./_tmp_test_lista.mjs)"
     ]
   }
 }

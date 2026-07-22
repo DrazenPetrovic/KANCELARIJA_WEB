@@ -10,6 +10,8 @@ import { NarudzbeZavrseneLokalno } from "./NarudzbeZavrseneLokalno";
 import { GotovinskiRacuni } from "./racuniGotovinski.tsx";
 import { ZiralniRacuni } from "./racuniZiralni.tsx";
 import { RacuniPregled } from "./racuniPregled.tsx";
+import { PartneriUnos } from "./PartneriUnos";
+import { PartneriPregled } from "./PartneriPregled";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -52,6 +54,8 @@ import {
   ShoppingCart,
   Sun,
   Truck,
+  UserPlus,
+  Users,
 } from "lucide-react";
 
 const PRIMARY = "#785E9E";
@@ -107,6 +111,8 @@ type MenuSection =
   | "file-arhiva-2023"
   | "file-arhiva-2022"
   | "file-arhiva-2021"
+  | "partneri-unos"
+  | "partneri-pregled"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "narudzbe-pregled"
@@ -155,13 +161,13 @@ export function Dashboard({
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
-    "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
+    "file" | "partneri" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
-    "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
+    "file" | "partneri" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
   >(null);
 
   const pinUnesenRef = useRef<Record<EsirUredjaj, boolean>>({
@@ -170,11 +176,13 @@ export function Dashboard({
   });
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
+  const partneriBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
   const proizvodnjaBtnRef = useRef<HTMLButtonElement>(null);
   const racuniBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
+  const partneriDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
   const proizvodnjaDrop = useRef<HTMLDivElement>(null);
@@ -194,6 +202,9 @@ export function Dashboard({
       const t = e.target as Node;
       const inFile =
         fileBtnRef.current?.contains(t) || fileDropRef.current?.contains(t);
+      const inPartneri =
+        partneriBtnRef.current?.contains(t) ||
+        partneriDropRef.current?.contains(t);
       const inPregledi =
         preglediBtnRef.current?.contains(t) ||
         preglediDropRef.current?.contains(t);
@@ -205,7 +216,14 @@ export function Dashboard({
         proizvodnjaDrop.current?.contains(t);
       const inRacuni =
         racuniBtnRef.current?.contains(t) || racuniDropRef.current?.contains(t);
-      if (!inFile && !inPregledi && !inNarudzbe && !inProizvodnja && !inRacuni)
+      if (
+        !inFile &&
+        !inPartneri &&
+        !inPregledi &&
+        !inNarudzbe &&
+        !inProizvodnja &&
+        !inRacuni
+      )
         setOpenMenu(null);
     };
     document.addEventListener("mousedown", handler);
@@ -316,18 +334,26 @@ export function Dashboard({
   }, [showPrinterSavedModal]);
 
   const toggleMenu = (
-    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni",
+    menu:
+      | "file"
+      | "partneri"
+      | "pregledi"
+      | "narudzbe"
+      | "proizvodnja"
+      | "racuni",
   ) => {
     const ref =
       menu === "file"
         ? fileBtnRef
-        : menu === "pregledi"
-          ? preglediBtnRef
-          : menu === "narudzbe"
-            ? narudzbeBtnRef
-            : menu === "racuni"
-              ? racuniBtnRef
-              : proizvodnjaBtnRef;
+        : menu === "partneri"
+          ? partneriBtnRef
+          : menu === "pregledi"
+            ? preglediBtnRef
+            : menu === "narudzbe"
+              ? narudzbeBtnRef
+              : menu === "racuni"
+                ? racuniBtnRef
+                : proizvodnjaBtnRef;
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 6, left: r.left });
@@ -345,7 +371,13 @@ export function Dashboard({
   };
 
   const navBtnStyle = (
-    menu: "file" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni",
+    menu:
+      | "file"
+      | "partneri"
+      | "pregledi"
+      | "narudzbe"
+      | "proizvodnja"
+      | "racuni",
     isActive: boolean,
   ): React.CSSProperties => ({
     background: isActive || hoveredBtn === menu ? ACCENT : PRIMARY,
@@ -633,6 +665,134 @@ export function Dashboard({
                             )}
                           </div>
                         )}
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+
+              {/* PARTNERI */}
+              <div>
+                <button
+                  ref={partneriBtnRef}
+                  onClick={() => toggleMenu("partneri")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "partneri",
+                    !!(
+                      openMenu === "partneri" ||
+                      activeSection?.startsWith("partneri-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("partneri")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <Users size={13} style={{ color: "#111" }} />
+                  </span>
+                  Partneri
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "partneri" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "partneri" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={partneriDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <Users size={12} />
+                        Partneri
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() => handleSectionChange("partneri-unos")}
+                          className={dropdownItemClass(
+                            activeSection === "partneri-unos",
+                          )}
+                          style={
+                            activeSection === "partneri-unos"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-unos"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-unos"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <UserPlus
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-unos"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("partneri-pregled")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "partneri-pregled",
+                          )}
+                          style={
+                            activeSection === "partneri-pregled"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-pregled"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-pregled"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Eye
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-pregled"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Pregled
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -1387,6 +1547,12 @@ export function Dashboard({
               </p>
             </div>
           )}
+
+          {activeSection === "partneri-unos" && (
+            <PartneriUnos username={username} />
+          )}
+
+          {activeSection === "partneri-pregled" && <PartneriPregled />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 

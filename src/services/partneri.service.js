@@ -76,3 +76,45 @@ export const getPartneriZaLokalnuDostavu = async () => {
     });
   });
 };
+
+// Novi ERP unos partnera — jedan JSON poziv unosi partnera i, opciono, njegove
+// poslovnice/kontakte/telefone (sve u jednoj transakciji, sa rollback-om ako
+// bilo koji dio pukne). Šifra partnera se dodjeljuje automatski. Vidi
+// erp.sp_partner_unos.
+export const setPartneriGlavno = async (partner) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify(partner);
+    const [rows] = await connection.query("CALL erp.sp_partner_unos(?)", [
+      json,
+    ]);
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { uspjesno: true };
+  });
+};
+
+export const getPartneriDrzave = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.sp_partneri_drzave()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+export const getPartneriGradovi = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.sp_partneri_gradovi()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Novi ERP pregled — kompletna lista partnera sa brojačima poslovnica/
+// kontakata/telefona i primarnim telefonom. Vidi erp.sp_partneri_lista_sve.
+export const getPartneriListaSve = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_partneri_lista_sve()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
