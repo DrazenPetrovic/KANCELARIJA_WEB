@@ -4,6 +4,12 @@
 
 export type EsirUredjaj = "gotovinski" | "ziralni";
 
+// invoiceType za /api/invoices: Normal (promet), Proforma (predračun), Copy (kopija),
+// Training (trening — ne šalje se stvarno u PURS), Advance (avans).
+// Training u .env (razvoj), Normal u .env.production (produkcija) — vidi VITE_ESIR_INVOICE_TYPE.
+export const ESIR_INVOICE_TYPE: string =
+  import.meta.env.VITE_ESIR_INVOICE_TYPE || "Training";
+
 interface EsirConfig {
   baseUrl: string;
   apiKey: string;

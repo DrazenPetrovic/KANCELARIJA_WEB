@@ -87,6 +87,30 @@ export const getListaSve = async (req, res) => {
   }
 };
 
+export const getListaPoslovnice = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriListaPoslovnice(
+      req.params.id,
+    );
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled poslovnica partnera error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju poslovnica" });
+  }
+};
+
+export const getListaTelefoni = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriListaTelefoni(
+      req.params.id,
+    );
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled telefona partnera error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju telefona" });
+  }
+};
+
 export const createPartnerGlavni = async (req, res) => {
   try {
     const data = await PartneriService.setPartneriGlavno(req.body);

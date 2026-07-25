@@ -4,9 +4,12 @@ import {
   CheckCircle2,
   IdCard,
   Loader2,
+  MapPin,
   Phone,
   Search,
+  Star,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -35,6 +38,43 @@ interface Partner {
   broj_kontakata: number;
   broj_telefona: number;
 }
+
+interface Poslovnica {
+  poslovnica_id: number;
+  partner_id: number;
+  sifra: string;
+  naziv: string;
+  jib: string | null;
+  adresa: string | null;
+  grad: string | null;
+  postanski_broj: string | null;
+  glavna: number;
+  napomena: string | null;
+  aktivan: number;
+}
+
+interface Telefon {
+  telefon_id: number;
+  partner_id: number;
+  poslovnica_id: number | null;
+  kontakt_id: number | null;
+  broj_original: string;
+  broj_normalizovan: string;
+  tip: "fiksni" | "mobilni" | "fax" | "viber" | "centrala";
+  primarni: number;
+  napomena: string | null;
+  aktivan: number;
+}
+
+type PartnerTab = "poslovnice" | "kontakti" | "telefoni";
+
+const TIP_TELEFONA_LABEL: Record<Telefon["tip"], string> = {
+  fiksni: "Fiksni",
+  mobilni: "Mobilni",
+  fax: "Fax",
+  viber: "Viber",
+  centrala: "Centrala",
+};
 
 const TH = ({
   children,
@@ -89,6 +129,33 @@ function Brojac({
   );
 }
 
+function StanjeUcitavanja() {
+  return (
+    <div className="flex items-center justify-center py-10 gap-3">
+      <Loader2 size={20} className="animate-spin" style={{ color: PRIMARY }} />
+      <span className="text-sm text-gray-500 dark:text-[#7d7498]">
+        Učitavanje...
+      </span>
+    </div>
+  );
+}
+
+function StanjeGreske({ poruka }: { poruka: string }) {
+  return (
+    <div className="flex items-center justify-center py-10">
+      <p className="text-sm text-red-500 dark:text-red-400">{poruka}</p>
+    </div>
+  );
+}
+
+function StanjePrazno({ tekst }: { tekst: string }) {
+  return (
+    <div className="flex items-center justify-center py-10">
+      <p className="text-sm text-gray-400 dark:text-[#5f5878]">{tekst}</p>
+    </div>
+  );
+}
+
 const TIP_OPTIONS = [
   { value: "svi", label: "Svi tipovi" },
   { value: "kupac", label: "Kupac" },
@@ -107,7 +174,18 @@ export function PartneriPregled() {
   const [error, setError] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
   const [tipFilter, setTipFilter] = useState("svi");
-  const [statusFilter, setStatusFilter] = useState("svi");
+  const [statusFilter, setStatusFilter] = useState("aktivni");
+
+  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [activeTab, setActiveTab] = useState<PartnerTab>("poslovnice");
+
+  const [poslovnice, setPoslovnice] = useState<Poslovnica[]>([]);
+  const [poslovniceLoading, setPoslovniceLoading] = useState(false);
+  const [poslovniceError, setPoslovniceError] = useState<string | null>(null);
+
+  const [telefoni, setTelefoni] = useState<Telefon[]>([]);
+  const [telefoniLoading, setTelefoniLoading] = useState(false);
+  const [telefoniError, setTelefoniError] = useState<string | null>(null);
 
   useEffect(() => {
     const ucitaj = async () => {
@@ -126,6 +204,55 @@ export function PartneriPregled() {
     };
     void ucitaj();
   }, []);
+
+  const otvoriPartnera = (partner: Partner) => {
+    setSelectedPartner(partner);
+    setActiveTab("poslovnice");
+
+    setPoslovnice([]);
+    setPoslovniceError(null);
+    setPoslovniceLoading(true);
+    fetch(`${API_URL}/api/partneri/${partner.partner_id}/poslovnice`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Greška pri učitavanju poslovnica");
+        return res.json();
+      })
+      .then((json) => setPoslovnice(json.data ?? []))
+      .catch((err) =>
+        setPoslovniceError(
+          err instanceof Error ? err.message : "Nepoznata greška",
+        ),
+      )
+      .finally(() => setPoslovniceLoading(false));
+
+    setTelefoni([]);
+    setTelefoniError(null);
+    setTelefoniLoading(true);
+    fetch(`${API_URL}/api/partneri/${partner.partner_id}/telefoni`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Greška pri učitavanju telefona");
+        return res.json();
+      })
+      .then((json) => setTelefoni(json.data ?? []))
+      .catch((err) =>
+        setTelefoniError(
+          err instanceof Error ? err.message : "Nepoznata greška",
+        ),
+      )
+      .finally(() => setTelefoniLoading(false));
+  };
+
+  const zatvoriPartnera = () => {
+    setSelectedPartner(null);
+    setPoslovnice([]);
+    setPoslovniceError(null);
+    setTelefoni([]);
+    setTelefoniError(null);
+  };
 
   const filtrirani = useMemo(() => {
     return data.filter((p) => {
@@ -260,7 +387,8 @@ export function PartneriPregled() {
                 {filtrirani.map((p) => (
                   <tr
                     key={p.partner_id}
-                    className="hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40 transition-colors"
+                    onClick={() => otvoriPartnera(p)}
+                    className="cursor-pointer hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40 transition-colors"
                   >
                     <TD>
                       <span className="font-mono font-semibold text-xs" style={{ color: PRIMARY }}>
@@ -354,6 +482,221 @@ export function PartneriPregled() {
           </div>
         )}
       </div>
+
+      {/* MODAL - DETALJI PARTNERA */}
+      {selectedPartner && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) zatvoriPartnera();
+          }}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2"
+            style={{ borderColor: ACCENT }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between gap-4"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {selectedPartner.naziv}
+                </h3>
+                <p className="text-xs text-white/70">
+                  Partner #{selectedPartner.partner_id}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={zatvoriPartnera}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-white hover:bg-white/15 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* TABOVI */}
+            <div className="flex border-b border-gray-100 dark:border-[#2d2648] bg-[#faf9fc] dark:bg-[#201a30]">
+              {(
+                [
+                  {
+                    key: "poslovnice" as const,
+                    label: "Poslovnice",
+                    icon: <Building2 size={13} />,
+                    count: selectedPartner.broj_poslovnica,
+                  },
+                  {
+                    key: "kontakti" as const,
+                    label: "Kontakti",
+                    icon: <IdCard size={13} />,
+                    count: selectedPartner.broj_kontakata,
+                  },
+                  {
+                    key: "telefoni" as const,
+                    label: "Telefoni",
+                    icon: <Phone size={13} />,
+                    count: selectedPartner.broj_telefona,
+                  },
+                ]
+              ).map((tab) => {
+                const aktivan = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition-colors border-b-2"
+                    style={{
+                      color: aktivan ? PRIMARY : undefined,
+                      borderColor: aktivan ? ACCENT : "transparent",
+                    }}
+                  >
+                    <span
+                      className={
+                        aktivan
+                          ? ""
+                          : "text-gray-500 dark:text-[#8a80a3] flex items-center gap-1.5"
+                      }
+                    >
+                      {tab.icon}
+                    </span>
+                    {tab.label}
+                    <span
+                      className={`text-[10px] ${aktivan ? "" : "text-gray-400 dark:text-[#5f5878]"}`}
+                    >
+                      ({tab.count})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3">
+              {activeTab === "poslovnice" && (
+                <>
+                  {poslovniceLoading && <StanjeUcitavanja />}
+                  {poslovniceError && <StanjeGreske poruka={poslovniceError} />}
+                  {!poslovniceLoading &&
+                    !poslovniceError &&
+                    poslovnice.length === 0 && (
+                      <StanjePrazno tekst="Partner nema evidentiranih poslovnica." />
+                    )}
+                  {!poslovniceLoading &&
+                    !poslovniceError &&
+                    poslovnice.map((pos) => (
+                      <div
+                        key={pos.poslovnica_id}
+                        className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-4 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <Building2 size={15} style={{ color: PRIMARY }} />
+                            <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6]">
+                              {pos.naziv}
+                            </span>
+                            <span className="font-mono text-xs text-gray-400 dark:text-[#5f5878]">
+                              ({pos.sifra})
+                            </span>
+                          </div>
+                          {pos.glavna === 1 && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs font-semibold"
+                              style={{ color: ACCENT }}
+                            >
+                              <Star size={12} fill={ACCENT} />
+                              Glavna
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex items-start gap-1.5 text-xs text-gray-500 dark:text-[#a99fc2]">
+                          <MapPin size={13} className="mt-0.5 shrink-0" />
+                          <span>
+                            {[pos.adresa, pos.grad, pos.postanski_broj]
+                              .filter(Boolean)
+                              .join(", ") || "Adresa nije unesena"}
+                          </span>
+                        </div>
+
+                        {pos.jib && (
+                          <p className="mt-1 text-xs text-gray-400 dark:text-[#5f5878]">
+                            JIB: {pos.jib}
+                          </p>
+                        )}
+
+                        {pos.napomena && (
+                          <p className="mt-2 text-xs italic text-gray-400 dark:text-[#5f5878]">
+                            {pos.napomena}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                </>
+              )}
+
+              {activeTab === "kontakti" && (
+                <StanjePrazno tekst="Pregled kontakata uskoro stiže." />
+              )}
+
+              {activeTab === "telefoni" && (
+                <>
+                  {telefoniLoading && <StanjeUcitavanja />}
+                  {telefoniError && <StanjeGreske poruka={telefoniError} />}
+                  {!telefoniLoading &&
+                    !telefoniError &&
+                    telefoni.length === 0 && (
+                      <StanjePrazno tekst="Partner nema evidentiranih telefona." />
+                    )}
+                  {!telefoniLoading &&
+                    !telefoniError &&
+                    telefoni.map((tel) => (
+                      <div
+                        key={tel.telefon_id}
+                        className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-4 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <Phone size={15} style={{ color: PRIMARY }} />
+                            <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6]">
+                              {tel.broj_normalizovan}
+                            </span>
+                            {tel.broj_original !== tel.broj_normalizovan && (
+                              <span className="text-xs text-gray-400 dark:text-[#5f5878]">
+                                ({tel.broj_original})
+                              </span>
+                            )}
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-[#ede8f5] dark:bg-[#312a50]"
+                              style={{ color: PRIMARY }}
+                            >
+                              {TIP_TELEFONA_LABEL[tel.tip]}
+                            </span>
+                          </div>
+                          {tel.primarni === 1 && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs font-semibold"
+                              style={{ color: ACCENT }}
+                            >
+                              <Star size={12} fill={ACCENT} />
+                              Primarni
+                            </span>
+                          )}
+                        </div>
+
+                        {tel.napomena && (
+                          <p className="mt-2 text-xs italic text-gray-400 dark:text-[#5f5878]">
+                            {tel.napomena}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

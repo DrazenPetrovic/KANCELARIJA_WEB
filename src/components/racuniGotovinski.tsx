@@ -30,6 +30,7 @@ import {
   posaljiEsirDebugZahtjev,
   ESIR_OZNAKA_SA_PDV,
   ESIR_SLIP_PRESET_58MM,
+  ESIR_INVOICE_TYPE,
   type EsirStavka,
   type EsirPlacanje,
   type EsirInvoiceRequest,
@@ -1010,7 +1011,7 @@ export function GotovinskiRacuni() {
   // Kompletan zahtjev za POST /api/invoices (izdajFiskalniRacun). Opcije štampe se
   // šalju odvojeno (sestrinsko polje uz invoiceRequest), vidi EsirOpcijeStampe.
   const pripremiEsirZahtjev = (): EsirInvoiceRequest => ({
-    invoiceType: "Training", //Normal (promet), Proforma (predračun), Copy (kopija), Training (trening), Advance (avans)
+    invoiceType: ESIR_INVOICE_TYPE, //Normal (promet), Proforma (predračun), Copy (kopija), Training (trening), Advance (avans)
     transactionType: "Sale",
     referentDocumentNumber: null,
     referentDocumentDT: null,

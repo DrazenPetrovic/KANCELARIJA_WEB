@@ -16,6 +16,7 @@ import {
   proveriFiskalizacijuPoRequestId,
   ESIR_OZNAKA_SA_PDV,
   ESIR_SLIP_PRESET_58MM,
+  ESIR_INVOICE_TYPE,
   type EsirInvoiceRequest,
   type EsirStavka,
   type EsirPlacanje,
@@ -1073,7 +1074,7 @@ export function RacuniPregled() {
     ];
     const jeRazniKupac = Number(red.sifra_partnera) === 300;
     const invoiceRequest: EsirInvoiceRequest = {
-      invoiceType: "Training",
+      invoiceType: ESIR_INVOICE_TYPE,
       transactionType: "Sale",
       referentDocumentNumber: null,
       referentDocumentDT: null,

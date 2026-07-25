@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
   CheckCircle2,
   IdCard,
   Loader2,
+  MapPin,
   Phone,
   Plus,
   Trash2,
   UserPlus,
+  Users,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -26,6 +28,17 @@ interface GradOpcija {
   entitet: string;
   ptt: string;
   sifra_drzave: number;
+}
+
+interface PostojeciPartner {
+  partner_id: number;
+  naziv: string;
+  skraceni_naziv: string | null;
+  jib: string | null;
+  adresa: string | null;
+  grad: string | null;
+  telefon: string | null;
+  aktivan: number;
 }
 
 interface PoslovnicaUnos {
@@ -164,6 +177,20 @@ export function PartneriUnos({ username }: { username: string }) {
   const [uspjeh, setUspjeh] = useState<string | null>(null);
   const [cuvanje, setCuvanje] = useState(false);
 
+  const [postojeciPartneri, setPostojeciPartneri] = useState<
+    PostojeciPartner[]
+  >([]);
+  const [ucitavanjePartnera, setUcitavanjePartnera] = useState(true);
+
+  const ucitajPostojecePartnere = () => {
+    setUcitavanjePartnera(true);
+    fetch(`${API_URL}/api/partneri/lista-sve`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((json) => setPostojeciPartneri(json.data ?? []))
+      .catch(() => setPostojeciPartneri([]))
+      .finally(() => setUcitavanjePartnera(false));
+  };
+
   useEffect(() => {
     Promise.all([
       fetch(`${API_URL}/api/partneri/drzave`, { credentials: "include" }).then(
@@ -182,7 +209,27 @@ export function PartneriUnos({ username }: { username: string }) {
         setGradovi([]);
       })
       .finally(() => setLoadingLokacije(false));
+
+    ucitajPostojecePartnere();
   }, []);
+
+  const filtriraniPostojeci = useMemo(() => {
+    const q = naziv.trim().toLowerCase();
+    if (!q) return [];
+    return postojeciPartneri
+      .filter((p) => p.naziv?.toLowerCase().includes(q))
+      .slice(0, 25);
+  }, [naziv, postojeciPartneri]);
+
+  const jibDuplikat = useMemo(() => {
+    const q = jib.trim().toLowerCase();
+    if (!q) return null;
+    return (
+      postojeciPartneri.find(
+        (p) => p.jib && p.jib.trim().toLowerCase() === q,
+      ) ?? null
+    );
+  }, [jib, postojeciPartneri]);
 
   const resetujFormu = () => {
     setNaziv("");
@@ -229,6 +276,12 @@ export function PartneriUnos({ username }: { username: string }) {
 
     if (!naziv.trim()) {
       setGreska("Naziv partnera je obavezan");
+      return;
+    }
+    if (jibDuplikat) {
+      setGreska(
+        `Partner sa JIB-om "${jib.trim()}" već postoji: ${jibDuplikat.naziv}`,
+      );
       return;
     }
     if (poslovnice.some((p) => !p.sifra.trim() || !p.naziv.trim())) {
@@ -314,6 +367,7 @@ export function PartneriUnos({ username }: { username: string }) {
       }
       setUspjeh(`Partner "${naziv.trim()}" je sačuvan.`);
       resetujFormu();
+      ucitajPostojecePartnere();
     } catch (err) {
       setGreska(err instanceof Error ? err.message : "Nepoznata greška");
     } finally {
@@ -332,6 +386,9 @@ export function PartneriUnos({ username }: { username: string }) {
           Unos partnera
         </h2>
       </div>
+
+      <div className="flex flex-col xl:flex-row gap-4 items-start">
+      <div className="min-w-0 space-y-4">
 
       {/* Osnovni podaci */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5 max-w-3xl space-y-3">
@@ -360,6 +417,12 @@ export function PartneriUnos({ username }: { username: string }) {
               onChange={(e) => setJib(e.target.value)}
               className={inputClass}
             />
+            {jibDuplikat && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
+                <AlertTriangle size={11} />
+                Već postoji: {jibDuplikat.naziv}
+              </p>
+            )}
           </Field>
           <Field label="PIB">
             <input
@@ -836,6 +899,83 @@ export function PartneriUnos({ username }: { username: string }) {
         )}
         Sačuvaj partnera
       </button>
+
+      </div>
+
+      {/* Postojeći partneri — filtrira se dok kucaš naziv */}
+      <div className="w-full xl:w-80 shrink-0 xl:sticky xl:top-4">
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Users size={15} style={{ color: PRIMARY }} />
+            <span
+              className="text-xs font-bold uppercase tracking-wider"
+              style={{ color: PRIMARY }}
+            >
+              Postojeći partneri
+            </span>
+          </div>
+
+          {ucitavanjePartnera && (
+            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-[#5f5878]">
+              <Loader2 size={13} className="animate-spin" />
+              Učitavanje...
+            </div>
+          )}
+
+          {!ucitavanjePartnera && !naziv.trim() && (
+            <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+              Počni da kucaš naziv partnera da vidiš da li već postoji.
+            </p>
+          )}
+
+          {!ucitavanjePartnera &&
+            naziv.trim() &&
+            filtriraniPostojeci.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+                Nema partnera sa tim nazivom.
+              </p>
+            )}
+
+          {!ucitavanjePartnera && filtriraniPostojeci.length > 0 && (
+            <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-1">
+              {filtriraniPostojeci.map((p) => (
+                <div
+                  key={p.partner_id}
+                  className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-3 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6] truncate">
+                      {p.naziv}
+                    </span>
+                    {p.telefon && (
+                      <Phone
+                        size={13}
+                        className="shrink-0"
+                        style={{ color: PRIMARY }}
+                      />
+                    )}
+                  </div>
+
+                  <div className="mt-1 flex items-start gap-1.5 text-xs text-gray-500 dark:text-[#a99fc2]">
+                    <MapPin size={12} className="mt-0.5 shrink-0" />
+                    <span>
+                      {[p.adresa, p.grad].filter(Boolean).join(", ") || "—"}
+                    </span>
+                  </div>
+
+                  {p.jib && (
+                    <p className="mt-1 text-xs text-gray-400 dark:text-[#5f5878]">
+                      JIB: {p.jib}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      </div>
     </div>
   );
 }

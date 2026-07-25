@@ -118,3 +118,27 @@ export const getPartneriListaSve = async () => {
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
+
+// Poslovnice jednog partnera (za prikaz detalja u pregledu partnera).
+// Vidi erp.sp_partneri_lista_poslovnice.
+export const getPartneriListaPoslovnice = async (partnerId) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_partneri_lista_poslovnice(?)",
+      [partnerId],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Telefoni jednog partnera (za prikaz detalja u pregledu partnera).
+// Vidi erp.sp_partneri_lista_telefoni.
+export const getPartneriListaTelefoni = async (partnerId) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_partneri_lista_telefoni(?)",
+      [partnerId],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
