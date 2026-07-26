@@ -377,8 +377,6 @@ export function PartneriPregled() {
                   <TH>Adresa</TH>
                   <TH>Telefon</TH>
                   <TH center>Valuta</TH>
-                  <TH center>Limit duga</TH>
-                  <TH center>Rabat</TH>
                   <TH center>Poslovnice / Kontakti / Telefoni</TH>
                   <TH center>Status</TH>
                 </tr>
@@ -433,12 +431,6 @@ export function PartneriPregled() {
                     </TD>
                     <TD center>
                       {p.valuta_placanja != null ? `${p.valuta_placanja} d.` : "–"}
-                    </TD>
-                    <TD center>
-                      {p.limit_duga != null ? `${p.limit_duga} KM` : "–"}
-                    </TD>
-                    <TD center>
-                      {p.rabat_procenat != null ? `${p.rabat_procenat}%` : "–"}
                     </TD>
                     <TD center>
                       <div className="flex items-center justify-center gap-3">

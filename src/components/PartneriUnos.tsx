@@ -30,6 +30,11 @@ interface GradOpcija {
   sifra_drzave: number;
 }
 
+interface Komercijalista {
+  sifra_radnika: number;
+  naziv_radnika: string;
+}
+
 interface PostojeciPartner {
   partner_id: number;
   naziv: string;
@@ -164,6 +169,7 @@ export function PartneriUnos({ username }: { username: string }) {
   const [postanskiBroj, setPostanskiBroj] = useState("");
   const [valutaPlacanja, setValutaPlacanja] = useState("");
   const [rabatProcenat, setRabatProcenat] = useState("");
+  const [sifraKomercijaliste, setSifraKomercijaliste] = useState("");
 
   const [poslovnice, setPoslovnice] = useState<PoslovnicaUnos[]>([]);
   const [kontakti, setKontakti] = useState<KontaktUnos[]>([]);
@@ -171,6 +177,7 @@ export function PartneriUnos({ username }: { username: string }) {
 
   const [drzave, setDrzave] = useState<Drzava[]>([]);
   const [gradovi, setGradovi] = useState<GradOpcija[]>([]);
+  const [komercijalisti, setKomercijalisti] = useState<Komercijalista[]>([]);
   const [loadingLokacije, setLoadingLokacije] = useState(true);
 
   const [greska, setGreska] = useState<string | null>(null);
@@ -199,14 +206,19 @@ export function PartneriUnos({ username }: { username: string }) {
       fetch(`${API_URL}/api/partneri/gradovi`, { credentials: "include" }).then(
         (r) => (r.ok ? r.json() : Promise.reject()),
       ),
+      fetch(`${API_URL}/api/partneri/komercijalisti`, {
+        credentials: "include",
+      }).then((r) => (r.ok ? r.json() : Promise.reject())),
     ])
-      .then(([drzaveJson, gradoviJson]) => {
+      .then(([drzaveJson, gradoviJson, komercijalistiJson]) => {
         setDrzave(drzaveJson.data ?? []);
         setGradovi(gradoviJson.data ?? []);
+        setKomercijalisti(komercijalistiJson.data ?? []);
       })
       .catch(() => {
         setDrzave([]);
         setGradovi([]);
+        setKomercijalisti([]);
       })
       .finally(() => setLoadingLokacije(false));
 
@@ -244,6 +256,7 @@ export function PartneriUnos({ username }: { username: string }) {
     setPostanskiBroj("");
     setValutaPlacanja("");
     setRabatProcenat("");
+    setSifraKomercijaliste("");
     setPoslovnice([]);
     setKontakti([]);
     setTelefoni([]);
@@ -309,9 +322,14 @@ export function PartneriUnos({ username }: { username: string }) {
       tip_partnera: tipPartnera,
       adresa: adresa.trim() || undefined,
       grad: nazivGrada(sifraGrada),
+      sifra_grada: sifraGrada ? Number(sifraGrada) : undefined,
+      sifra_drzave: sifraDrzave ? Number(sifraDrzave) : undefined,
       postanski_broj: postanskiBroj.trim() || undefined,
       valuta_placanja: valutaPlacanja ? Number(valutaPlacanja) : undefined,
       rabat_procenat: rabatProcenat ? Number(rabatProcenat) : undefined,
+      pripada_radniku: sifraKomercijaliste
+        ? Number(sifraKomercijaliste)
+        : undefined,
       kreirao: username,
     };
 
@@ -518,6 +536,22 @@ export function PartneriUnos({ username }: { username: string }) {
               onChange={(e) => setRabatProcenat(e.target.value)}
               className={inputClass}
             />
+          </Field>
+          <Field label="Komercijalista">
+            <select
+              value={sifraKomercijaliste}
+              onChange={(e) => setSifraKomercijaliste(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">
+                {loadingLokacije ? "Učitavanje..." : "-- Izaberi komercijalistu --"}
+              </option>
+              {komercijalisti.map((k) => (
+                <option key={k.sifra_radnika} value={k.sifra_radnika}>
+                  {k.naziv_radnika}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Kreirao">
             <input

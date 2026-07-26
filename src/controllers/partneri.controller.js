@@ -57,6 +57,16 @@ export const getPartneriZaLokalnuDostavu = async (req, res) => {
   }
 };
 
+export const getKomercijalisti = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriKomercijalisti();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled komercijalista error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju komercijalista" });
+  }
+};
+
 export const getDrzave = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriDrzave();

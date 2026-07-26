@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
 import { RacunA5 } from "../print/templates/RacunA5";
+import { RacunA4 } from "../print/templates/RacunA4";
 import {
   izdajFiskalniRacun,
   izdvojiFiskalnePodatke,
@@ -330,6 +331,17 @@ const bojaVrsteRacuna = (v: unknown) =>
 // oboji ovom bojom bez obzira na MP/VP.
 const BOJA_STORNIRANO = "#ef4444";
 const jeStorniranRacun = (v: unknown) => Number(v) === 1;
+
+// Opcije za filter po vrsti računa (vrsta_racuna_novi) — vidi i handleStampaj
+// (1 i 3 idu na A5, sve ostalo na A4).
+const VRSTE_RACUNA_NOVI: { vrijednost: number; naziv: string }[] = [
+  { vrijednost: 1, naziv: "Maloprodajni računi" },
+  { vrijednost: 2, naziv: "Veleprodajni računi" },
+  { vrijednost: 3, naziv: "Storno maloprodajnih" },
+  { vrijednost: 4, naziv: "Storno veleprodajnih" },
+  { vrijednost: 5, naziv: "Račun usluga" },
+  { vrijednost: 6, naziv: "Storno usluga" },
+];
 
 const nadjiSifruTabele = (red: RacunRed): string | number | null => {
   for (const kljuc of KLJUC_SIFRE) {
@@ -827,9 +839,9 @@ export function RacuniPregled() {
   const [odabranaPodgrupa, setOdabranaPodgrupa] = useState<number | null>(null);
 
   const [odabranoPlaceno, setOdabranoPlaceno] = useState<"" | "DA" | "NE">("");
-  const [odabranoStornirano, setOdabranoStornirano] = useState<
-    "" | "DA" | "NE"
-  >("");
+  const [odabranaVrstaRacuna, setOdabranaVrstaRacuna] = useState<
+    number | null
+  >(null);
 
   useEffect(() => {
     const fetchPodgrupe = async () => {
@@ -891,18 +903,17 @@ export function RacuniPregled() {
           .toUpperCase() === "DA";
       const odgovaraPlaceno =
         odabranoPlaceno === "" || (odabranoPlaceno === "DA") === placeno;
-      const stornirano = jeStorniranRacun(red.storniran_racun);
-      const odgovaraStornirano =
-        odabranoStornirano === "" ||
-        (odabranoStornirano === "DA") === stornirano;
+      const odgovaraVrsti =
+        odabranaVrstaRacuna === null ||
+        Number(red.vrsta_racuna_novi) === odabranaVrstaRacuna;
       return (
         odgovaraPretrazi &&
         odgovaraPodgrupi &&
         odgovaraPlaceno &&
-        odgovaraStornirano
+        odgovaraVrsti
       );
     });
-  }, [racuni, pretraga, odabranaPodgrupa, odabranoPlaceno, odabranoStornirano]);
+  }, [racuni, pretraga, odabranaPodgrupa, odabranoPlaceno, odabranaVrstaRacuna]);
 
   const handleKlikRacun = async (red: RacunRed) => {
     const sifraTabele = nadjiSifruTabele(red);
@@ -931,15 +942,12 @@ export function RacuniPregled() {
     }
   };
 
-  // Štampa A5 računa (zaglavlje + stavke) preko print servisa — vidi PrintModal/PrintContext.
-  // A5 template trenutno pokriva samo vrsta_racuna_novi 1 (MP) i 3 — za ostale
-  // vrste (npr. 2 = VP) samo obavijesti korisnika, dok se ne doda odgovarajući template.
+  // Štampa računa (zaglavlje + stavke) preko print servisa — vidi PrintModal/PrintContext.
+  // vrsta_racuna_novi 1 (MP) i 3 (Storno MP) idu na A5 template; sve ostalo
+  // (2 VP, 4 Storno VP, 5 Usluge, 6 Storno usluga) ide na A4 template
+  // (isti koji se koristi i pri direktnom unosu žiralnog računa — vidi racuniZiralni.tsx).
   const handleStampaj = async (red: RacunRed) => {
     const vrsta = Number(red.vrsta_racuna_novi);
-    if (vrsta !== 1 && vrsta !== 3) {
-      alert("Štampa A5 trenutno nije dostupna za ovu vrstu računa.");
-      return;
-    }
     const sifraTabele = nadjiSifruTabele(red);
     if (sifraTabele === null) return;
     let stavkeZaStampu: RacunRed[] = [];
@@ -956,6 +964,63 @@ export function RacuniPregled() {
     }
 
     const brojRacuna = String(red.vrsta_racuna_novo ?? "-");
+
+    if (vrsta !== 1 && vrsta !== 3) {
+      // VP i ostale vrste (usluge/storno) — polja stavki iz sp_racuni_po_pregled
+      // nose imena iz ugla UNOSA (vidi racuniZiralni.tsx: pripremiRacunZaUnos), ne štampe:
+      // vpc_bez_rabata = kataloški VPC (RacunA4Stavka.vpc), vpc = konačna osnova
+      // (nakon kaskade rabata, = vpc3), pdv_po_artiklu = pdv po stavci, a
+      // prodajna_vrednost je "UKUPNO" (sa PDV-om) po stavci — vrednost (bez PDV-a)
+      // se dobija oduzimanjem, jer ukupno == vrednost + pdv (isti invarijant kao
+      // kod unosa).
+      const brojPolje = (s: RacunRed, k: string) => Number(s[k] ?? 0) || 0;
+      openPrint({
+        title: `Račun ${brojRacuna}`,
+        component: (
+          <RacunA4
+            racun={{
+              broj_racuna: brojRacuna,
+              datum_izdavanja: String(red.datum_racuna ?? ""),
+              datum_isporuke: String(red.datum_isporuke ?? red.datum_racuna ?? ""),
+              valuta: String(red.valuta ?? ""),
+              sifra_tabele: sifraTabele,
+              naziv_partnera: String(red.naziv_partnera ?? "-"),
+              adresa_partnera: (red.adresa_partnera as string | null) ?? null,
+              naziv_grada: (red.naziv_grada as string | null) ?? null,
+              jib: (red.jib as string | null) ?? null,
+              pib: (red.pib as string | null) ?? null,
+              poslovna_jedinica: null,
+              slovima: (red.slovima as string | null) ?? null,
+              napomena: (red.napomena as string | null) ?? null,
+              br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+            }}
+            stavke={stavkeZaStampu.map((s) => {
+              const ukupno = brojPolje(s, "prodajna_vrednost");
+              const pdv = brojPolje(s, "pdv_po_artiklu");
+              return {
+                sifra_proizvoda: (s.sifra_proizvoda as string | number) ?? "",
+                naziv_proizvoda: String(s.naziv_proizvoda ?? ""),
+                jm: String(s.jm ?? ""),
+                kolicina: (s.kolicina as number | string) ?? 0,
+                vpc: brojPolje(s, "vpc_bez_rabata"),
+                vpc1: brojPolje(s, "vpc_rabat_1"),
+                rab1: brojPolje(s, "rabat_proc"),
+                vpc2: brojPolje(s, "vpc_sa_rab_2"),
+                rab2: brojPolje(s, "rabat_proc_2"),
+                vpc3: brojPolje(s, "vpc"),
+                rab3: brojPolje(s, "rab_proc_3"),
+                osnova: brojPolje(s, "vpc"),
+                vrednost: Math.round((ukupno - pdv) * 100) / 100,
+                pdv,
+                ukupno,
+              };
+            })}
+          />
+        ),
+      });
+      return;
+    }
+
     openPrint({
       title: `Račun ${brojRacuna}`,
       component: (
@@ -1237,25 +1302,22 @@ export function RacuniPregled() {
             />
           </div>
           <select
-            value={odabranaPodgrupa ?? ""}
+            value={odabranaVrstaRacuna ?? ""}
             onChange={(e) =>
-              setOdabranaPodgrupa(
+              setOdabranaVrstaRacuna(
                 e.target.value === "" ? null : Number(e.target.value),
               )
             }
-            disabled={loadingPodgrupe}
             className={`ml-auto px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
-              odabranaPodgrupa !== null
+              odabranaVrstaRacuna !== null
                 ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
                 : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
             }`}
           >
-            <option value="">
-              {loadingPodgrupe ? "Učitavanje..." : "Sve podgrupe"}
-            </option>
-            {podgrupe.map((p) => (
-              <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
-                {p.opis_podgrupe} ({p.sifra_podgrupe})
+            <option value="">Vrsta računa: sve</option>
+            {VRSTE_RACUNA_NOVI.map((v) => (
+              <option key={v.vrijednost} value={v.vrijednost}>
+                {v.naziv}
               </option>
             ))}
           </select>
@@ -1275,19 +1337,27 @@ export function RacuniPregled() {
             <option value="NE">Plaćeno: Ne</option>
           </select>
           <select
-            value={odabranoStornirano}
+            value={odabranaPodgrupa ?? ""}
             onChange={(e) =>
-              setOdabranoStornirano(e.target.value as "" | "DA" | "NE")
+              setOdabranaPodgrupa(
+                e.target.value === "" ? null : Number(e.target.value),
+              )
             }
+            disabled={loadingPodgrupe}
             className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
-              odabranoStornirano !== ""
+              odabranaPodgrupa !== null
                 ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
                 : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
             }`}
           >
-            <option value="">Storniran: svi</option>
-            <option value="DA">Storniran: Da</option>
-            <option value="NE">Storniran: Ne</option>
+            <option value="">
+              {loadingPodgrupe ? "Učitavanje..." : "Sve podgrupe"}
+            </option>
+            {podgrupe.map((p) => (
+              <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
+                {p.opis_podgrupe} ({p.sifra_podgrupe})
+              </option>
+            ))}
           </select>
         </div>
       </div>

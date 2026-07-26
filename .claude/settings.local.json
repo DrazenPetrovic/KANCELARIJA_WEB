@@ -12,7 +12,9 @@
       "Bash(Select-Object Name)",
       "Bash(node -e ' *)",
       "Bash(node ./_tmp_test_lista.mjs)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "PowerShell(Test-NetConnection -ComputerName 157.90.163.195 -Port 3306 -InformationLevel Detailed)",
+      "PowerShell(\\(Invoke-WebRequest -Uri \"https://api.ipify.org\" -UseBasicParsing\\).Content)"
     ]
   }
 }
