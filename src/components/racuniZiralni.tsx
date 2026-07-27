@@ -219,6 +219,19 @@ interface Partner {
   dodatna_lokacija?: DodatnaLokacija;
 }
 
+// Posebna (dogovorena) cijena za par partner-proizvod — vidi
+// erp.sp_partneri_dogovorene_cijene_osnovno (laganija varijanta, samo polja
+// potrebna za uparivanje cijene — vidi i UgovoreneCijenePregled.tsx za potpuni
+// pregled sa nazivima/JM/rabatom). Učitava se u cjelosti pri otvaranju forme
+// (odvojeno, ne blokira prikaz) i uparuje po (partner_id, proizvod_id) kad se
+// artikal dodaje na žiralni račun.
+interface DogovorenaCijena {
+  sifra_tbl: number;
+  partner_id: number;
+  proizvod_id: number;
+  dogovorena_cijena_vpc: number | null;
+}
+
 // Red pomoćne tabele (stavke) žiralnog računa — priprema za slanje kroz proceduru
 // erp.sp_racuni_unos. Za razliku od gotovinskog, ovdje se stvarno koriste rabatni
 // nivoi (rabat_proc/rabat_proc_2/rabat_proc_3) unešeni kroz VPC1/VPC2/VPC3.
@@ -273,6 +286,7 @@ export function ZiralniRacuni() {
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [odabraniPartner, setOdabraniPartner] = useState<Partner | null>(null);
+  const [dogovoreneCijene, setDogovoreneCijene] = useState<DogovorenaCijena[]>([]);
 
   const [pretraga, setPretraga] = useState("");
   const [pokaziDropdown, setPokazuiDropdown] = useState(false);
@@ -348,6 +362,12 @@ export function ZiralniRacuni() {
   const [posljednjiBrojFiskalnog, setPosljednjiBrojFiskalnog] = useState<
     string | null
   >(null);
+  // Poruka kad upis dogovorenih (ručno promijenjenih VPC1) cijena ne uspije —
+  // ne obara već potvrđeno čuvanje računa, samo operater mora da potvrdi da je
+  // vidio da te cijene NISU zapamćene kao dogovorene.
+  const [dogovorenaCijenaGreska, setDogovorenaCijenaGreska] = useState<
+    string | null
+  >(null);
   // Koraci čuvanja računa — prikazuju se kao status-bar preko liste stavki dok
   // traje handleSacuvajRacun, da operater vidi u kojoj je fazi (0 = neaktivno).
   const [korakCuvanja, setKorakCuvanja] = useState(0);
@@ -399,6 +419,24 @@ export function ZiralniRacuni() {
       }
     };
     void fetchData();
+
+    // Odvojeno od gornjeg (ne blokira prikaz forme/liste partnera) — procedura
+    // koja vraća dogovorene cijene zna biti spora, a ovaj podatak je potreban tek
+    // kad operater doda artikal na račun, ne za sam prikaz forme.
+    const fetchDogovoreneCijene = async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/partneri/dogovorene-cijene-osnovno`,
+          { credentials: "include" },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setDogovoreneCijene(data.data ?? []);
+      } catch {
+        // Best-effort — bez dogovorenih cijena se i dalje normalno unosi račun.
+      }
+    };
+    void fetchDogovoreneCijene();
   }, []);
 
   // Kad se izabere (ili promijeni) partner, datum valute se podrazumijevano računa
@@ -569,6 +607,31 @@ export function ZiralniRacuni() {
     [nivelacijeAktivne],
   );
 
+  // Ključ "partner_proizvod" -> dogovorena cijena, za brzo uparivanje pri dodavanju
+  // artikla na račun (samo za žiralne račune).
+  const dogovoreneCijeneMap = useMemo(
+    () =>
+      new Map(
+        dogovoreneCijene.map((d) => [
+          `${String(d.partner_id)}_${String(d.proizvod_id)}`,
+          d,
+        ]),
+      ),
+    [dogovoreneCijene],
+  );
+
+  // Da li VPC1 već unesene stavke (u korpi) odgovara dogovorenoj cijeni ovog
+  // partnera za taj artikal — za crveno obilježavanje u pregledu stavki, isto
+  // kao u modalu za dodavanje/izmjenu.
+  const jeDogovorenaCijenaZaStavku = (s: StavkaRacuna): boolean => {
+    if (!odabraniPartner) return false;
+    const d = dogovoreneCijeneMap.get(
+      `${String(odabraniPartner.sifra_partnera)}_${String(s.sifra_proizvoda)}`,
+    );
+    if (!d || d.dogovorena_cijena_vpc == null) return false;
+    return Math.abs(s.vpc1 - Number(d.dogovorena_cijena_vpc)) < 0.005;
+  };
+
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
     return artikli.filter((a) => {
@@ -590,12 +653,31 @@ export function ZiralniRacuni() {
   const handleKlikArtikl = (a: Artikal) => {
     setArtikalZaUnos(a);
     setKolicina("");
-    const vpcTrenutni = (
-      typeof a.vpc === "number" ? a.vpc : parseFloat(String(a.vpc)) || 0
-    ).toFixed(2);
-    setVpc1(vpcTrenutni); setRab1("0.00");
-    setVpc2(vpcTrenutni); setRab2("0.00");
-    setVpc3(vpcTrenutni); setRab3("0.00");
+    const vpcKatalog =
+      typeof a.vpc === "number" ? a.vpc : parseFloat(String(a.vpc)) || 0;
+
+    // Dogovorena (posebna) cijena za ovog partnera i ovaj artikal — ako postoji,
+    // ide u VPC1 umjesto kataloškog VPC-a, a Rabat 1 se računa kao razlika prema
+    // kataloškom VPC-u (isti princip kao ručni unos VPC1 u modalu ispod).
+    const dogovorena = odabraniPartner
+      ? dogovoreneCijeneMap.get(
+          `${String(odabraniPartner.sifra_partnera)}_${String(a.sifra_proizvoda)}`,
+        )
+      : undefined;
+    const dogovorenaVpc =
+      dogovorena?.dogovorena_cijena_vpc != null
+        ? Number(dogovorena.dogovorena_cijena_vpc)
+        : null;
+
+    const pocetniVpc1 = dogovorenaVpc ?? vpcKatalog;
+    const pocetniRab1 =
+      dogovorenaVpc != null && vpcKatalog > 0
+        ? (((vpcKatalog - dogovorenaVpc) / vpcKatalog) * 100).toFixed(2)
+        : "0.00";
+
+    setVpc1(pocetniVpc1.toFixed(2)); setRab1(pocetniRab1);
+    setVpc2(pocetniVpc1.toFixed(2)); setRab2("0.00");
+    setVpc3(pocetniVpc1.toFixed(2)); setRab3("0.00");
     setUrejivanjeSifra(null);
   };
 
@@ -953,6 +1035,7 @@ export function ZiralniRacuni() {
     setSpremanjeGreska(null);
     setSpremanjeUpozorenje(null);
     setPosljednjiBrojFiskalnog(null);
+    setDogovorenaCijenaGreska(null);
     setKorakCuvanja(1); // Unos podataka za račun
     try {
       const podaci = pripremiRacunZaUnos();
@@ -1030,6 +1113,57 @@ export function ZiralniRacuni() {
           );
         }
         setSifreTabeleZaStampano([]);
+      }
+
+      // Ako je operater ručno promijenio VPC1 (drugačiji od kataloškog VPC-a) za
+      // neku stavku, ta cijena se pamti kao dogovorena za ovog partnera i taj
+      // proizvod — vidi erp.sp_partneri_dogovorene_cijene_unos. Best-effort,
+      // ne blokira već potvrđeno čuvanje računa. dogovorena_cijena_mpc = VPC1 + 17%
+      // (STOPA_PDV), rabat_1_proc je već izračunati procenat VPC vs VPC1 (s.rab1).
+      const izmijenjeneCijene = odabraniPartner
+        ? stavke.filter((s) => Math.abs(s.vpc1 - s.vpc) >= 0.005)
+        : [];
+      if (izmijenjeneCijene.length > 0 && odabraniPartner) {
+        try {
+          const resDogovoreneCijene = await fetch(
+            `${API_URL}/api/racuni/dogovorene-cijene`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                stavke: izmijenjeneCijene.map((s) => ({
+                  partner_id: odabraniPartner.sifra_partnera,
+                  proizvod_id: Number(s.sifra_proizvoda),
+                  dogovorena_cijena_vpc: Math.round(s.vpc1 * 100) / 100,
+                  dogovorena_cijena_mpc:
+                    Math.round(s.vpc1 * (1 + STOPA_PDV) * 100) / 100,
+                  rabat_1_proc: Math.round(s.rab1 * 100) / 100,
+                })),
+              }),
+            },
+          );
+          if (!resDogovoreneCijene.ok) {
+            const greskaJson = await resDogovoreneCijene
+              .json()
+              .catch(() => null);
+            throw new Error(
+              greskaJson?.error || `HTTP ${resDogovoreneCijene.status}`,
+            );
+          }
+        } catch (dogovorenaCijenaError) {
+          console.error(
+            "Upis dogovorenih cijena nije uspio:",
+            dogovorenaCijenaError,
+          );
+          setDogovorenaCijenaGreska(
+            `Račun je sačuvan, ali ${izmijenjeneCijene.length} izmijenjena/e (dogovorena/e) cijena nije/su upisana/e: ${
+              dogovorenaCijenaError instanceof Error
+                ? dogovorenaCijenaError.message
+                : "nepoznata greška"
+            }`,
+          );
+        }
       }
 
       // Uhvaćeno van try/catch da bude dostupno kasnije za A5 print (npr. QR
@@ -2008,7 +2142,9 @@ export function ZiralniRacuni() {
                       </td>
                     </tr>
                   ) : (
-                    stavke.map((s, i) => (
+                    stavke.map((s, i) => {
+                      const dogovorena = jeDogovorenaCijenaZaStavku(s);
+                      return (
                       <tr
                         key={s.sifra_proizvoda}
                         className={`border-b border-gray-50 dark:border-[#2a2340] ${i % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#1e1a2d]" : ""}`}
@@ -2028,9 +2164,17 @@ export function ZiralniRacuni() {
                         </td>
                         <td className="px-2 py-2 text-right text-sm font-medium text-gray-700 dark:text-[#c5bfd8]">{s.kolicina.toFixed(3)}</td>
                         <td className="px-2 py-2 text-right text-sm text-gray-700 dark:text-[#c5bfd8]">{s.vpc.toFixed(2)}</td>
-                        <td className="px-2 py-2 text-right">
-                          <div className="text-sm text-gray-700 dark:text-[#c5bfd8]">{s.vpc1.toFixed(2)}</div>
-                          <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">{s.rab1.toFixed(2)}%</div>
+                        <td className="px-2 py-2 text-center">
+                          <div
+                            className={`text-sm ${dogovorena ? "font-semibold text-red-500" : "text-gray-700 dark:text-[#c5bfd8]"}`}
+                          >
+                            {s.vpc1.toFixed(2)}
+                          </div>
+                          {dogovorena ? (
+                            <div className="text-[10px] text-red-500">ugov.</div>
+                          ) : (
+                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">{s.rab1.toFixed(2)}%</div>
+                          )}
                         </td>
                         <td className="px-2 py-2 text-right">
                           <div className="text-sm text-gray-700 dark:text-[#c5bfd8]">{s.vpc2.toFixed(2)}</div>
@@ -2060,7 +2204,8 @@ export function ZiralniRacuni() {
                           </button>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2422,6 +2567,40 @@ export function ZiralniRacuni() {
           document.body,
         )}
 
+      {/* Upozorenje — upis dogovorenih cijena nakon čuvanja računa nije uspio */}
+      {dogovorenaCijenaGreska &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setDogovorenaCijenaGreska(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] overflow-hidden">
+              <div className="px-6 py-4 flex items-center gap-3" style={{ background: "#f59e0b" }}>
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">Dogovorene cijene nisu sačuvane</span>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-700 dark:text-[#c5bfd8]">
+                  {dogovorenaCijenaGreska}
+                </p>
+              </div>
+              <div className="px-6 pb-5">
+                <button
+                  onClick={() => setDogovorenaCijenaGreska(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Razumijem
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Modal unos cijena — nivelisanje */}
       {artikalZaCijenu &&
         ReactDOM.createPortal(
@@ -2587,6 +2766,20 @@ export function ZiralniRacuni() {
           const bazaVpc2 = brojVpc1;
           const bazaVpc3 = brojVpc2;
 
+          // Da li VPC1 trenutno odgovara dogovorenoj (posebnoj) cijeni ovog partnera
+          // za ovaj artikal — koristi se samo za vizuelno obilježavanje polja
+          // crvenim okvirom; ako operater ručno promijeni VPC1, okvir nestaje.
+          const dogovorenaCijena = odabraniPartner
+            ? dogovoreneCijeneMap.get(
+                `${String(odabraniPartner.sifra_partnera)}_${String(artikalZaUnos.sifra_proizvoda)}`,
+              )
+            : undefined;
+          const dogovorenaVpcAktivna =
+            dogovorenaCijena?.dogovorena_cijena_vpc != null &&
+            Math.abs(
+              brojVpc1 - Number(dogovorenaCijena.dogovorena_cijena_vpc),
+            ) < 0.005;
+
           const izracunajVpcIzRabata = (baza: number, rab: string) => {
             const r = parseFloat(rab);
             if (baza <= 0 || rab === "" || isNaN(r)) return "";
@@ -2692,7 +2885,14 @@ export function ZiralniRacuni() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] mb-1.5">VPC 1</label>
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] mb-1.5">
+                          VPC 1
+                          {dogovorenaVpcAktivna && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[9px] font-bold uppercase tracking-wide">
+                              Dogovorena cijena
+                            </span>
+                          )}
+                        </label>
                         <input
                           type="number"
                           min="0"
@@ -2704,6 +2904,11 @@ export function ZiralniRacuni() {
                             onVpc1Change(!isNaN(n) ? n.toFixed(2) : vpcKatalog.toFixed(2));
                           }}
                           className={inputClass}
+                          style={
+                            dogovorenaVpcAktivna
+                              ? { borderColor: "#ef4444", borderWidth: 2 }
+                              : undefined
+                          }
                         />
                       </div>
                       <div>

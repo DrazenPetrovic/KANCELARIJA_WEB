@@ -12,6 +12,7 @@ import { ZiralniRacuni } from "./racuniZiralni.tsx";
 import { RacuniPregled } from "./racuniPregled.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
+import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -53,6 +54,7 @@ import {
   Settings,
   ShoppingCart,
   Sun,
+  Tags,
   Truck,
   UserPlus,
   Users,
@@ -115,6 +117,7 @@ type MenuSection =
   | "partneri-pregled"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
+  | "ugovorene-cijene"
   | "narudzbe-pregled"
   | "narudzbe-teren"
   | "narudzbe-lokalno"
@@ -922,6 +925,44 @@ export function Dashboard({
                           </span>
                           Pregled kalkulacija
                         </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("ugovorene-cijene")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "ugovorene-cijene",
+                          )}
+                          style={
+                            activeSection === "ugovorene-cijene"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "ugovorene-cijene"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "ugovorene-cijene"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Tags
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "ugovorene-cijene"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Ugovorene cijene
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -1555,6 +1596,8 @@ export function Dashboard({
           {activeSection === "partneri-pregled" && <PartneriPregled />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
+
+          {activeSection === "ugovorene-cijene" && <UgovoreneCijenePregled />}
 
           {activeSection === "pregled-kalkulacija" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

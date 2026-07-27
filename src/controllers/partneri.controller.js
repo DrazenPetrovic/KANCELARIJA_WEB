@@ -57,6 +57,26 @@ export const getPartneriZaLokalnuDostavu = async (req, res) => {
   }
 };
 
+export const getDogovoreneCijene = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriDogovoreneCijene();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled dogovorenih cijena error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju dogovorenih cijena" });
+  }
+};
+
+export const getDogovoreneCijeneOsnovno = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriDogovoreneCijeneOsnovno();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled dogovorenih cijena (osnovno) error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju dogovorenih cijena" });
+  }
+};
+
 export const getKomercijalisti = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriKomercijalisti();

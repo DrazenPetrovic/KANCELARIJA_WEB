@@ -77,6 +77,36 @@ export const getRacunPoPregled = async (req, res) => {
   }
 };
 
+export const getDogovoreneCijenePotpun = async (req, res) => {
+  try {
+    const data = await RacuniService.getDogovoreneCijenePregledPotpun();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled ugovorenih cijena error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju ugovorenih cijena" });
+  }
+};
+
+export const unosDogovorenihCijena = async (req, res) => {
+  try {
+    const stavke = req.body?.stavke;
+    if (!Array.isArray(stavke) || stavke.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Stavke su obavezne" });
+    }
+    const data = await RacuniService.upisiDogovoreneCijene(stavke);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Upis ugovorenih cijena error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri upisu ugovorenih cijena" });
+  }
+};
+
 export const azurirajFiskalnePodatke = async (req, res) => {
   try {
     const { sifra_tabele, br_fiskalnog, datum_vreme_fiskalnog } = req.body;

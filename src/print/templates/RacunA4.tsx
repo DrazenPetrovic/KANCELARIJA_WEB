@@ -483,6 +483,57 @@ export function RacunA4({ racun, stavke }: Props) {
             </table>
           </div>
         </div>
+
+        {/* ── Potpisi: Fakturisao (lijevo) / M.P. (sredina) / Robu preuzeo (desno) ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
+            marginTop: 40,
+          }}
+        >
+          <div style={{ width: "35%" }}>
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 11,
+                fontWeight: 700,
+                color: PRIMARY,
+                marginBottom: 28,
+              }}
+            >
+              Fakturisao
+            </div>
+            <div style={{ borderTop: "1px solid #333" }} />
+          </div>
+
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#444",
+              paddingBottom: 1,
+            }}
+          >
+            M.P.
+          </div>
+
+          <div style={{ width: "35%" }}>
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 11,
+                fontWeight: 700,
+                color: PRIMARY,
+                marginBottom: 28,
+              }}
+            >
+              Robu preuzeo
+            </div>
+            <div style={{ borderTop: "1px solid #333" }} />
+          </div>
+        </div>
       </div>
     </div>
   );

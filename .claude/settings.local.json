@@ -14,7 +14,13 @@
       "Bash(node ./_tmp_test_lista.mjs)",
       "Bash(npx tsc *)",
       "PowerShell(Test-NetConnection -ComputerName 157.90.163.195 -Port 3306 -InformationLevel Detailed)",
-      "PowerShell(\\(Invoke-WebRequest -Uri \"https://api.ipify.org\" -UseBasicParsing\\).Content)"
+      "PowerShell(\\(Invoke-WebRequest -Uri \"https://api.ipify.org\" -UseBasicParsing\\).Content)",
+      "Bash(node --check src/services/racuni.service.js)",
+      "Bash(node --check src/services/partneri.service.js)",
+      "Bash(node --check src/controllers/partneri.controller.js)",
+      "Bash(node --check src/routes/partneri.routes.js)",
+      "Bash(node --check src/controllers/racuni.controller.js)",
+      "Bash(node --check src/routes/racuni.routes.js)"
     ]
   }
 }
