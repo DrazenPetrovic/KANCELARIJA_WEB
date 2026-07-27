@@ -391,6 +391,7 @@ export function ZiralniRacuni() {
 
   const searchRef = useRef<HTMLDivElement>(null);
   const terenRef = useRef<HTMLDivElement>(null);
+  const datumValuteRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1031,6 +1032,22 @@ export function ZiralniRacuni() {
   // (device "ziralni" — VITE_ESIR_URL_ZIRALNI) — isti princip kao kod gotovinskog računa.
   const handleSacuvajRacun = async (stampaj: boolean) => {
     if (stavke.length === 0) return;
+
+    // Polja koja idu u header sa "?? 0" (partner/podgrupa/valuta) — bez ove
+    // provjere, ako neko od njih fali, zahtjev bi i dalje otišao proceduri sa
+    // šifrom 0, koja obično ne uspije upisati red (0 affected rows) uz
+    // generičnu grešku koja ne kaže operateru ŠTA tačno fali.
+    const nedostaje: string[] = [];
+    if (!odabraniPartner) nedostaje.push("Partner (kupac)");
+    if (!odabranaPodgrupa) nedostaje.push("Podgrupa");
+    if (!datumValute) nedostaje.push("Valuta računa");
+    if (nedostaje.length > 0) {
+      setSpremanjeGreska(
+        `Nedostaju obavezna polja: ${nedostaje.join(", ")}.`,
+      );
+      return;
+    }
+
     setSpremanjeLoading(true);
     setSpremanjeGreska(null);
     setSpremanjeUpozorenje(null);
@@ -2396,13 +2413,25 @@ export function ZiralniRacuni() {
                         </span>
                       )}
                     </div>
-                    <div className="relative">
+                    <div
+                      className="relative cursor-pointer"
+                      onClick={() => {
+                        const input = datumValuteRef.current;
+                        if (!input) return;
+                        if (typeof input.showPicker === "function") {
+                          input.showPicker();
+                        } else {
+                          input.focus();
+                        }
+                      }}
+                    >
                       <input
+                        ref={datumValuteRef}
                         type="date"
                         value={datumValute}
                         onChange={(e) => setDatumValute(e.target.value)}
                         style={{ color: "transparent" }}
-                        className="w-full px-2 py-1.5 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-white dark:bg-[#1e1a2d] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20"
+                        className="w-full px-2 py-1.5 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-white dark:bg-[#1e1a2d] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 cursor-pointer"
                       />
                       <div className="absolute inset-0 flex items-center px-2 text-[11px] text-gray-800 dark:text-[#ede9f6] pointer-events-none">
                         {formatDatumDMY(datumValute) ?? "Izaberite datum"}

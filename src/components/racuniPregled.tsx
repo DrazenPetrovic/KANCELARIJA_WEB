@@ -1063,13 +1063,12 @@ export function RacuniPregled() {
   // Štampa KOPIJE fiskalnog računa (invoiceType "Copy") — za redove koji već
   // imaju br_fiskalnog. Ne upisuje ništa u bazu (originalni br_fiskalnog/datum
   // ostaju kakvi jesu) — ovo je samo dodatni fizički otisak kopije preko ESIR-a.
-  // Uređaj se bira po vrsti računa (isti princip kao handleStampaj: 1/3 = MP =
-  // gotovinski, sve ostalo = VP = ziralni).
+  // Uređaj se bira po vrsti računa — vidi uredjajZaVrstuRacuna (1 = kasa .250,
+  // sve ostalo = kasa .251).
   const handleStampajKopijuEsira = async (red: RacunRed) => {
     const sifraTabele = nadjiSifruTabele(red);
     if (sifraTabele === null) return;
-    const vrsta = Number(red.vrsta_racuna_novi);
-    const uredjaj: EsirUredjaj = vrsta === 1 || vrsta === 3 ? "gotovinski" : "ziralni";
+    const uredjaj = uredjajZaVrstuRacuna(red);
 
     const brFiskalnogOriginal = red.br_fiskalnog;
     const datumVremeFiskalnogOriginal = red.datum_vreme_fiskalnog;
@@ -1220,6 +1219,12 @@ export function RacuniPregled() {
     return cifre.padStart(13, "0").slice(-13);
   };
 
+  // Koji ESIR (fizički fiskalni uređaj/kasa) odgovara vrsti računa:
+  // vrsta_racuna_novi 1 (MP) -> "gotovinski" (kasa .250), 3 (Storno MP) ->
+  // "ziralni" (kasa .251) — sve ostalo (VP i sl.) takođe "ziralni".
+  const uredjajZaVrstuRacuna = (red: RacunRed): EsirUredjaj =>
+    Number(red.vrsta_racuna_novi) === 1 ? "gotovinski" : "ziralni";
+
   // Ponovo šalje NOVI zahtjev za fiskalizaciju ka ESIR-u za istorijski račun
   // (kad provjera po RequestId-u nije našla postojeću fiskalizaciju) — podaci
   // se povlače iz reda pregleda + stavki (isti izvor kao za A5 štampu).
@@ -1276,7 +1281,7 @@ export function RacuniPregled() {
     setFiskalizacijaUToku(true);
     try {
       const esirRezultat = await izdajFiskalniRacun(
-        "gotovinski",
+        uredjajZaVrstuRacuna(red),
         invoiceRequest,
         {
           print: true,
@@ -1325,7 +1330,7 @@ export function RacuniPregled() {
     setFiskalizacijaUToku(true);
     try {
       const pronadjeno = await proveriFiskalizacijuPoRequestId(
-        "gotovinski",
+        uredjajZaVrstuRacuna(red),
         String(sifraTabele),
       );
       setFiskalizacijaUToku(false);
