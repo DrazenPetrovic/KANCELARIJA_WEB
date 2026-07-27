@@ -1197,7 +1197,13 @@ export function GotovinskiRacuni() {
           sifra_proizvoda: String(row.sifra_proizvoda),
           naziv_proizvoda: row.naziv_proizvoda,
           jm: row.jm,
-          kolicina: Number(row.kolicina_proizvoda) || 0,
+          // Stvarno spremljena količina (sa terena), ne originalno tražena
+          // kolicina_proizvoda — samo ako spremljena_kolicina zaista nedostaje
+          // (null/undefined) pada nazad na traženu.
+          kolicina:
+            row.spremljena_kolicina != null
+              ? Number(row.spremljena_kolicina) || 0
+              : Number(row.kolicina_proizvoda) || 0,
           napomena: row.napomena || "",
           verifikovano: Number(row.verifikovano),
         });

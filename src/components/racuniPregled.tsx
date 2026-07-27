@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Loader2,
   Printer,
   Receipt,
@@ -21,6 +22,7 @@ import {
   type EsirInvoiceRequest,
   type EsirStavka,
   type EsirPlacanje,
+  type EsirUredjaj,
 } from "./fiskalniRacuni";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -1058,6 +1060,123 @@ export function RacuniPregled() {
     });
   };
 
+  // Štampa KOPIJE fiskalnog računa (invoiceType "Copy") — za redove koji već
+  // imaju br_fiskalnog. Ne upisuje ništa u bazu (originalni br_fiskalnog/datum
+  // ostaju kakvi jesu) — ovo je samo dodatni fizički otisak kopije preko ESIR-a.
+  // Uređaj se bira po vrsti računa (isti princip kao handleStampaj: 1/3 = MP =
+  // gotovinski, sve ostalo = VP = ziralni).
+  const handleStampajKopijuEsira = async (red: RacunRed) => {
+    const sifraTabele = nadjiSifruTabele(red);
+    if (sifraTabele === null) return;
+    const vrsta = Number(red.vrsta_racuna_novi);
+    const uredjaj: EsirUredjaj = vrsta === 1 || vrsta === 3 ? "gotovinski" : "ziralni";
+
+    const brFiskalnogOriginal = red.br_fiskalnog;
+    const datumVremeFiskalnogOriginal = red.datum_vreme_fiskalnog;
+    if (
+      brFiskalnogOriginal === null ||
+      brFiskalnogOriginal === undefined ||
+      String(brFiskalnogOriginal).trim() === "" ||
+      datumVremeFiskalnogOriginal === null ||
+      datumVremeFiskalnogOriginal === undefined ||
+      String(datumVremeFiskalnogOriginal).trim() === ""
+    ) {
+      setFiskalnaPoruka({
+        naslov: "Nedostaju fiskalni podaci",
+        poruka:
+          "Nema sačuvanog broja/vremena originalnog fiskalnog računa — kopija se ne može zatražiti.",
+        tip: "greska",
+      });
+      return;
+    }
+
+    let stavke: RacunRed[] = [];
+    try {
+      const res = await fetch(
+        `${API_URL}/api/racuni/pregled-stavke?sifraTabele=${sifraTabele}`,
+        { credentials: "include" },
+      );
+      const json = await res.json();
+      stavke = res.ok && json.success ? (json.data ?? []) : [];
+    } catch {
+      setFiskalnaPoruka({
+        naslov: "Greška",
+        poruka: "Greška pri učitavanju stavki za štampu kopije.",
+        tip: "greska",
+      });
+      return;
+    }
+    if (stavke.length === 0) {
+      setFiskalnaPoruka({
+        naslov: "Nema stavki",
+        poruka: "Nema stavki za ovaj račun — ne mogu odštampati kopiju.",
+        tip: "greska",
+      });
+      return;
+    }
+
+    const items: EsirStavka[] = stavke.map((s) => ({
+      name: String(s.naziv_proizvoda ?? ""),
+      gtin: gtinZaStavkuPregled(s),
+      labels: [ESIR_OZNAKA_SA_PDV],
+      totalAmount: Number(s.prodajna_vrednost) || 0,
+      unitPrice: Number(s.prodajna_cijena) || 0,
+      quantity: Number(s.kolicina) || 0,
+      discount: 0,
+      discountAmount: 0,
+    }));
+    const payment: EsirPlacanje[] = [
+      {
+        amount: Number(red.ukupno) || 0,
+        paymentType: uredjaj === "gotovinski" ? "Cash" : "WireTransfer",
+      },
+    ];
+    const jeRazniKupac = Number(red.sifra_partnera) === 300;
+    const invoiceRequest: EsirInvoiceRequest = {
+      invoiceType: "Copy",
+      transactionType: "Sale",
+      referentDocumentNumber: String(brFiskalnogOriginal),
+      referentDocumentDT: String(datumVremeFiskalnogOriginal),
+      buyerId: jeRazniKupac
+        ? "300"
+        : red.jib
+          ? String(red.jib)
+          : undefined,
+      buyerCostCenterId: String(red.naziv_partnera ?? "").slice(0, 50),
+      payment,
+      items,
+      cashier: String(red.naziv_radnika ?? "").toUpperCase(),
+    };
+
+    setFiskalizacijaUToku(true);
+    try {
+      const esirRezultat = await izdajFiskalniRacun(uredjaj, invoiceRequest, {
+        print: true,
+        renderReceiptImage: true,
+        receiptLayout: "Slip",
+        receiptImageFormat: "Png",
+        ...ESIR_SLIP_PRESET_58MM,
+      });
+      setFiskalnaPoruka({
+        naslov: "Kopija odštampana",
+        poruka: `Kopija fiskalnog računa je poslata na štampu.${
+          esirRezultat.upozorenje
+            ? `\n\nUpozorenje uređaja: ${esirRezultat.upozorenje}`
+            : ""
+        }`,
+        tip: "uspjeh",
+      });
+    } catch (err) {
+      setFiskalnaPoruka({
+        naslov: "Štampa kopije nije uspjela",
+        poruka: err instanceof Error ? err.message : String(err),
+        tip: "greska",
+      });
+    } finally {
+      setFiskalizacijaUToku(false);
+    }
+  };
+
   const handleDesniKlikFiskalni = (red: RacunRed, e: React.MouseEvent) => {
     setKontekstMeniFiskalni({ x: e.clientX, y: e.clientY, red });
   };
@@ -1435,15 +1554,20 @@ export function RacuniPregled() {
                     onClick={() => {
                       setKontekstMeniFiskalni(null);
                       setFiskalnaPoruka({
-                        naslov: "Uskoro",
-                        poruka: "Ponovno slanje na ESIR – funkcionalnost dolazi uskoro.",
-                        tip: "info",
+                        naslov: "Štampa kopije",
+                        poruka:
+                          "Biće odštampana KOPIJA fiskalnog računa preko ESIR uređaja. Da li želite da nastavite?",
+                        tip: "pitanje",
+                        onPotvrdi: () => {
+                          void handleStampajKopijuEsira(red);
+                        },
                       });
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all"
+                    disabled={fiskalizacijaUToku}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
                   >
-                    <Printer size={13} />
-                    Ponovo pošalji na ESIR
+                    <Copy size={13} />
+                    Odštampaj kopiju
                   </button>
                 ) : (
                   <button

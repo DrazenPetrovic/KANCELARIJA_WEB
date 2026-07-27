@@ -1357,69 +1357,6 @@ export function ZiralniRacuni() {
     void handleSacuvajRacun(stampajNakonPotvrde);
   };
 
-  // PRIVREMENO — pregled A4 templejta preko trenutnog stanja forme, prije nego
-  // što se bilo šta stvarno sačuva (broj računa i šifra tabele su placeholderi
-  // jer još ne postoje dok se račun ne sačuva). Ukloniti kad se A4 poveže u
-  // stvarni handleSacuvajRacun tok.
-  const handlePregledA4Test = () => {
-    if (!odabraniPartner) {
-      alert("Izaberite partnera za pregled.");
-      return;
-    }
-    if (stavke.length === 0) {
-      alert("Dodajte bar jednu stavku za pregled.");
-      return;
-    }
-    const danas = formatDatumIso(new Date());
-    const dodatnaLokacija = odabraniPartner.dodatna_lokacija;
-    openPrint({
-      title: "Pregled A4 (test)",
-      component: (
-        <RacunA4
-          racun={{
-            broj_racuna: `VP-${odabranaPodgrupa?.sifra_podgrupe ?? 0}-PREVIEW / ${danas.slice(2, 4)}`,
-            datum_izdavanja: danas,
-            datum_isporuke: danas,
-            valuta: datumValute || danas,
-            sifra_tabele: "TEST",
-            naziv_partnera: odabraniPartner.naziv_partnera,
-            adresa_partnera: odabraniPartner.adresa_partnera,
-            naziv_grada: odabraniPartner.naziv_grada,
-            jib: odabraniPartner.jib,
-            pib: odabraniPartner.pib,
-            poslovna_jedinica: dodatnaLokacija
-              ? {
-                  naziv: dodatnaLokacija.naziv_lokacije ?? "-",
-                  adresa: dodatnaLokacija.adresa_lokacije,
-                  grad: dodatnaLokacija.naziv_grada,
-                  jib: dodatnaLokacija.JIB,
-                }
-              : null,
-            slovima: brojUSlovima(round2(ukupnoRacun)),
-            napomena: napomena || null,
-          }}
-          stavke={stavke.map((s) => ({
-            sifra_proizvoda: s.sifra_proizvoda,
-            naziv_proizvoda: s.naziv_proizvoda,
-            jm: s.jm,
-            kolicina: s.kolicina,
-            vpc: s.vpc,
-            vpc1: s.vpc1,
-            rab1: s.rab1,
-            vpc2: s.vpc2,
-            rab2: s.rab2,
-            vpc3: s.vpc3,
-            rab3: s.rab3,
-            osnova: s.osnova,
-            vrednost: s.vrednost,
-            pdv: s.pdv,
-            ukupno: s.ukupno,
-          }))}
-        />
-      ),
-    });
-  };
-
   const formatDatumRacuna = (d: string) => {
     const datum = new Date(d);
     if (isNaN(datum.getTime())) return String(d);
@@ -1555,7 +1492,13 @@ export function ZiralniRacuni() {
           sifra_proizvoda: String(row.sifra_proizvoda),
           naziv_proizvoda: row.naziv_proizvoda,
           jm: row.jm,
-          kolicina: Number(row.kolicina_proizvoda) || 0,
+          // Stvarno spremljena količina (sa terena), ne originalno tražena
+          // kolicina_proizvoda — samo ako spremljena_kolicina zaista nedostaje
+          // (null/undefined) pada nazad na traženu.
+          kolicina:
+            row.spremljena_kolicina != null
+              ? Number(row.spremljena_kolicina) || 0
+              : Number(row.kolicina_proizvoda) || 0,
           napomena: row.napomena || "",
           verifikovano: Number(row.verifikovano),
         });
@@ -1916,15 +1859,6 @@ export function ZiralniRacuni() {
                 ? "Kasa dostupna"
                 : "Kasa nije dostupna"}
           </span>
-          <button
-            onClick={handlePonistiSve}
-            className="mt-1 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-white transition-all hover:brightness-110"
-            style={{ background: PRIMARY }}
-            title="Poništi sve trenutno uneseno (partner, stavke, teren, napomena)"
-          >
-            <RotateCcw size={11} />
-            Poništi sve
-          </button>
         </div>
 
       </div>
@@ -2214,9 +2148,15 @@ export function ZiralniRacuni() {
           {/* Linija + ukupno — 1/3 visine */}
           <div className="border-t-2 border-gray-200 dark:border-[#2d2648] flex flex-col" style={{ flex: 1 }}>
             <div className="flex items-center justify-between px-6 gap-3" style={{ paddingTop: 10, paddingBottom: 10 }}>
-              <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
-                Broj stavki: <span style={{ color: PRIMARY }}>{stavke.length}</span>
-              </span>
+              <button
+                onClick={handlePonistiSve}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                style={{ background: PRIMARY }}
+                title="Poništi sve trenutno uneseno (partner, stavke, teren, napomena)"
+              >
+                <RotateCcw size={14} />
+                Poništi sve
+              </button>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold uppercase tracking-wide">Ukupno za platiti</span>
@@ -2279,16 +2219,9 @@ export function ZiralniRacuni() {
                   <Eye size={13} />
                   ESIR JSON
                 </button>
-                <button
-                  type="button"
-                  onClick={handlePregledA4Test}
-                  disabled={stavke.length === 0}
-                  title="Privremeno — pregled A4 templejta preko print modala, prije stvarnog čuvanja"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-dashed border-gray-300 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Printer size={13} />
-                  Pregled A4 (test)
-                </button>
+                <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
+                  Broj stavki: <span style={{ color: PRIMARY }}>{stavke.length}</span>
+                </span>
               </div>
             </div>
             {(spremanjeGreska || spremanjeUpozorenje || posljednjiBrojFiskalnog) && (
