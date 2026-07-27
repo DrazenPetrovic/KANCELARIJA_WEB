@@ -1294,6 +1294,12 @@ export function GotovinskiRacuni() {
     const preskoceniProizvodi: string[] = [];
     const noveStavke: StavkaRacuna[] = [];
     k.proizvodi.forEach((p) => {
+      // Spremljena količina 0 — ništa nije stvarno spremljeno sa terena za ovaj
+      // proizvod, ne uvozi se na račun.
+      if (p.kolicina <= 0) {
+        preskoceniProizvodi.push(`${p.naziv_proizvoda} (spremljeno 0)`);
+        return;
+      }
       const artikal = artikli.find(
         (a) => String(a.sifra_proizvoda) === p.sifra_proizvoda,
       );

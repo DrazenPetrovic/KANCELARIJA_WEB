@@ -23,6 +23,8 @@ export interface PrintJob {
   component: ReactNode;
   orientation?: "portrait" | "landscape";
   allowBrowserPrintFallback?: boolean;
+  // Broj fizičkih kopija koje se šalju print servisu (podrazumijevano 1).
+  copies?: number;
   onPrint?: (options: {
     format: "A4" | "A5";
     orientation: "portrait" | "landscape";
@@ -34,6 +36,8 @@ export interface DirektnoStampajOpcije {
   format: "A4" | "A5";
   orientation?: "portrait" | "landscape";
   documentType?: string;
+  // Broj fizičkih kopija koje se šalju print servisu (podrazumijevano 1).
+  copies?: number;
 }
 
 interface PrintContextType {
@@ -77,6 +81,7 @@ async function printDirectly(
     format,
     orientation = "portrait",
     documentType = "racun",
+    copies = 1,
   } = opcije;
 
   if (!printerName.trim()) {
@@ -199,7 +204,7 @@ async function printDirectly(
       paperSize: format,
       orientation,
       printerName,
-      copies: 1,
+      copies,
       documentType,
       documentBase64,
     });

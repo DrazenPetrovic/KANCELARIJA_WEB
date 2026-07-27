@@ -198,7 +198,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       paperSize: format,
       orientation,
       printerName: resolvedPrinter,
-      copies: 1,
+      copies: job.copies ?? 1,
       documentType: job.title.toLowerCase(),
       documentBase64,
     });
