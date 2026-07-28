@@ -20,7 +20,18 @@
       "Bash(node --check src/controllers/partneri.controller.js)",
       "Bash(node --check src/routes/partneri.routes.js)",
       "Bash(node --check src/controllers/racuni.controller.js)",
-      "Bash(node --check src/routes/racuni.routes.js)"
+      "Bash(node --check src/routes/racuni.routes.js)",
+      "Bash(node /tmp/test_lok.mjs)",
+      "PowerShell(node \"C:\\\\Users\\\\Korisnik\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--WEB-KOMERCIJALA-KANCELARIJA-WEB\\\\89d9d535-c849-42e1-a942-cf00808543b7\\\\scratchpad\\\\test_lok.mjs\")",
+      "PowerShell(node \"d:\\\\WEB_KOMERCIJALA\\\\KANCELARIJA_WEB\\\\test_lok_tmp.mjs\")",
+      "Bash(rm -f \"/mnt/d/WEB_KOMERCIJALA/KANCELARIJA_WEB/test_lok_tmp.mjs\" 2>/dev/null; rm -f \"d:/WEB_KOMERCIJALA/KANCELARIJA_WEB/test_lok_tmp.mjs\" 2>/dev/null; echo done)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(netstat -ano)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(command -v chromium-cli)"
+    ],
+    "additionalDirectories": [
+      "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"
     ]
   }
 }

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Banknote,
   Ban,
+  Building2,
   CheckCircle2,
   RotateCcw,
   ClipboardCheck,
@@ -77,6 +78,7 @@ const formatDatumZaNazivFajla = (d: Date) =>
   `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}_${pad2(d.getMinutes())}_${pad2(d.getSeconds())}`;
 
 interface DodatnaLokacija {
+  sifra: number;
   sifra_partnera: number;
   naziv_lokacije?: string;
   adresa_lokacije?: string;
@@ -216,7 +218,10 @@ interface Partner {
   koristiti_u_azuriranju: number;
   pripada_radniku: number;
   naziv_radnika: string;
-  dodatna_lokacija?: DodatnaLokacija;
+  // Sve poslovne jedinice (izdvojene lokacije) partnera — partner može imati
+  // više njih (npr. hotel + restoran na istoj adresi partnera), pa operater
+  // bira koju od njih koristi na ovom računu. Vidi getPartneriDodatneLokacije.
+  dodatne_lokacije?: DodatnaLokacija[];
 }
 
 // Posebna (dogovorena) cijena za par partner-proizvod — vidi
@@ -286,6 +291,13 @@ export function ZiralniRacuni() {
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [odabraniPartner, setOdabraniPartner] = useState<Partner | null>(null);
+  // Poslovna jedinica (izdvojena lokacija) izabranog partnera koja se štampa na
+  // računu — auto-izabrana ako partner ima samo jednu, inače operater bira kroz
+  // pokaziModalPoslovnaJedinica.
+  const [odabranaPoslovnaJedinica, setOdabranaPoslovnaJedinica] =
+    useState<DodatnaLokacija | null>(null);
+  const [pokaziModalPoslovnaJedinica, setPokazuiModalPoslovnaJedinica] =
+    useState(false);
   const [dogovoreneCijene, setDogovoreneCijene] = useState<DogovorenaCijena[]>([]);
 
   const [pretraga, setPretraga] = useState("");
@@ -408,10 +420,15 @@ export function ZiralniRacuni() {
         if (lokacijeRes.ok) {
           const lokacijeData = await lokacijeRes.json();
           const lokacije: DodatnaLokacija[] = lokacijeData.data ?? [];
-          const lokacijeMap = new Map(lokacije.map((l) => [l.sifra_partnera, l]));
+          const lokacijeMap = new Map<number, DodatnaLokacija[]>();
+          lokacije.forEach((l) => {
+            const niz = lokacijeMap.get(l.sifra_partnera) ?? [];
+            niz.push(l);
+            lokacijeMap.set(l.sifra_partnera, niz);
+          });
           lista.forEach((p) => {
-            const lok = lokacijeMap.get(p.sifra_partnera);
-            if (lok) p.dodatna_lokacija = lok;
+            const niz = lokacijeMap.get(p.sifra_partnera);
+            if (niz) p.dodatne_lokacije = niz;
           });
         }
         setPartneri(lista);
@@ -645,8 +662,25 @@ export function ZiralniRacuni() {
     });
   }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju]);
 
-  const handleOdabir = (p: Partner) => {
+  // Postavlja izabranog partnera i rješava poslovnu jedinicu: nijedna → prazno,
+  // tačno jedna → auto-izabrana, više njih → traži se izbor operatera kroz modal.
+  const primeniOdabirPartnera = (p: Partner) => {
     setOdabraniPartner(p);
+    const lokacije = p.dodatne_lokacije ?? [];
+    if (lokacije.length === 1) {
+      setOdabranaPoslovnaJedinica(lokacije[0]);
+      setPokazuiModalPoslovnaJedinica(false);
+    } else if (lokacije.length > 1) {
+      setOdabranaPoslovnaJedinica(null);
+      setPokazuiModalPoslovnaJedinica(true);
+    } else {
+      setOdabranaPoslovnaJedinica(null);
+      setPokazuiModalPoslovnaJedinica(false);
+    }
+  };
+
+  const handleOdabir = (p: Partner) => {
+    primeniOdabirPartnera(p);
     setPretraga("");
     setPokazuiDropdown(false);
   };
@@ -781,6 +815,8 @@ export function ZiralniRacuni() {
   const ocistiRacun = () => {
     setStavke([]);
     setOdabraniPartner(null);
+    setOdabranaPoslovnaJedinica(null);
+    setPokazuiModalPoslovnaJedinica(false);
     setOdabraniTeren(null);
     setNapomena("");
     setSifreTabeleZaStampano([]);
@@ -869,6 +905,30 @@ export function ZiralniRacuni() {
 
   const ukupnoRacun = stavke.reduce((s, r) => s + r.ukupno, 0);
 
+  // Kad je za partnera izabrana poslovna jedinica, njeni podaci (naziv, adresa,
+  // JIB) imaju prioritet i idu na početak napomene — pošto header nema posebno
+  // polje za poslovnu jedinicu, ovo je jedini način da ostane trajno zapisana
+  // uz račun. Ranije unesena napomena (ako je operater nešto upisao) ide iza.
+  const sastaviNapomenuSaPoslovnomJedinicom = (): string => {
+    if (!odabranaPoslovnaJedinica) return napomena;
+    const adresaIGrad = [
+      odabranaPoslovnaJedinica.adresa_lokacije,
+      odabranaPoslovnaJedinica.naziv_grada,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const blokPoslovneJedinice = [
+      odabranaPoslovnaJedinica.naziv_lokacije,
+      adresaIGrad || null,
+      odabranaPoslovnaJedinica.JIB ? `JIB: ${odabranaPoslovnaJedinica.JIB}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return napomena
+      ? `${blokPoslovneJedinice}\n\n${napomena}`
+      : blokPoslovneJedinice;
+  };
+
   // Priprema kompletnog JSON-a (header + items) za slanje kroz proceduru
   // erp.sp_racuni_unos — vrsta_racuna "z" (žiralni), vrsta_racuna_novi 2 (VP).
   // Osnova obračuna po stavci je "osnova" (VPC nakon kaskade VPC1/VPC2/VPC3);
@@ -929,7 +989,7 @@ export function ZiralniRacuni() {
       slovima: brojUSlovima(round2(ukupnoRacun)),
       valuta: datumValute,
       datum_isporuke: datumRacuna,
-      napomena,
+      napomena: sastaviNapomenuSaPoslovnomJedinicom(),
       rabat_km: ukupanRabatKm,
       vreme: formatVremeIso(sada),
       VP_vrednost: vpVrednost,
@@ -1269,7 +1329,7 @@ export function ZiralniRacuni() {
           new Date(podaci.header.datum_racuna).getFullYear(),
         ).slice(-2);
         const brojRacunaZaStampu = `${prefiksVrsteRacuna}-${odabranaPodgrupa?.sifra_podgrupe ?? 0}-${json.broj_racuna ?? "-"} / ${godinaRacuna}`;
-        const dodatnaLokacija = odabraniPartner?.dodatna_lokacija;
+        const dodatnaLokacija = odabranaPoslovnaJedinica;
         const racunA4 = (
           <RacunA4
             racun={{
@@ -1350,6 +1410,8 @@ export function ZiralniRacuni() {
       // prikazano na vrhu forme za sljedeći račun.
       setStavke([]);
       setOdabraniPartner(null);
+      setOdabranaPoslovnaJedinica(null);
+      setPokazuiModalPoslovnaJedinica(false);
       setNapomena("");
     } catch (error) {
       setSpremanjeGreska(
@@ -1563,7 +1625,7 @@ export function ZiralniRacuni() {
       );
       return;
     }
-    setOdabraniPartner(partner);
+    primeniOdabirPartnera(partner);
     setPendingUvozNarudzbe(k);
     setPokazuiModalNarudzbe(false);
     setOdabraniKupacNarudzbe(null);
@@ -1693,12 +1755,12 @@ export function ZiralniRacuni() {
                       </div>
                     </div>
                   </div>
-                  {p.dodatna_lokacija && (
+                  {!!p.dodatne_lokacije?.length && (
                     <span
                       className="ml-1 flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                       style={{ background: "#ede8f5", color: PRIMARY }}
                     >
-                      +lok
+                      +lok{p.dodatne_lokacije.length > 1 ? ` (${p.dodatne_lokacije.length})` : ""}
                     </span>
                   )}
                 </button>
@@ -1762,10 +1824,30 @@ export function ZiralniRacuni() {
                     .join(", ")}
                   {odabraniPartner.jib && ` · JIB: ${odabraniPartner.jib}`}
                   {odabraniPartner.pib && ` · PIB: ${odabraniPartner.pib}`}
-                  {odabraniPartner.dodatna_lokacija && (
-                    <span className="ml-1 px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold flex-shrink-0">+lok</span>
-                  )}
                 </div>
+                {odabranaPoslovnaJedinica && (
+                  <div className="text-[10px] text-white/90 flex items-center gap-1 mt-0.5 truncate font-semibold">
+                    <span className="px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold flex-shrink-0">PJ</span>
+                    {odabranaPoslovnaJedinica.naziv_lokacije ?? "-"}
+                    {(odabraniPartner.dodatne_lokacije?.length ?? 0) > 1 && (
+                      <button
+                        onClick={() => setPokazuiModalPoslovnaJedinica(true)}
+                        className="ml-1 underline text-white/70 hover:text-white font-normal"
+                      >
+                        promijeni
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!odabranaPoslovnaJedinica &&
+                  (odabraniPartner.dodatne_lokacije?.length ?? 0) > 0 && (
+                    <button
+                      onClick={() => setPokazuiModalPoslovnaJedinica(true)}
+                      className="text-[10px] text-white/90 underline mt-0.5 flex-shrink-0"
+                    >
+                      Izaberi poslovnu jedinicu
+                    </button>
+                  )}
               </div>
             </div>
           ) : (
@@ -3118,7 +3200,7 @@ export function ZiralniRacuni() {
                     {modalRezultati.map((p, i) => (
                       <tr
                         key={p.sifra_partnera}
-                        onClick={() => { setOdabraniPartner(p); setPokazuiModal(false); setPretragaModal(""); }}
+                        onClick={() => { primeniOdabirPartnera(p); setPokazuiModal(false); setPretragaModal(""); }}
                         className={`cursor-pointer border-b border-gray-100 dark:border-[#2a2340] transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#2d2648] ${
                           i % 2 === 0 ? "bg-white dark:bg-[#1a1528]" : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                         } ${odabraniPartner?.sifra_partnera === p.sifra_partnera ? "!bg-[#e0d9f0] dark:!bg-[#2d2648] font-semibold" : ""}`}
@@ -3142,11 +3224,13 @@ export function ZiralniRacuni() {
                           <div className="truncate">{p.naziv_radnika || "—"}</div>
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          {p.dodatna_lokacija && (
+                          {!!p.dodatne_lokacije?.length && (
                             <span
                               className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white"
                               style={{ background: ACCENT }}
-                              title={p.dodatna_lokacija.naziv_lokacije ?? p.dodatna_lokacija.naziv_grada ?? "Dodatna lokacija"}
+                              title={p.dodatne_lokacije
+                                .map((l) => l.naziv_lokacije ?? l.naziv_grada ?? "Dodatna lokacija")
+                                .join(", ")}
                             >
                               <MapPin size={9} />
                             </span>
@@ -3159,6 +3243,89 @@ export function ZiralniRacuni() {
               )}
             </div>
 
+          </div>,
+          document.body,
+        )}
+
+      {/* Modal izbora poslovne jedinice — kad izabrani partner ima više izdvojenih
+          lokacija (npr. hotel + restoran), operater bira koja se štampa na računu. */}
+      {pokaziModalPoslovnaJedinica &&
+        odabraniPartner &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setPokazuiModalPoslovnaJedinica(false);
+              }
+            }}
+          >
+            <div
+              className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border-2 w-[420px] max-h-[80vh] flex flex-col overflow-hidden"
+              style={{ borderColor: PRIMARY }}
+            >
+              <div
+                className="px-4 py-3 flex items-center justify-between flex-shrink-0"
+                style={{ background: PRIMARY }}
+              >
+                <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                  <Building2 size={15} />
+                  Izaberi poslovnu jedinicu
+                </div>
+                <button
+                  onClick={() => setPokazuiModalPoslovnaJedinica(false)}
+                  className="text-white/80 hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-4 py-2 text-xs text-gray-500 dark:text-[#9e96b8] border-b border-gray-100 dark:border-[#2d2648]">
+                Partner <span className="font-semibold">{odabraniPartner.naziv_partnera}</span> ima
+                više poslovnih jedinica — izaberi koja ide na ovaj račun.
+              </div>
+              <div className="overflow-y-auto p-2 flex flex-col gap-1">
+                <button
+                  onClick={() => {
+                    setOdabranaPoslovnaJedinica(null);
+                    setPokazuiModalPoslovnaJedinica(false);
+                  }}
+                  className={`text-left px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                    !odabranaPoslovnaJedinica
+                      ? "text-white border-transparent"
+                      : "border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                  }`}
+                  style={!odabranaPoslovnaJedinica ? { background: ACCENT } : undefined}
+                >
+                  Bez poslovne jedinice (glavni partner)
+                </button>
+                {(odabraniPartner.dodatne_lokacije ?? []).map((lok) => (
+                  <button
+                    key={lok.sifra}
+                    onClick={() => {
+                      setOdabranaPoslovnaJedinica(lok);
+                      setPokazuiModalPoslovnaJedinica(false);
+                    }}
+                    className={`text-left px-3 py-2 rounded-xl text-xs border transition-all ${
+                      odabranaPoslovnaJedinica?.sifra === lok.sifra
+                        ? "text-white border-transparent"
+                        : "border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                    }`}
+                    style={
+                      odabranaPoslovnaJedinica?.sifra === lok.sifra
+                        ? { background: PRIMARY }
+                        : undefined
+                    }
+                  >
+                    <div className="font-semibold">{lok.naziv_lokacije ?? "-"}</div>
+                    <div className="text-[10px] opacity-80 truncate">
+                      {[lok.adresa_lokacije, lok.naziv_grada].filter(Boolean).join(", ")}
+                      {lok.JIB ? ` · JIB: ${lok.JIB}` : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>,
           document.body,
         )}

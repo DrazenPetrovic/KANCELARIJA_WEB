@@ -1130,17 +1130,16 @@ export function RacuniPregled() {
         paymentType: uredjaj === "gotovinski" ? "Cash" : "WireTransfer",
       },
     ];
-    const jeRazniKupac = Number(red.sifra_partnera) === 300;
     const invoiceRequest: EsirInvoiceRequest = {
       invoiceType: "Copy",
       transactionType: "Sale",
       referentDocumentNumber: String(brFiskalnogOriginal),
       referentDocumentDT: String(datumVremeFiskalnogOriginal),
-      buyerId: jeRazniKupac
-        ? "300"
-        : red.jib
-          ? String(red.jib)
-          : undefined,
+      // Isto kao pripremiBuyerId() u originalnom unosu (racuniZiralni/racuniGotovinski) —
+      // šalje se partnerov JIB kakav god da je (i za "Razni kupci" je to "0", ne šifra
+      // partnera "300"), da se poklapa sa onim što je ESIR već prihvatio pri originalnoj
+      // fiskalizaciji ovog računa.
+      buyerId: red.jib && String(red.jib).trim() ? String(red.jib).trim() : undefined,
       buyerCostCenterId: String(red.naziv_partnera ?? "").slice(0, 50),
       payment,
       items,
@@ -1261,17 +1260,14 @@ export function RacuniPregled() {
     const payment: EsirPlacanje[] = [
       { amount: Number(red.ukupno) || 0, paymentType: "Cash" },
     ];
-    const jeRazniKupac = Number(red.sifra_partnera) === 300;
     const invoiceRequest: EsirInvoiceRequest = {
       invoiceType: ESIR_INVOICE_TYPE,
       transactionType: "Sale",
       referentDocumentNumber: null,
       referentDocumentDT: null,
-      buyerId: jeRazniKupac
-        ? "300"
-        : red.jib
-          ? String(red.jib)
-          : undefined,
+      // Vidi napomenu u handleStampajKopijuEsira — buyerId prati ono što je original
+      // poslao (partnerov JIB, "0" za Razni kupci), ne šifru partnera "300".
+      buyerId: red.jib && String(red.jib).trim() ? String(red.jib).trim() : undefined,
       buyerCostCenterId: String(red.naziv_partnera ?? "").slice(0, 50),
       payment,
       items,

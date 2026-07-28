@@ -286,7 +286,7 @@ export function RacunA4({ racun, stavke }: Props) {
                     style={{
                       color: "white",
                       fontWeight: 700,
-                      fontSize: 8,
+                      fontSize: 9,
                       padding: "4px 4px",
                       textAlign: right ? "right" : "left",
                       textTransform: "uppercase",
@@ -320,19 +320,19 @@ export function RacunA4({ racun, stavke }: Props) {
                   </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     {broj(s.vpc1)}
-                    <div style={{ fontSize: 8, color: "#888" }}>
+                    <div style={{ fontSize: 9, color: "#888" }}>
                       {broj(s.rab1)}%
                     </div>
                   </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     {broj(s.vpc2)}
-                    <div style={{ fontSize: 8, color: "#888" }}>
+                    <div style={{ fontSize: 9, color: "#888" }}>
                       {broj(s.rab2)}%
                     </div>
                   </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     {broj(s.vpc3)}
-                    <div style={{ fontSize: 8, color: "#888" }}>
+                    <div style={{ fontSize: 9, color: "#888" }}>
                       {broj(s.rab3)}%
                     </div>
                   </td>
@@ -357,7 +357,7 @@ export function RacunA4({ racun, stavke }: Props) {
                       ...cell,
                       textAlign: "right",
                       fontWeight: 800,
-                      fontSize: 11,
+                      fontSize: 13,
                       color: "#000",
                       background: "#e3e3e3",
                     }}
@@ -397,12 +397,12 @@ export function RacunA4({ racun, stavke }: Props) {
                   background: `${ACCENT}0d`,
                   border: `1px solid ${ACCENT}40`,
                   borderRadius: 6,
-                  padding: "7px 10px",
+                  padding: "9px 12px",
                 }}
               >
                 <span
                   style={{
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: 700,
                     color: ACCENT,
                     textTransform: "uppercase",
@@ -411,7 +411,14 @@ export function RacunA4({ racun, stavke }: Props) {
                 >
                   Napomena:{" "}
                 </span>
-                <span style={{ fontSize: 10, color: "#444", fontStyle: "italic" }}>
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "#222",
+                    fontWeight: 600,
+                    whiteSpace: "pre-line",
+                  }}
+                >
                   {racun.napomena}
                 </span>
               </div>
@@ -541,7 +548,7 @@ export function RacunA4({ racun, stavke }: Props) {
 
 const cell: React.CSSProperties = {
   padding: "4px 4px",
-  fontSize: 10,
+  fontSize: 12,
   borderBottom: "1px solid #ede8f6",
   verticalAlign: "middle",
 };
