@@ -1164,14 +1164,23 @@ export function GotovinskiRacuni() {
         nacin_placanja?: string;
       }>;
 
-      const kupciMap = new Map<number, NarudzbaZavrsenaKupac>();
+      // Ključ mora uključiti i referentni_broj — isti kupac (i isti proizvodi)
+      // mogu istovremeno imati 2 odvojene završene narudžbe (2 buduća računa),
+      // razdvojene baš tim referentnim brojem. Samo sifra_partnera bi ih
+      // pogrešno spojila u jednu grupu.
+      const kljucKupca = (sifraKupca: number, referentniBroj: string) =>
+        `${sifraKupca}::${referentniBroj}`;
+
+      const kupciMap = new Map<string, NarudzbaZavrsenaKupac>();
       grupisaneRedovi.forEach((row) => {
         const sifraKupca = Number(row.sifra_partnera);
-        if (!kupciMap.has(sifraKupca)) {
-          kupciMap.set(sifraKupca, {
+        const referentniBroj = String(row.referentni_broj ?? "").trim();
+        const kljuc = kljucKupca(sifraKupca, referentniBroj);
+        if (!kupciMap.has(kljuc)) {
+          kupciMap.set(kljuc, {
             sifra_kupca: sifraKupca,
             naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
-            referentni_broj: String(row.referentni_broj ?? "").trim(),
+            referentni_broj: referentniBroj,
             nacin_placanja: String(row.nacin_placanja ?? "").trim(),
             stampano: Number(row.stampano) || 0,
             proizvodi: [],
@@ -1180,17 +1189,19 @@ export function GotovinskiRacuni() {
       });
       aktivniRedovi.forEach((row) => {
         const sifraKupca = Number(row.sifra_partnera);
-        let kupac = kupciMap.get(sifraKupca);
+        const referentniBroj = String(row.referentni_broj ?? "").trim();
+        const kljuc = kljucKupca(sifraKupca, referentniBroj);
+        let kupac = kupciMap.get(kljuc);
         if (!kupac) {
           kupac = {
             sifra_kupca: sifraKupca,
             naziv_kupca: row.naziv_partnera || "Nepoznat kupac",
-            referentni_broj: String(row.referentni_broj ?? "").trim(),
+            referentni_broj: referentniBroj,
             nacin_placanja: String(row.nacin_placanja ?? "").trim(),
             stampano: 0,
             proizvodi: [],
           };
-          kupciMap.set(sifraKupca, kupac);
+          kupciMap.set(kljuc, kupac);
         }
         kupac.proizvodi.push({
           sifra_tabele: Number(row.sifra_tabele),
@@ -3642,10 +3653,12 @@ export function GotovinskiRacuni() {
                   zavrseneNarudzbe.map((k) => {
                     const vecUneseno = k.stampano !== 0;
                     const prosireno =
-                      odabraniKupacNarudzbe?.sifra_kupca === k.sifra_kupca;
+                      odabraniKupacNarudzbe?.sifra_kupca === k.sifra_kupca &&
+                      odabraniKupacNarudzbe?.referentni_broj ===
+                        k.referentni_broj;
                     return (
                       <div
-                        key={k.sifra_kupca}
+                        key={`${k.sifra_kupca}-${k.referentni_broj}`}
                         className="border-b border-gray-50 dark:border-[#2a2340] last:border-b-0"
                       >
                         <button
@@ -3680,7 +3693,10 @@ export function GotovinskiRacuni() {
                               {k.naziv_kupca}
                             </div>
                             <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                              Šifra: {k.sifra_kupca} · {k.proizvodi.length}{" "}
+                              Šifra: {k.sifra_kupca}
+                              {k.referentni_broj && ` · Ref: ${k.referentni_broj}`}
+                              {" · "}
+                              {k.proizvodi.length}{" "}
                               {k.proizvodi.length === 1
                                 ? "proizvod"
                                 : "proizvoda"}
