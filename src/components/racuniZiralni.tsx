@@ -52,6 +52,13 @@ const ACCENT = "#8FC74A";
 const STOPA_PDV = 0.17;
 const VRSTA_RACUNA = "z";
 const VRSTA_RACUNA_NOVI = 2;
+// Šifra države BiH (domaći promet) — vidi erp.sp_partneri_drzave. Sve ostale
+// šifre su inostranstvo (izvoz).
+const SIFRA_DRZAVE_BIH = 1;
+// Podgrupe računa (erp.sp_racuni_podgrupe) korištene za auto-izbor prema
+// partnerovoj državi: 10 = "Račun" (domaći promet, PDV), 15 = "Izvoz" (bez PDV).
+const SIFRA_PODGRUPE_DOMACI = 10;
+const SIFRA_PODGRUPE_IZVOZ = 15;
 
 // Koraci procesa čuvanja računa (redoslijed prati handleSacuvajRacun) — indeks
 // u nizu + 1 = vrijednost koju drži korakCuvanja state dok je taj korak aktivan.
@@ -664,6 +671,11 @@ export function ZiralniRacuni() {
 
   // Postavlja izabranog partnera i rješava poslovnu jedinicu: nijedna → prazno,
   // tačno jedna → auto-izabrana, više njih → traži se izbor operatera kroz modal.
+  // Uz to, kad još nema unesenih stavki, podgrupa računa se automatski usklađuje
+  // sa partnerovom državom (sifra_drzave !== BiH → "Izvoz", bez PDV) — vidi
+  // primeniPodgrupuPremaDrzavi. Ako stavke već postoje, podgrupa se ne dira
+  // (promjena bi obrisala unos — operater to radi ručno preko padajućeg menija,
+  // koji traži potvrdu).
   const primeniOdabirPartnera = (p: Partner) => {
     setOdabraniPartner(p);
     const lokacije = p.dodatne_lokacije ?? [];
@@ -676,6 +688,17 @@ export function ZiralniRacuni() {
     } else {
       setOdabranaPoslovnaJedinica(null);
       setPokazuiModalPoslovnaJedinica(false);
+    }
+
+    if (stavke.length === 0) {
+      const ciljnaSifraPodgrupe =
+        Number(p.sifra_drzave) === SIFRA_DRZAVE_BIH
+          ? SIFRA_PODGRUPE_DOMACI
+          : SIFRA_PODGRUPE_IZVOZ;
+      const ciljnaPodgrupa = podgrupeRacuna.find(
+        (pod) => Number(pod.sifra_podgrupe) === ciljnaSifraPodgrupe,
+      );
+      if (ciljnaPodgrupa) setOdabranaPodgrupa(ciljnaPodgrupa);
     }
   };
 
@@ -985,7 +1008,9 @@ export function ZiralniRacuni() {
       sifra_kupca: odabraniPartner?.sifra_partnera ?? 0,
       datum_racuna: datumRacuna,
       ukupno: round2(ukupnoRacun),
-      sifra_radnika: getCurrentUser()?.sifraRadnika ?? 0,
+      // Komercijalista zadužen za partnera (Partner.pripada_radniku) — NE trenutni
+      // operater. Vidi getPartneri/erp.sp_pregled_partnera.
+      sifra_radnika: odabraniPartner?.pripada_radniku ?? 0,
       slovima: brojUSlovima(round2(ukupnoRacun)),
       valuta: datumValute,
       datum_isporuke: datumRacuna,
