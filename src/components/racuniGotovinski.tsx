@@ -939,7 +939,13 @@ export function GotovinskiRacuni() {
       sifra_kupca: sifraKupca,
       datum_racuna: datumRacuna,
       ukupno: round2(ukupnoRacun),
-      sifra_radnika: getCurrentUser()?.sifraRadnika ?? 0,
+      // Komercijalista zadužen za kupca (NE trenutni operater) — za partnera 300
+      // (Razni kupci) generički zapis nema svog komercijalistu, pa se uzima od
+      // konkretnog izabranog "raznog" kupca (odabraniRazni.pripada_radniku).
+      sifra_radnika:
+        odabraniPartner?.sifra_partnera === 300
+          ? (odabraniRazni?.pripada_radniku ?? 0)
+          : (odabraniPartner?.pripada_radniku ?? 0),
       slovima: ukupnoRacunSlovima,
       valuta: datumRacuna,
       datum_isporuke: datumRacuna,
@@ -1594,6 +1600,7 @@ export function GotovinskiRacuni() {
         } else {
           openPrint({
             title: `Račun ${brojRacunaZaStampu}`,
+            format: "A5",
             component: racunA5,
           });
         }

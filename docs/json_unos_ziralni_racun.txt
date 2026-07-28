@@ -1,0 +1,49 @@
+{
+  "header": {
+    "vrsta_racuna": "Z",
+    "sifra_kupca": 1250,
+    "datum_racuna": "2026-07-28",
+    "ukupno": 245.70,
+    "sifra_radnika": 5,
+    "slovima": "dvijestotinečetrdesetpet i 70/100 KM",
+    "valuta": "2026-08-11",
+    "datum_isporuke": "2026-07-28",
+    "napomena": "Isporuka na teren",
+    "rabat_km": 0,
+    "vreme": "2026-07-28T14:35:22",
+    "VP_vrednost": 210.00,
+    "vp_vrednost_original": 210.00,
+    "vrsta_racuna_novi": 1,
+    "vrsta_racuna_pod": 10,
+    "VP_1": 0,
+    "VP_2": 0,
+    "sifra_terena": 3
+  },
+  "items": [
+    {
+      "sifra_proizvoda": 102,
+      "cijena_proizvoda": 8.500,
+      "prodajna_cijena": 11.70,
+      "kolicina": 10.000,
+      "rabat_proc": 5.00,
+      "rabat_km": 0,
+      "vpc": 10.00000,
+      "vpc_bez_rabata": 10.52632,
+      "rabat_proc_2": 0,
+      "rabat_km_2": 0,
+      "rab_proc_3": 0,
+      "rabat_km_3": 0,
+      "vpc_rabat_1": 10.00000,
+      "pdv_po_artiklu": 17.00,
+      "nabavna_cijena_proizvoda": 7.20
+    },
+    {
+      "sifra_proizvoda": 205,
+      "cijena_proizvoda": 4.300,
+      "prodajna_cijena": 6.50,
+      "kolicina": 20.000,
+      "vpc": 5.55556,
+      "pdv_po_artiklu": 17.00
+    }
+  ]
+}

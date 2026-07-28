@@ -22,6 +22,10 @@ export interface PrintJob {
   title: string;
   component: ReactNode;
   orientation?: "portrait" | "landscape";
+  // Podrazumijevani format papira u PrintModal-u — bira se prema šablonu koji
+  // se štampa (RacunA5 -> "A5", RacunA4 -> "A4"). Bez ovoga modal uvijek
+  // kreće od "A4" bez obzira na stvarni šablon.
+  format?: "A4" | "A5";
   allowBrowserPrintFallback?: boolean;
   // Broj fizičkih kopija koje se šalju print servisu (podrazumijevano 1).
   copies?: number;

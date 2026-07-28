@@ -156,6 +156,51 @@ export const azurirajFiskalnePodatke = async (req, res) => {
   }
 };
 
+export const oznaciRacunStorniran = async (req, res) => {
+  try {
+    const { sifra_tabele_originala, sifra_tabele_storna } = req.body;
+    if (!sifra_tabele_originala || !sifra_tabele_storna) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Nedostaju obavezni podaci (sifra_tabele_originala, sifra_tabele_storna)",
+      });
+    }
+
+    const rezultat = await RacuniService.oznaciRacunStorniran(
+      sifra_tabele_originala,
+      sifra_tabele_storna,
+    );
+
+    if (!rezultat) {
+      return res.status(500).json({
+        success: false,
+        error: "Nema odgovora od procedure za markiranje storniranog računa",
+      });
+    }
+
+    const uspjesno = Number(rezultat.uspjesno) === 1;
+    if (!uspjesno) {
+      return res.status(404).json({
+        success: false,
+        error: rezultat.poruka || "Račun nije pronađen ili nije markiran.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      poruka: rezultat.poruka,
+    });
+  } catch (error) {
+    console.error("Markiranje storniranog računa error:", error);
+    const detalj =
+      error?.sqlMessage ||
+      error?.message ||
+      "Greška pri markiranju storniranog računa";
+    return res.status(500).json({ success: false, error: detalj });
+  }
+};
+
 export const unosRacuna = async (req, res) => {
   try {
     const { header, items } = req.body;

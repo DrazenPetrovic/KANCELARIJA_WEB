@@ -1,0 +1,83 @@
+STORNO VIRMANSKI (Knjižna virmanski) — šta je urađeno i šta ostaje
+====================================================================
+
+ŠTA JE VEĆ URAĐENO (frontend + backend, spremno za testiranje)
+--------------------------------------------------------------
+1. Novi ekran "Knjižna virmanski" (meni Računi -> Knjižna virmanski):
+   fajl src/components/racuniKnjiznaVirmanski.tsx
+   - Prikazuje listu žiralnih (VP) računa koji još nisu storniran
+     (vrsta_racuna_novi = 2, storniran_racun != 1), sa kolonama: broj
+     računa, datum, partner, broj fiskalnog računa, ukupno.
+   - Klik na račun otvara potvrdu — storno je uvek za CIJELI račun,
+     nema djelimičnog storna.
+   - Na potvrdu:
+     a) učita stavke originalnog računa
+        (GET /api/racuni/pregled-stavke)
+     b) sastavi novi storno zapis: vrsta_racuna_novi = 5, storniran = 1,
+        količine i iznosi rabata NEGATIVNI, jedinične cijene ostaju
+        pozitivne
+     c) upiše storno preko POST /api/racuni/unos (ista procedura
+        erp.sp_racuni_unos koja se koristi za normalan unos računa)
+     d) pozove POST /api/racuni/storniraj da markira ORIGINALNI račun
+        kao storniran
+
+2. Novi backend endpoint POST /api/racuni/storniraj
+   (src/routes/racuni.routes.js, src/controllers/racuni.controller.js,
+   src/services/racuni.service.js) — poziva proceduru:
+
+       CALL erp.sp_racun_storniraj(sifra_tabele_originala, sifra_tabele_storna)
+
+
+ŠTA TREBA TI DA URADIŠ — KREIRATI PROCEDURU NA BAZI
+----------------------------------------------------
+Procedura erp.sp_racun_storniraj JOŠ NE POSTOJI na bazi. Dok se ne
+napravi, sam storno će se upisati ispravno (korak c), ali markiranje
+originala (korak d) će vraćati grešku — u ekranu će se to prikazati
+kao UPOZORENJE, ne kao greška upisa (storno je već sačuvan i
+nepovratan).
+
+Očekivan ugovor procedure (isti obrazac kao postojeća
+erp.sp_racun_azuriranje_fiskalnog):
+
+  ULAZ:
+    sifra_tabele_originala  — šifra tabele originalnog (storniranog) računa
+    sifra_tabele_storna     — šifra tabele novog storno računa
+
+  ŠTA TREBA DA URADI:
+    - postavi storniran_racun = 1 na originalnom računu
+      (kolona storniran_racun se već koristi za prikaz u ekranu
+      "Pregled računa" — crveno obojen red kad je 1)
+    - opcionalno: zapamti vezu original -> storno zapis (npr. u posebnoj
+      koloni, ako je zgodno za kasniju kontrolu/izvještaje)
+
+  IZLAZ (result set, bar ova dva polja):
+    uspjesno  — 1 ako je markiranje uspjelo, 0 ako nije
+    poruka    — tekstualna poruka (razlog ako uspjesno = 0)
+
+
+ŠTA JE SVJESNO OSTAVLJENO ZA POSLIJE — ESIR FISKALNI STORNO
+-------------------------------------------------------------
+Ovaj krug NE šalje ništa fiskalnom uređaju (ESIR). Broj fiskalnog
+računa originala (br_fiskalnog) je vidljiv u listi upravo zato da bude
+spreman za taj sledeći korak, ali sama fiskalizacija storna je
+odložena dok se ne potvrdi:
+  - tačna vrijednost transactionType za ESIR "refund" zahtjev
+    (pretpostavka je bila "Refund", nije potvrđeno u ESIR dokumentaciji)
+  - da li stavke u ESIR zahtjevu idu sa pozitivnim ili negativnim
+    količinama/iznosima za storno
+
+Kad se ovo potvrdi, dodaje se poziv izdajFiskalniRacun("ziralni", ...)
+sa referentDocumentNumber/referentDocumentDT = br_fiskalnog/
+datum_vreme_fiskalnog originalnog računa — isti obrazac kao normalan
+unos u racuniZiralni.tsx (handleSacuvajRacun).
+
+
+REDOSLIJED TESTIRANJA
+----------------------
+1. Napraviti erp.sp_racun_storniraj na bazi (vidi ugovor gore).
+2. Otvoriti Knjižna virmanski, stornirati jedan (po mogućnosti
+   nebitan/test) VP račun.
+3. Provjeriti u "Pregled računa": novi red sa vrsta_racuna_novi=5,
+   negativnim iznosima, i original obojen kao storniran
+   (storniran_racun=1).
+4. Kad se potvrdi ESIR format — javiti, pa se dodaje fiskalni storno.

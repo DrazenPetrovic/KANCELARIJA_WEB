@@ -978,6 +978,7 @@ export function RacuniPregled() {
       const brojPolje = (s: RacunRed, k: string) => Number(s[k] ?? 0) || 0;
       openPrint({
         title: `Račun ${brojRacuna}`,
+        format: "A4",
         component: (
           <RacunA4
             racun={{
@@ -1025,6 +1026,7 @@ export function RacuniPregled() {
 
     openPrint({
       title: `Račun ${brojRacuna}`,
+      format: "A5",
       component: (
         <RacunA5
           racun={{

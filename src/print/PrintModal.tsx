@@ -25,8 +25,8 @@ export function PrintModal({ job, onClose, printerName }: Props) {
   const [orientation, setOrientation] = useState<"portrait" | "landscape">(
     job.orientation ?? "portrait",
   );
-  const [format, setFormat] = useState<"A4" | "A5">("A4");
-  const [scale, setScale] = useState(0.62);
+  const [format, setFormat] = useState<"A4" | "A5">(job.format ?? "A4");
+  const [scale, setScale] = useState(format === "A5" ? 1 : 0.8);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -85,6 +85,11 @@ export function PrintModal({ job, onClose, printerName }: Props) {
   useEffect(() => {
     void loadServiceStatus();
   }, [job.title]);
+
+  // Podrazumijevani zoom preview-a prati format papira: A4 80%, A5 100%.
+  useEffect(() => {
+    setScale(format === "A5" ? 1 : 0.8);
+  }, [format]);
 
   const isServiceReadyForDirectPrint = (status: PrintServiceStatus | null) =>
     !!status && status.serviceActive && status.pdfRendererActive;
@@ -271,7 +276,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="relative bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: 920, maxWidth: "95vw", height: "88vh" }}>
+        style={{ width: 966, maxWidth: "95vw", height: "96.8vh" }}>
 
         {showSuccessOverlay && (
           <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-white/90 dark:bg-[#261f38]/90 backdrop-blur-sm">

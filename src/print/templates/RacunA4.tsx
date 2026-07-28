@@ -106,18 +106,22 @@ export function RacunA4({ racun, stavke }: Props) {
     (s, r) => s + brojN(r.vpc) * brojN(r.kolicina),
     0,
   );
-  const rRab1 = stavke.reduce(
-    (s, r) => s + (brojN(r.vpc) - brojN(r.osnova)) * brojN(r.kolicina),
-    0,
-  );
-  const rRab2 = stavke.reduce(
-    (s, r) => s + (brojN(r.vpc1) - brojN(r.vpc2)) * brojN(r.kolicina),
-    0,
-  );
-  const rRab3 = stavke.reduce(
-    (s, r) => s + (brojN(r.vpc2) - brojN(r.vpc3)) * brojN(r.kolicina),
-    0,
-  );
+  // Rabat po nivou se računa kaskadno IZ PROCENATA (rab1/rab2/rab3), ne iz
+  // apsolutnih vpc1/vpc2/vpc3 polja — ona nisu pouzdana kad neki nivo rabata
+  // nije korišten (npr. vpc2 zna doći kao 0 umjesto da ostane jednako vpc1,
+  // što bi oduzimanjem dalo lažan Rabat 2 = cijela vrijednost i Rabat 3 u minus).
+  let rRab1 = 0;
+  let rRab2 = 0;
+  let rRab3 = 0;
+  stavke.forEach((r) => {
+    const kolicina = brojN(r.kolicina);
+    const poslijeRab1 = brojN(r.vpc) * (1 - brojN(r.rab1) / 100);
+    const poslijeRab2 = poslijeRab1 * (1 - brojN(r.rab2) / 100);
+    const poslijeRab3 = poslijeRab2 * (1 - brojN(r.rab3) / 100);
+    rRab1 += (brojN(r.vpc) - poslijeRab1) * kolicina;
+    rRab2 += (poslijeRab1 - poslijeRab2) * kolicina;
+    rRab3 += (poslijeRab2 - poslijeRab3) * kolicina;
+  });
   const rOsnova = stavke.reduce((s, r) => s + brojN(r.vrednost), 0);
   const rPdv = stavke.reduce((s, r) => s + brojN(r.pdv), 0);
   const rUkupno = stavke.reduce((s, r) => s + brojN(r.ukupno), 0);

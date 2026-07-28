@@ -20,5 +20,6 @@ router.post(
   "/azuriraj-fiskalne-podatke",
   RacuniController.azurirajFiskalnePodatke,
 );
+router.post("/storniraj", RacuniController.oznaciRacunStorniran);
 
 export default router;

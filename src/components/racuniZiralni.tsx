@@ -1425,6 +1425,7 @@ export function ZiralniRacuni() {
         } else {
           openPrint({
             title: `Račun ${brojRacunaZaStampu}`,
+            format: "A4",
             component: racunA4,
             copies: 2,
           });

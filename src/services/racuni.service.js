@@ -195,6 +195,26 @@ export const azurirajFiskalnePodatke = async (
   });
 };
 
+// Markira originalni (stornirani) račun kao storniran nakon što je storno
+// zapis već uspješno upisan preko unosRacuna — vidi erp.sp_racun_storniraj
+// (postavlja storniran_racun=1 na originalu). Isti obrazac kao
+// azurirajFiskalnePodatke.
+export const oznaciRacunStorniran = async (
+  sifraTabeleOriginala,
+  sifraTabeleStorna,
+) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_racun_storniraj(?, ?)",
+      [sifraTabeleOriginala, sifraTabeleStorna],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : null;
+  });
+};
+
 export const unosRacuna = async (podaci) => {
   return withConnection(async (connection) => {
     try {
