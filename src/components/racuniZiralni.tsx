@@ -967,7 +967,7 @@ export function ZiralniRacuni() {
       }
       return {
         sifra_proizvoda: sifraProizvoda,
-        cijena_proizvoda: round2(s.osnova),
+        cijena_proizvoda: round2(s.nabavna_cijena),
         // Osnova + PDV (ako se PDV obračunava za ovu stavku) — koristi već
         // sačuvano s.ukupno/s.kolicina umjesto ponovnog računanja preko
         // STOPA_PDV, da vrijednost bude tačna i kad podgrupa ne obračunava PDV.

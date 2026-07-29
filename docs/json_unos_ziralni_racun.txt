@@ -22,7 +22,7 @@
   "items": [
     {
       "sifra_proizvoda": 102,
-      "cijena_proizvoda": 8.500,
+      "cijena_proizvoda": 7.20,
       "prodajna_cijena": 11.70,
       "kolicina": 10.000,
       "rabat_proc": 5.00,

@@ -35,7 +35,9 @@ sifra_terena       - broj, šifra terena dostave (0 ako nije izabran)
 POLJA U SVAKOM ELEMENTU "items" (StavkaZaUnos):
 ------------------------------------------------------------------------------
 sifra_proizvoda            - broj, šifra artikla
-cijena_proizvoda           - broj, VPC (= vpc, isto polje duplirano pod drugim imenom)
+cijena_proizvoda           - broj, stvarna nabavna (kupovna) cijena artikla — isto
+                             kao nabavna_cijena_proizvoda (vezano za ažuriranje
+                             podataka o proizvodu, NE VPC/prodajnu cijenu)
 prodajna_cijena            - broj, MPC (prodajna/maloprodajna cijena)
 kolicina                   - broj, količina artikla na računu
 rabat_proc                 - broj, rabat 1 u % — uvijek 0 za gotovinski
@@ -77,7 +79,7 @@ DUMMY PRIMJER (kompletan JSON koji bi otišao na server):
   "items": [
     {
       "sifra_proizvoda": 10023,
-      "cijena_proizvoda": 8.55,
+      "cijena_proizvoda": 6.20,
       "prodajna_cijena": 10.00,
       "kolicina": 2,
       "rabat_proc": 0,
@@ -94,7 +96,7 @@ DUMMY PRIMJER (kompletan JSON koji bi otišao na server):
     },
     {
       "sifra_proizvoda": 10088,
-      "cijena_proizvoda": 21.13,
+      "cijena_proizvoda": 15.80,
       "prodajna_cijena": 24.72,
       "kolicina": 1,
       "rabat_proc": 0,

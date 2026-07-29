@@ -898,7 +898,7 @@ export function GotovinskiRacuni() {
       const pdvPoArtiklu = round2(mpc - vpc);
       return {
         sifra_proizvoda: sifraProizvoda,
-        cijena_proizvoda: vpc,
+        cijena_proizvoda: round2(s.nabavna_cijena),
         prodajna_cijena: mpc,
         kolicina: s.kolicina,
         rabat_proc: 0,

@@ -265,7 +265,7 @@ export function KnjiznaVirmanski() {
         const cijenaSaRab = round2(Number(s.cijena_sa_rab) || 0);
         return {
           sifra_proizvoda: sifraProizvoda,
-          cijena_proizvoda: cijenaSaRab,
+          cijena_proizvoda: round2(Number(s.nabavna_cijena_proizvoda) || 0),
           prodajna_cijena: round2(Number(s.prodajna_cijena) || 0),
           kolicina,
           rabat_proc: round2(Number(s.rabat_proc) || 0),
