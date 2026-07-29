@@ -47,6 +47,19 @@ export const getRacunPoIstorija = async (req, res) => {
   }
 };
 
+export const getRacuniProizvodaRadniNalog = async (req, res) => {
+  try {
+    const data = await RacuniService.getRacuniProizvodaRadniNalog();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Radni nalog proizvoda error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju radnog naloga proizvoda",
+    });
+  }
+};
+
 export const getRacuniPodgrupe = async (req, res) => {
   try {
     const data = await RacuniService.getRacuniPodgrupe();

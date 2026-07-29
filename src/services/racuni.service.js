@@ -27,6 +27,18 @@ export const getRacuniPodgrupe = async () => {
   });
 };
 
+// Lista proizvoda sa "radne naloge" cijenom (proizvodna_cijena) — koristi se
+// pri unosu žiralnog računa da se nabavna_cijena_proizvoda popuni stvarnom
+// proizvodnom cijenom kad postoji, umjesto kataloške nabavne cijene.
+export const getRacuniProizvodaRadniNalog = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_racuni_proizvoda_radni_nalog()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getPregledRacuna = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute("CALL erp.sp_racuni_gl_pregled()");

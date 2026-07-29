@@ -126,6 +126,14 @@ interface NivelacijaAktivna {
   sifra_nivelacije: number;
 }
 
+// Red sa erp.sp_racuni_proizvoda_radni_nalog() — proizvodna cijena po radnom
+// nalogu, koristi se za nabavna_cijena_proizvoda pri unosu (vidi
+// pripremiRacunZaUnos / radniNalogMap).
+interface ProizvodRadniNalog {
+  sifra_proizvoda: number;
+  proizvodna_cijena: number | string;
+}
+
 interface RacunIstorija {
   sifra_tabele: number;
   broj_racuna: number | string;
@@ -329,6 +337,9 @@ export function GotovinskiRacuni() {
   const [samoNaStanju, setSamoNaStanju] = useState(true);
   const [nivelacijeAktivne, setNivelacijeAktivne] = useState<
     NivelacijaAktivna[]
+  >([]);
+  const [radniNalogProizvoda, setRadniNalogProizvoda] = useState<
+    ProizvodRadniNalog[]
   >([]);
   const [istorijaRacuna, setIstorijaRacuna] = useState<RacunIstorija[]>([]);
   const [loadingIstorijaRacuna, setLoadingIstorijaRacuna] = useState(false);
@@ -598,6 +609,21 @@ export function GotovinskiRacuni() {
     }
   };
 
+  const fetchRadniNalogProizvoda = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/racuni/proizvodi-radni-nalog`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setRadniNalogProizvoda(d.data ?? []);
+      }
+    } catch {
+      // ignoriši grešku — ako lista ne stigne, nabavna_cijena_proizvoda pada
+      // na 0 za sve stavke (vidi radniNalogMap/pripremiRacunZaUnos).
+    }
+  };
+
   useEffect(() => {
     const fetchArtikli = async () => {
       try {
@@ -614,6 +640,7 @@ export function GotovinskiRacuni() {
           setGrupe(d.data ?? []);
         }
         void fetchNivelacijeAktivne();
+        void fetchRadniNalogProizvoda();
       } finally {
         setLoadingArtikli(false);
       }
@@ -624,6 +651,20 @@ export function GotovinskiRacuni() {
   const nivelacijeMap = useMemo(
     () => new Map(nivelacijeAktivne.map((n) => [String(n.sifra_proizvoda), n])),
     [nivelacijeAktivne],
+  );
+
+  // sifra_proizvoda -> proizvodna_cijena (iz radnog naloga) — koristi se u
+  // pripremiRacunZaUnos za nabavna_cijena_proizvoda umjesto kataloške nabavne
+  // cijene, kad god je proizvod prisutan u ovoj listi.
+  const radniNalogMap = useMemo(
+    () =>
+      new Map(
+        radniNalogProizvoda.map((r) => [
+          Number(r.sifra_proizvoda),
+          Number(r.proizvodna_cijena) || 0,
+        ]),
+      ),
+    [radniNalogProizvoda],
   );
 
   const filtriranihArtikli = useMemo(() => {
@@ -911,7 +952,13 @@ export function GotovinskiRacuni() {
         rabat_km_3: 0,
         vpc_rabat_1: vpc,
         pdv_po_artiklu: pdvPoArtiklu,
-        nabavna_cijena_proizvoda: round2(s.nabavna_cijena),
+        // Ako proizvod ima cijenu iz radnog naloga (radniNalogMap), ona ide u
+        // nabavna_cijena_proizvoda umjesto kataloške nabavne cijene; ako
+        // proizvoda nema u toj listi, ide 0 (cijena_proizvoda iznad se NE
+        // mijenja u oba slučaja).
+        nabavna_cijena_proizvoda: round2(
+          radniNalogMap.get(sifraProizvoda) ?? 0,
+        ),
       };
     });
 
