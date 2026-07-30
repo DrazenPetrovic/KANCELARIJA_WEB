@@ -129,6 +129,7 @@ type MenuSection =
   | "klise-pregled"
   | "racuni-gotovinski"
   | "racuni-virmanski"
+  | "racuni-izvjestaj-teren"
   | "racuni-knjizna-gotovinski"
   | "racuni-knjizna-virmanski"
   | null;
@@ -1274,6 +1275,40 @@ export function Dashboard({
                           Virmanski račun
                         </button>
 
+                        <button
+                          onClick={() =>
+                            handleSectionChange("racuni-izvjestaj-teren")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "racuni-izvjestaj-teren",
+                          )}
+                          style={
+                            activeSection === "racuni-izvjestaj-teren"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "racuni-izvjestaj-teren" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "racuni-izvjestaj-teren"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <FileText
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "racuni-izvjestaj-teren"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Izvještaj teren
+                        </button>
+
                         <div className="my-1.5 border-t border-dashed border-gray-200 dark:border-[#3a3158]" />
 
                         <button
@@ -1637,6 +1672,19 @@ export function Dashboard({
           {activeSection === "racuni-gotovinski" && <GotovinskiRacuni />}
 
           {activeSection === "racuni-virmanski" && <ZiralniRacuni />}
+
+          {activeSection === "racuni-izvjestaj-teren" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <FileText size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Izvještaj teren
+                </h2>
+              </div>
+            </div>
+          )}
 
           {activeSection === "racuni-knjizna-gotovinski" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

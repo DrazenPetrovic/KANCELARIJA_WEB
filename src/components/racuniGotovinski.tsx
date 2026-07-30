@@ -60,7 +60,6 @@ const KORACI_CUVANJA = [
   "Prihvat JSON-a od ESIR-a",
 ];
 
-
 // Stopa PDV-a — MPC je osnova obračuna, VPC = MPC / (1 + STOPA_PDV).
 const STOPA_PDV = 0.17;
 
@@ -392,9 +391,9 @@ export function GotovinskiRacuni() {
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
   // Upozorenje kad je fiskalizacija uspjela ali uređaj javlja sporedan problem
   // (npr. printer nije odštampao paragon) — nije greška, samo obavještenje.
-  const [spremanjeUpozorenje, setSpremanjeUpozorenje] = useState<
-    string | null
-  >(null);
+  const [spremanjeUpozorenje, setSpremanjeUpozorenje] = useState<string | null>(
+    null,
+  );
   // Broj fiskalnog računa (br_fiskalnog) nakon uspješne fiskalizacije zadnjeg
   // sačuvanog računa — prikazuje se ispod dugmadi Sačuvaj/Sačuvaj i štampaj.
   const [posljednjiBrojFiskalnog, setPosljednjiBrojFiskalnog] = useState<
@@ -989,10 +988,14 @@ export function GotovinskiRacuni() {
       // Komercijalista zadužen za kupca (NE trenutni operater) — za partnera 300
       // (Razni kupci) generički zapis nema svog komercijalistu, pa se uzima od
       // konkretnog izabranog "raznog" kupca (odabraniRazni.pripada_radniku).
+      // Ako partner (ili "razni" kupac) nema dodijeljenog komercijalistu (0),
+      // upisuje se šifra trenutno ulogovanog radnika.
       sifra_radnika:
-        odabraniPartner?.sifra_partnera === 300
-          ? (odabraniRazni?.pripada_radniku ?? 0)
-          : (odabraniPartner?.pripada_radniku ?? 0),
+        (odabraniPartner?.sifra_partnera === 300
+          ? odabraniRazni?.pripada_radniku
+          : odabraniPartner?.pripada_radniku) ||
+        getCurrentUser()?.sifraRadnika ||
+        0,
       slovima: ukupnoRacunSlovima,
       valuta: datumRacuna,
       datum_isporuke: datumRacuna,
@@ -1085,10 +1088,7 @@ export function GotovinskiRacuni() {
 
   // Download JSON dump-a se dešava SAMO kad ESIR fiskalizacija/štampa ne uspije
   // (debug pomoć) — naziv fajla: yyyy-MM-dd_HH_mm_ss_<šifra tabele>.json.
-  const sacuvajEsirGreskuJson = (
-    sifraTabele: unknown,
-    podaci: unknown,
-  ) => {
+  const sacuvajEsirGreskuJson = (sifraTabele: unknown, podaci: unknown) => {
     const naziv = `${formatDatumZaNazivFajla(new Date())}_${sifraTabele ?? "nepoznato"}`;
     const blob = new Blob([JSON.stringify(podaci, null, 2)], {
       type: "application/json;charset=utf-8",
@@ -1612,8 +1612,7 @@ export function GotovinskiRacuni() {
               napomena: podaci.header.napomena || null,
               ukupno: podaci.header.ukupno,
               br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
-              verifikacioni_qr:
-                esirInvoiceResponse?.verificationQRCode ?? null,
+              verifikacioni_qr: esirInvoiceResponse?.verificationQRCode ?? null,
               sifra_tabele: json.sifra_tabele ?? null,
             }}
             stavke={stavkeZaPrint.map((s) => ({
@@ -1901,7 +1900,8 @@ export function GotovinskiRacuni() {
                     <span
                       className={`text-[10px] font-normal ${odabraniTeren ? "text-white/70" : "text-gray-400 dark:text-[#5f5878]"}`}
                     >
-                      ({formatDatumDMY(odabraniTeren.datum_dostave) ??
+                      (
+                      {formatDatumDMY(odabraniTeren.datum_dostave) ??
                         odabraniTeren.sifra_terena_dostava}
                       )
                     </span>
@@ -2347,7 +2347,9 @@ export function GotovinskiRacuni() {
                         <td />
                         <td className="px-2 pt-2 pb-1 text-center">
                           <button
-                            onClick={() => handleUkloniStavku(s.sifra_proizvoda)}
+                            onClick={() =>
+                              handleUkloniStavku(s.sifra_proizvoda)
+                            }
                             className="inline-flex items-center justify-center p-1.5 rounded-lg transition-all hover:brightness-110"
                             style={{ background: PRIMARY }}
                             title="Ukloni stavku"
@@ -3748,7 +3750,8 @@ export function GotovinskiRacuni() {
                             </div>
                             <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
                               Šifra: {k.sifra_kupca}
-                              {k.referentni_broj && ` · Ref: ${k.referentni_broj}`}
+                              {k.referentni_broj &&
+                                ` · Ref: ${k.referentni_broj}`}
                               {" · "}
                               {k.proizvodi.length}{" "}
                               {k.proizvodi.length === 1
@@ -3906,7 +3909,9 @@ export function GotovinskiRacuni() {
                         </div>
                         <div className="text-xs font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] break-all space-y-1">
                           <div>Authorization: Bearer {apiKey}</div>
-                          <div>Content-Type: application/json; charset=UTF-8</div>
+                          <div>
+                            Content-Type: application/json; charset=UTF-8
+                          </div>
                           <div>
                             RequestId: (kod stvarnog čuvanja = sifra_tabele
                             računa; ovdje, prije čuvanja, generiše se nasumičan
@@ -4001,8 +4006,9 @@ export function GotovinskiRacuni() {
                                   : "text-red-500"
                               }`}
                             >
-                              Odgovor uređaja — HTTP {esirDebugOdgovor.status || "?"}{" "}
-                              ({esirDebugOdgovor.ok ? "OK" : "GREŠKA"})
+                              Odgovor uređaja — HTTP{" "}
+                              {esirDebugOdgovor.status || "?"} (
+                              {esirDebugOdgovor.ok ? "OK" : "GREŠKA"})
                             </div>
                             <button
                               onClick={() =>

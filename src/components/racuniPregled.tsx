@@ -44,6 +44,8 @@ interface RacunPodgrupa {
 // jer tačan zapis (velika/mala slova, "_" ili razmak) iz procedure nije unaprijed poznat.
 const normalizujKljuc = (k: string) => k.toLowerCase().replace(/[_\s]/g, "");
 
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 // ============================================================================
 // PODEŠAVANJA KOLONA — SVE ručne izmjene izgleda tabele rade se OVDJE, na jednom
 // mjestu. Ključ = naziv kolone kako dolazi iz procedure (velika/mala slova i "_"
@@ -383,7 +385,9 @@ const formatDatumVrijemeDMY = (v: unknown): string => {
 
 // Kolone koje uvijek prikazuju 2 decimale, bez obzira na to da li vrijednost
 // stiže kao broj ili string (npr. kad SQL agregacija vrati čist JS broj).
-const KOLONE_UVIJEK_DECIMALNE = ["ukupno"];
+// "prodajna_vrednost" je ovdje i zbog MP preračuna u handleKlikRacun
+// (round2 vraća čist JS broj, koji bi bez ovoga izgubio ".00" za cijele iznose).
+const KOLONE_UVIJEK_DECIMALNE = ["ukupno", "prodajna_vrednost"];
 
 const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   if (kljuc === "datum_racuna") return formatDatumDMY(v);
@@ -530,12 +534,17 @@ function GenericnaTabela({
         </thead>
         <tbody>
           {redovi.map((red, i) => {
-            const storniran = jeStorniranRacun(red.storniran_racun);
-            const boja = jeStavke
-              ? ACCENT
-              : storniran
-                ? BOJA_STORNIRANO
-                : bojaVrsteRacuna(red.vrsta_racuna_novi);
+            // Stavke (sp_racuni_po_pregled) nose iste podatke pod drugim
+            // imenima kolona ("vrsta"/"stornirano" umjesto "vrsta_racuna_novi"/
+            // "storniran_racun") — fallback ispod pokriva oba slučaja, da
+            // UKUPNO u stavkama prati istu boju kao odgovarajući račun u
+            // glavnom pregledu, umjesto fiksne ACCENT boje.
+            const storniran = jeStorniranRacun(
+              red.storniran_racun ?? red.stornirano,
+            );
+            const boja = storniran
+              ? BOJA_STORNIRANO
+              : bojaVrsteRacuna(red.vrsta_racuna_novi ?? red.vrsta);
             const sifraTabele = nadjiSifruTabele(red);
             const sifraProizvoda = red.sifra_proizvoda;
             const brojRacuna = red.broj_racuna;
@@ -722,14 +731,16 @@ function GenericnaTabela({
                         } ${
                           k === "vrsta_racuna_novi"
                             ? "font-bold"
-                            : k === "ukupno"
+                            : k === "ukupno" || k === "prodajna_vrednost"
                               ? "font-bold text-sm"
                               : k === "rabat_km"
                                 ? "font-semibold"
                                 : "text-gray-700 dark:text-[#c5bfd8]"
                         }`}
                         style={{
-                          ...(k === "vrsta_racuna_novi" || k === "ukupno"
+                          ...(k === "vrsta_racuna_novi" ||
+                          k === "ukupno" ||
+                          k === "prodajna_vrednost"
                             ? { color: boja }
                             : k === "rabat_km"
                               ? { color: ACCENT }
@@ -936,7 +947,21 @@ export function RacuniPregled() {
         },
       );
       const json = await res.json();
-      setStavke(res.ok && json.success ? (json.data ?? []) : []);
+      const stavkeSirove: RacunRed[] =
+        res.ok && json.success ? (json.data ?? []) : [];
+      // MP računi (vrsta_racuna_novi 1 i 3) — "prodajna_vrednost" (kolona
+      // UKUPNO) iz procedure nosi VPC*količina umjesto stvarnog MPC*količina,
+      // pa se ovdje ispravlja prije prikaza (vidi jeMpRacun/ESIR napomenu niže).
+      setStavke(
+        jeMpRacun(red)
+          ? stavkeSirove.map((s) => ({
+              ...s,
+              prodajna_vrednost: round2(
+                (Number(s.prodajna_cijena) || 0) * (Number(s.kolicina) || 0),
+              ),
+            }))
+          : stavkeSirove,
+      );
     } catch {
       setStavke([]);
     } finally {
@@ -1116,19 +1141,31 @@ export function RacuniPregled() {
       return;
     }
 
-    const items: EsirStavka[] = stavke.map((s) => ({
-      name: String(s.naziv_proizvoda ?? ""),
-      gtin: gtinZaStavkuPregled(s),
-      labels: [ESIR_OZNAKA_SA_PDV],
-      totalAmount: Number(s.prodajna_vrednost) || 0,
-      unitPrice: Number(s.prodajna_cijena) || 0,
-      quantity: Number(s.kolicina) || 0,
-      discount: 0,
-      discountAmount: 0,
-    }));
+    const items: EsirStavka[] = stavke.map((s) => {
+      const unitPrice = Number(s.prodajna_cijena) || 0;
+      const kolicina = Number(s.kolicina) || 0;
+      return {
+        name: String(s.naziv_proizvoda ?? ""),
+        gtin: gtinZaStavkuPregled(s),
+        labels: [ESIR_OZNAKA_SA_PDV],
+        totalAmount: jeMpRacun(red)
+          ? round2(unitPrice * kolicina)
+          : Number(s.prodajna_vrednost) || 0,
+        unitPrice,
+        quantity: kolicina,
+        discount: 0,
+        discountAmount: 0,
+      };
+    });
+    // Iznos plaćanja MORA biti zbir stavki koje se šalju (a ne "red.ukupno" iz
+    // zaglavlja) — garantuje da payment uvijek prati ono što je stvarno u
+    // items, bez obzira na eventualne buduće razlike u izvoru podataka.
+    const ukupnoStavki = round2(
+      items.reduce((zbir, s) => zbir + s.totalAmount, 0),
+    );
     const payment: EsirPlacanje[] = [
       {
-        amount: Number(red.ukupno) || 0,
+        amount: ukupnoStavki,
         paymentType: uredjaj === "gotovinski" ? "Cash" : "WireTransfer",
       },
     ];
@@ -1226,6 +1263,41 @@ export function RacuniPregled() {
   const uredjajZaVrstuRacuna = (red: RacunRed): EsirUredjaj =>
     Number(red.vrsta_racuna_novi) === 1 ? "gotovinski" : "ziralni";
 
+  // MP računi (vrsta_racuna_novi 1 = maloprodajni, 3 = storno maloprodajnih —
+  // vidi VRSTE_RACUNA_FILTER) se prodaju po MPC-u (prodajna_cijena), ne po
+  // VPC-u. "prodajna_vrednost" iz sp_racuni_po_pregled zna nositi VPC*količina
+  // za ove račune umjesto stvarnog MPC*količina (otkriveno u koloni "UKUPNO"
+  // pregleda stavki), pa se za njih ukupno stavke MORA računati iz MPC-a, ne
+  // preuzimati iz prodajna_vrednost.
+  const jeMpRacun = (red: RacunRed) =>
+    [1, 3].includes(Number(red.vrsta_racuna_novi));
+
+  // DEBUG: kad je true, zahtjev se SAMO snima u JSON fajl umjesto da se šalje
+  // na ESIR (za analizu sadržaja bez rizika da se stvarno fiskalizuje). Uzrok
+  // pogrešnog iznosa (MPC umjesto VPC za MP račune) je pronađen i otklonjen,
+  // pa je slanje na ESIR ponovo uključeno.
+  const ESIR_DEBUG_SAMO_FAJL = false;
+
+  const pad2Fajl = (n: number) => String(n).padStart(2, "0");
+  const sacuvajEsirZahtjevJson = (sifraTabele: unknown, podaci: unknown) => {
+    const d = new Date();
+    const naziv =
+      `${d.getFullYear()}-${pad2Fajl(d.getMonth() + 1)}-${pad2Fajl(d.getDate())}` +
+      `_${pad2Fajl(d.getHours())}_${pad2Fajl(d.getMinutes())}_${pad2Fajl(d.getSeconds())}` +
+      `_${sifraTabele ?? "nepoznato"}`;
+    const blob = new Blob([JSON.stringify(podaci, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${naziv}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Ponovo šalje NOVI zahtjev za fiskalizaciju ka ESIR-u za istorijski račun
   // (kad provjera po RequestId-u nije našla postojeću fiskalizaciju) — podaci
   // se povlače iz reda pregleda + stavki (isti izvor kao za A5 štampu).
@@ -1249,18 +1321,31 @@ export function RacuniPregled() {
       return;
     }
 
-    const items: EsirStavka[] = stavke.map((s) => ({
-      name: String(s.naziv_proizvoda ?? ""),
-      gtin: gtinZaStavkuPregled(s),
-      labels: [ESIR_OZNAKA_SA_PDV],
-      totalAmount: Number(s.prodajna_vrednost) || 0,
-      unitPrice: Number(s.prodajna_cijena) || 0,
-      quantity: Number(s.kolicina) || 0,
-      discount: 0,
-      discountAmount: 0,
-    }));
+    const items: EsirStavka[] = stavke.map((s) => {
+      const unitPrice = Number(s.prodajna_cijena) || 0;
+      const kolicina = Number(s.kolicina) || 0;
+      return {
+        name: String(s.naziv_proizvoda ?? ""),
+        gtin: gtinZaStavkuPregled(s),
+        labels: [ESIR_OZNAKA_SA_PDV],
+        totalAmount: jeMpRacun(red)
+          ? round2(unitPrice * kolicina)
+          : Number(s.prodajna_vrednost) || 0,
+        unitPrice,
+        quantity: kolicina,
+        discount: 0,
+        discountAmount: 0,
+      };
+    });
+    // Vidi napomenu u handleStampajKopijuEsira — payment mora pratiti zbir
+    // stavki, ne "red.ukupno" (zaglavlje zna biti veće od stvarnog zbira
+    // stavki, što ESIR-u izgleda kao gotovina primljena iznad računa i
+    // proizvede lažnu "razliku za povrat").
+    const ukupnoStavki = round2(
+      items.reduce((zbir, s) => zbir + s.totalAmount, 0),
+    );
     const payment: EsirPlacanje[] = [
-      { amount: Number(red.ukupno) || 0, paymentType: "Cash" },
+      { amount: ukupnoStavki, paymentType: "Cash" },
     ];
     const invoiceRequest: EsirInvoiceRequest = {
       invoiceType: ESIR_INVOICE_TYPE,
@@ -1278,6 +1363,27 @@ export function RacuniPregled() {
 
     setFiskalizacijaUToku(true);
     try {
+      if (ESIR_DEBUG_SAMO_FAJL) {
+        sacuvajEsirZahtjevJson(sifraTabele, {
+          uredjaj: uredjajZaVrstuRacuna(red),
+          invoiceRequest,
+          opcijeStampe: {
+            print: true,
+            renderReceiptImage: true,
+            receiptLayout: "Slip",
+            receiptImageFormat: "Png",
+            ...ESIR_SLIP_PRESET_58MM,
+          },
+        });
+        setFiskalnaPoruka({
+          naslov: "Debug — zahtjev NIJE poslat na ESIR",
+          poruka:
+            "ESIR_DEBUG_SAMO_FAJL je uključen — zahtjev je snimljen u JSON fajl " +
+            "(preuzimanje u browseru) umjesto stvarnog slanja na ESIR.",
+          tip: "info",
+        });
+        return;
+      }
       const esirRezultat = await izdajFiskalniRacun(
         uredjajZaVrstuRacuna(red),
         invoiceRequest,
