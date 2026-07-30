@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 
-const PRIMARY = "#785E9E";
-const ACCENT = "#8FC74A";
+// Štampač je mrežni monochrome (crno-bijeli) — boje se pretvaraju u blijedi
+// sivi raster i slabo se vide na papiru, pa su obje "boje" ovdje čisto crne.
+// Nazivi su zadržani (PRIMARY/ACCENT) da se ne mijenja ostatak fajla.
+const PRIMARY = "#000000";
+const ACCENT = "#000000";
 
 // Sjedište firme — fiksno, ide u "Mjesto izdavanja" na svakom žiralnom računu.
 const MJESTO_IZDAVANJA = "Ložionička bb, 78000 Banja Luka";
@@ -246,11 +249,14 @@ export function RacunA4({ racun, stavke }: Props) {
         <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 10 }} />
 
         {/* ── Broj računa/otpremnice + barkod (šifra tabele) ── */}
+        {/* justify-content: flex-start (ne space-between) — barkod ide odmah
+            poslije broja računa, ne gurnut na sami desni rub stranice, jer ga
+            mrežni štampač inače odsijeca sa desne strane. */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             gap: 10,
             marginBottom: 10,
           }}
@@ -261,7 +267,10 @@ export function RacunA4({ racun, stavke }: Props) {
           {racun.sifra_tabele !== undefined &&
             racun.sifra_tabele !== null &&
             racun.sifra_tabele !== "" && (
-              <canvas ref={barkodRef} style={{ flexShrink: 0 }} />
+              <canvas
+                ref={barkodRef}
+                style={{ flexShrink: 0, marginLeft: 20 }}
+              />
             )}
         </div>
 
@@ -307,7 +316,7 @@ export function RacunA4({ racun, stavke }: Props) {
               {stavke.map((s, i) => (
                 <tr
                   key={`${s.sifra_proizvoda}-${i}`}
-                  style={{ background: i % 2 === 0 ? "#f4f1f9" : "white" }}
+                  style={{ background: i % 2 === 0 ? "#f2f2f2" : "white" }}
                 >
                   <td style={{ ...cell, fontWeight: 600, color: PRIMARY }}>
                     {s.naziv_proizvoda}
@@ -553,6 +562,6 @@ export function RacunA4({ racun, stavke }: Props) {
 const cell: React.CSSProperties = {
   padding: "4px 4px",
   fontSize: 12,
-  borderBottom: "1px solid #ede8f6",
+  borderBottom: "1px solid #dddddd",
   verticalAlign: "middle",
 };

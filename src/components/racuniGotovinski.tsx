@@ -489,7 +489,13 @@ export function GotovinskiRacuni() {
     return () => {
       cancelled = true;
     };
-  }, [odabraniPartner]);
+    // Zavisnost je sifra_partnera (ne cijeli odabraniPartner objekat) — objekat
+    // zna dobiti NOVU referencu a da ostane logički isti partner 300 (npr.
+    // resetujRacunZaPromjenuTerena radi partneri.find(...) iznova pri svakoj
+    // promjeni terena), što bi ovdje inače bezuslovno obrisalo već izabranog
+    // "raznog" kupca (setOdabraniRazni(null) iznad) i pri čuvanju računa
+    // sifra_radnika bi pogrešno pala na trenutno ulogovanog operatera.
+  }, [odabraniPartner?.sifra_partnera]);
 
   useEffect(() => {
     if (!odabraniPartner || odabraniPartner.sifra_partnera === 300) {
@@ -647,6 +653,19 @@ export function GotovinskiRacuni() {
     void fetchArtikli();
   }, []);
 
+  // Učitano unaprijed (ne samo pri otvaranju forme za novog "raznog" kupca)
+  // da bi naziv radnika bio dostupan odmah čim se izabere partner/razni kupac
+  // (vidi nazivRadnika ispod, koristi se u kartici izabranog partnera).
+  useEffect(() => {
+    if (radnici.length > 0 || loadingRadnici) return;
+    setLoadingRadnici(true);
+    fetch(`${API_URL}/api/radnici`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setRadnici(d.data ?? []))
+      .catch(() => setRadnici([]))
+      .finally(() => setLoadingRadnici(false));
+  }, []);
+
   const nivelacijeMap = useMemo(
     () => new Map(nivelacijeAktivne.map((n) => [String(n.sifra_proizvoda), n])),
     [nivelacijeAktivne],
@@ -788,6 +807,22 @@ export function GotovinskiRacuni() {
 
   const jeRazniNeodabran =
     odabraniPartner?.sifra_partnera === 300 && !odabraniRazni;
+
+  // sifra_radnika -> naziv_radnika, za prikaz imena uz "pripada_radniku" u
+  // kartici izabranog partnera (isti izvor kao radniciZaIzbor iznad).
+  const nazivRadnikaMap = useMemo(
+    () =>
+      new Map(radnici.map((r) => [Number(r.sifra_radnika), r.naziv_radnika])),
+    [radnici],
+  );
+
+  // Ista logika kao sifra_radnika u header-u pri čuvanju (vidi ispod) — za
+  // partnera 300 (Razni kupci) uzima se pripada_radniku od konkretno izabranog
+  // "raznog" kupca, inače od samog partnera.
+  const pripadaRadnikuPrikaz =
+    odabraniPartner?.sifra_partnera === 300
+      ? odabraniRazni?.pripada_radniku
+      : odabraniPartner?.pripada_radniku;
 
   const handleKlikArtikl = (a: Artikal) => {
     if (jeRazniNeodabran) {
@@ -1788,8 +1823,12 @@ export function GotovinskiRacuni() {
                       <MapPin size={8} />
                       {odabraniPartner.naziv_grada} · ID:{" "}
                       {odabraniPartner.sifra_partnera}
-                      {odabraniPartner.dogovorena_valuta &&
-                        ` · ${odabraniPartner.dogovorena_valuta}`}
+                      {!!pripadaRadnikuPrikaz &&
+                        ` · Radnik: ${pripadaRadnikuPrikaz}${
+                          nazivRadnikaMap.get(Number(pripadaRadnikuPrikaz))
+                            ? ` (${nazivRadnikaMap.get(Number(pripadaRadnikuPrikaz))})`
+                            : ""
+                        }`}
                       {odabraniPartner.dodatna_lokacija && (
                         <span className="ml-1 px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold">
                           +lok
