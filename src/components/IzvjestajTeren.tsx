@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Loader2,
   MapPin,
+  MapPinOff,
   Printer,
   RotateCcw,
   ScanBarcode,
@@ -31,11 +32,15 @@ interface RacunRed {
   sifra_tabele: number | string;
   broj_racuna?: number | string;
   vrsta_racuna_novo?: string;
+  vrsta_racuna_novi?: number | string;
   naziv_partnera?: string;
+  sifra_partnera?: number | string;
   ukupno?: number | string;
   sifra_terena?: number | string;
   storniran_racun?: number | string;
   napomena?: string | null;
+  sifra_radnika?: number | string;
+  naziv_radnika?: string;
 }
 
 interface IzvjestajStavka {
@@ -44,8 +49,18 @@ interface IzvjestajStavka {
   naziv_partnera: string;
   ukupno: number;
   napomena: string | null;
+  radnik: string;
+  // vrsta_racuna_novi === 1 -> MP (gotovinski), sve ostalo -> VP (žiralni) —
+  // stornirani (vrsta 3) se ionako nikad ne pojavljuju u ovoj listi.
+  jeMp: boolean;
+  // sifra_partnera === 300 -> generički "Razni kupci" zapis (vidi
+  // racuniGotovinski.tsx) — vizuelno se posebno ističe unutar MP grupe.
+  jeRazniKupac: boolean;
   rucnoDodano: boolean;
 }
+
+const jeMpVrsta = (v: unknown) => Number(v) === 1;
+const jeRazniKupacVrijednost = (v: unknown) => Number(v) === 300;
 
 const formatDatumDMY = (v: string | undefined | null): string | null => {
   if (!v) return null;
@@ -56,6 +71,15 @@ const formatDatumDMY = (v: string | undefined | null): string | null => {
 };
 
 const jeStorniran = (v: unknown) => Number(v) === 1;
+
+// Zvučna potvrda skeniranja — fajlovi su u public/zvuk/, vidi RacunA4.tsx za
+// isti obrazac učitavanja statičkih fajlova preko import.meta.env.BASE_URL.
+const pustiZvuk = (naziv: string) => {
+  const audio = new Audio(`${import.meta.env.BASE_URL}zvuk/${naziv}`);
+  void audio.play().catch(() => {});
+};
+const ZVUK_PRONADJEN = "ERP_Barkod_Pronadjen.wav";
+const ZVUK_NIJE_PRONADJEN = "ERP_Barkod_Nije_Pronadjen.wav";
 
 // Napomena dolazi iz baze (unesena pri kreiranju računa) — prazan string se
 // tretira kao "nema napomene", isto kao null.
@@ -70,6 +94,10 @@ export function IzvjestajTeren() {
   const [tereni, setTereni] = useState<Teren[]>([]);
   const [loadingTereni, setLoadingTereni] = useState(true);
   const [odabraniTeren, setOdabraniTeren] = useState<Teren | null>(null);
+  // true čim je operater ili izabrao teren ili svjesno krenuo "bez terena" —
+  // razlikuje se od (odabraniTeren !== null) da bi ostatak ekrana (skeniranje,
+  // Poništi, Štampaj, tabela) radio i bez izabranog terena.
+  const [sesijaAktivna, setSesijaAktivna] = useState(false);
   const [pokaziDropdownTeren, setPokazuiDropdownTeren] = useState(false);
   const terenRef = useRef<HTMLDivElement>(null);
 
@@ -136,15 +164,12 @@ export function IzvjestajTeren() {
   // Promjena terena resetuje listu na automatski nađene račune za taj teren
   // (bez storniranih) — svaki ručno dodat račun iz prethodnog terena se briše,
   // da ne bi ostao "zalutali" račun iz drugog terena u izvještaju.
-  const izaberiTeren = (teren: Teren | null) => {
+  const izaberiTeren = (teren: Teren) => {
     setOdabraniTeren(teren);
+    setSesijaAktivna(true);
     setPokazuiDropdownTeren(false);
     setGreskaSkeniranje(null);
     setUnosBarkoda("");
-    if (!teren) {
-      setStavke([]);
-      return;
-    }
     const auto: IzvjestajStavka[] = sviRacuni
       .filter(
         (r) =>
@@ -157,16 +182,32 @@ export function IzvjestajTeren() {
         naziv_partnera: String(r.naziv_partnera ?? ""),
         ukupno: Number(r.ukupno) || 0,
         napomena: napomenaVrijednost(r.napomena),
+        radnik: String(r.naziv_radnika ?? r.sifra_radnika ?? ""),
+        jeMp: jeMpVrsta(r.vrsta_racuna_novi),
+        jeRazniKupac: jeRazniKupacVrijednost(r.sifra_partnera),
         rucnoDodano: false,
       }));
     setStavke(auto);
     setTimeout(() => inputBarkodaRef.current?.focus(), 0);
   };
 
+  // "Bez terena" — dozvoljava rad bez izabranog terena: lista kreće prazna i
+  // popunjava se isključivo skeniranjem barkoda (nema automatske liste jer
+  // nema terena po kome bi se računi filtrirali).
+  const izaberiBezTerena = () => {
+    setOdabraniTeren(null);
+    setSesijaAktivna(true);
+    setPokazuiDropdownTeren(false);
+    setGreskaSkeniranje(null);
+    setUnosBarkoda("");
+    setStavke([]);
+    setTimeout(() => inputBarkodaRef.current?.focus(), 0);
+  };
+
   const handleSkeniraj = () => {
     const vrijednost = unosBarkoda.trim();
     setUnosBarkoda("");
-    if (!vrijednost || !odabraniTeren) return;
+    if (!vrijednost || !sesijaAktivna) return;
 
     const pronadjen = sviRacuni.find(
       (r) => String(r.sifra_tabele) === vrijednost,
@@ -175,9 +216,11 @@ export function IzvjestajTeren() {
       String(r.vrsta_racuna_novo ?? r.broj_racuna ?? vrijednost);
 
     if (!pronadjen) {
+      pustiZvuk(ZVUK_NIJE_PRONADJEN);
       setGreskaSkeniranje(`Račun sa šifrom "${vrijednost}" nije pronađen.`);
       return;
     }
+    pustiZvuk(ZVUK_PRONADJEN);
     if (jeStorniran(pronadjen.storniran_racun)) {
       setGreskaSkeniranje(
         `Račun ${oznaka(pronadjen)} je storniran — ne može se dodati.`,
@@ -196,6 +239,9 @@ export function IzvjestajTeren() {
         naziv_partnera: String(pronadjen.naziv_partnera ?? ""),
         ukupno: Number(pronadjen.ukupno) || 0,
         napomena: napomenaVrijednost(pronadjen.napomena),
+        radnik: String(pronadjen.naziv_radnika ?? pronadjen.sifra_radnika ?? ""),
+        jeMp: jeMpVrsta(pronadjen.vrsta_racuna_novi),
+        jeRazniKupac: jeRazniKupacVrijednost(pronadjen.sifra_partnera),
         rucnoDodano: true,
       },
     ]);
@@ -212,12 +258,16 @@ export function IzvjestajTeren() {
           ? ` (${formatDatumDMY(odabraniTeren.datum_dostave)})`
           : ""
       }`
-    : "";
+    : sesijaAktivna
+      ? "Bez terena"
+      : "";
 
   const ukupnoSvi = stavke.reduce((s, r) => s + r.ukupno, 0);
+  const brojMp = stavke.filter((s) => s.jeMp).length;
+  const brojVp = stavke.length - brojMp;
 
   const handleStampaj = () => {
-    if (!odabraniTeren || stavke.length === 0) return;
+    if (!sesijaAktivna || stavke.length === 0) return;
     openPrint({
       title: `Izvještaj teren — ${terenLabel}`,
       format: "A4",
@@ -230,6 +280,8 @@ export function IzvjestajTeren() {
             naziv_partnera: s.naziv_partnera,
             ukupno: s.ukupno,
             napomena: s.napomena,
+            radnik: s.radnik,
+            jeMp: s.jeMp,
           }))}
         />
       ),
@@ -316,10 +368,28 @@ export function IzvjestajTeren() {
             )}
           </div>
 
+          {/* Bez terena — dozvoljava rad i bez izabranog terena, samo preko skeniranja */}
+          <button
+            onClick={izaberiBezTerena}
+            disabled={!spremno}
+            title="Kreni bez terena — dodaj račune isključivo skeniranjem barkoda"
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              sesijaAktivna && !odabraniTeren
+                ? "text-white"
+                : "border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648]"
+            }`}
+            style={
+              sesijaAktivna && !odabraniTeren ? { background: PRIMARY } : undefined
+            }
+          >
+            <MapPinOff size={14} />
+            Bez terena
+          </button>
+
           {/* Skeniraj barkod */}
-          <div className="flex-1" style={{ minWidth: 260 }}>
+          <div className="flex-1" style={{ minWidth: 180 }}>
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
-              Dodaj račun (skeniraj barkod sa A4/A5 računa)
+              Dodaj račun (skeniraj barkod)
             </span>
             <div className="relative">
               <ScanBarcode
@@ -334,18 +404,18 @@ export function IzvjestajTeren() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSkeniraj();
                 }}
-                disabled={!odabraniTeren}
+                disabled={!sesijaAktivna}
                 placeholder={
-                  odabraniTeren
+                  sesijaAktivna
                     ? "Skenirajte ili unesite šifru tabele..."
-                    : "Prvo izaberite teren"
+                    : "Prvo izaberite teren ili kliknite Bez terena"
                 }
                 className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 disabled:opacity-60 transition-all"
               />
             </div>
           </div>
 
-          {odabraniTeren && (
+          {sesijaAktivna && (
             <div className="flex flex-col items-center px-3 py-1.5 rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d]">
               <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
                 Broj računa
@@ -359,10 +429,41 @@ export function IzvjestajTeren() {
             </div>
           )}
 
+          {sesijaAktivna && (
+            <div className="flex flex-col items-center px-3 py-1.5 rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d]">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                MP
+              </span>
+              <span
+                className="text-sm font-bold leading-tight"
+                style={{ color: PRIMARY }}
+              >
+                {brojMp}
+              </span>
+            </div>
+          )}
+
+          {sesijaAktivna && (
+            <div className="flex flex-col items-center px-3 py-1.5 rounded-xl bg-[#f4f1f9] dark:bg-[#1e1a2d]">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                VP
+              </span>
+              <span
+                className="text-sm font-bold leading-tight"
+                style={{ color: ACCENT }}
+              >
+                {brojVp}
+              </span>
+            </div>
+          )}
+
           <button
-            onClick={() => odabraniTeren && izaberiTeren(odabraniTeren)}
-            disabled={!odabraniTeren}
-            title="Poništi ručno dodate račune i vrati automatsku listu za ovaj teren"
+            onClick={() => {
+              if (odabraniTeren) izaberiTeren(odabraniTeren);
+              else if (sesijaAktivna) izaberiBezTerena();
+            }}
+            disabled={!sesijaAktivna}
+            title="Poništi ručno dodate račune i vrati automatsku listu za ovaj teren (ili praznu listu ako je bez terena)"
             className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: PRIMARY }}
           >
@@ -372,7 +473,7 @@ export function IzvjestajTeren() {
 
           <button
             onClick={handleStampaj}
-            disabled={!odabraniTeren || stavke.length === 0}
+            disabled={!sesijaAktivna || stavke.length === 0}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: ACCENT }}
           >
@@ -397,16 +498,18 @@ export function IzvjestajTeren() {
               Učitavanje...
             </span>
           </div>
-        ) : !odabraniTeren ? (
+        ) : !sesijaAktivna ? (
           <div className="flex items-center justify-center py-16">
             <span className="text-sm text-gray-400 dark:text-[#5f5878]">
-              Izaberite teren da biste vidjeli račune
+              Izaberite teren (ili kliknite Bez terena) da biste počeli
             </span>
           </div>
         ) : stavke.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <span className="text-sm text-gray-400 dark:text-[#5f5878]">
-              Nema računa za ovaj teren — dodajte skeniranjem barkoda
+              {odabraniTeren
+                ? "Nema računa za ovaj teren — dodajte skeniranjem barkoda"
+                : "Dodajte račune skeniranjem barkoda"}
             </span>
           </div>
         ) : (
@@ -434,10 +537,13 @@ export function IzvjestajTeren() {
                   <tr
                     key={s.sifra_tabele}
                     className={`border-b border-gray-100 dark:border-[#2a2340] ${
-                      i % 2 === 0
-                        ? "bg-white dark:bg-[#1a1528]"
-                        : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                      s.jeRazniKupac
+                        ? "bg-amber-50/60 dark:bg-amber-950/10"
+                        : i % 2 === 0
+                          ? "bg-white dark:bg-[#1a1528]"
+                          : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                     }`}
+                    style={{ borderLeft: `4px solid ${s.jeMp ? PRIMARY : ACCENT}` }}
                   >
                     <td className="px-4 py-2 whitespace-nowrap font-semibold text-gray-700 dark:text-[#c5bfd8]">
                       <div className="flex items-center gap-1.5">
@@ -455,7 +561,17 @@ export function IzvjestajTeren() {
                       </div>
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]">
-                      {s.naziv_partnera}
+                      <div className="flex items-center gap-1.5">
+                        {s.naziv_partnera}
+                        {s.jeRazniKupac && (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white bg-amber-500"
+                            title="Razni kupac (generički partner 300)"
+                          >
+                            Razni
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-gray-500 dark:text-[#a89fc2] italic">
                       {s.napomena ?? "—"}

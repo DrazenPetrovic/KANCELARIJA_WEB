@@ -1,4 +1,10 @@
-const PRIMARY = "#785E9E";
+// Štampač je mrežni monochrome (crno-bijeli) — boje se pretvaraju u blijedi
+// sivi raster i slabo se vide na papiru (isti razlog kao u RacunA4.tsx), pa su
+// obje "boje" ovdje čisto crne. Nazivi su zadržani (PRIMARY/ACCENT) da se ne
+// mijenja ostatak fajla — MP/VP grupe se razlikuju preko naslova iznad svake
+// tabele, ne boje.
+const PRIMARY = "#000000";
+const ACCENT = "#000000";
 
 function formatDatumStampe(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -19,6 +25,11 @@ export interface IzvjestajTerenRed {
   naziv_partnera: string;
   ukupno: number | string;
   napomena?: string | null;
+  radnik?: string | null;
+  // true -> MP (gotovinski), false/nedostaje -> VP (žiralni) — MP tabela ide
+  // prva, kompletnija (partner/napomena/radnik/ukupno/naplaćeno); VP tabela je
+  // svedena na minimum (broj računa, partner, O/P kućice) da stane na stranicu.
+  jeMp?: boolean;
 }
 
 interface Props {
@@ -26,9 +37,42 @@ interface Props {
   redovi: IzvjestajTerenRed[];
 }
 
+// Zajednički stil ćelije — kompaktan (mali vertikalni padding) da što više
+// redova stane na jednu A4 stranicu.
+const cell: React.CSSProperties = {
+  padding: "2px 3px",
+  fontSize: 12,
+  borderBottom: "1px solid #dddddd",
+  verticalAlign: "middle",
+};
+
+const nazivGrupe: React.CSSProperties = {
+  background: PRIMARY,
+  color: "white",
+  fontWeight: 700,
+  fontSize: 10,
+  padding: "2px 3px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const zaglavljeCelije: React.CSSProperties = {
+  color: PRIMARY,
+  fontWeight: 700,
+  fontSize: 9,
+  padding: "3px 3px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  borderBottom: `1px solid ${PRIMARY}`,
+};
+
 export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
   const datumStampe = formatDatumStampe(new Date());
-  const ukupnoSvi = redovi.reduce((s, r) => s + (Number(r.ukupno) || 0), 0);
+  const mpRedovi = redovi.filter((r) => r.jeMp);
+  const vpRedovi = redovi.filter((r) => !r.jeMp);
+  const ukupnoMp = mpRedovi.reduce((s, r) => s + (Number(r.ukupno) || 0), 0);
+  const ukupnoVp = vpRedovi.reduce((s, r) => s + (Number(r.ukupno) || 0), 0);
+  const ukupnoSvi = ukupnoMp + ukupnoVp;
 
   return (
     <div
@@ -36,7 +80,7 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
         fontFamily: "Arial, sans-serif",
         fontSize: 10,
         color: "#1a1a1a",
-        padding: "12mm 10mm",
+        padding: "8mm 3mm",
         boxSizing: "border-box",
       }}
     >
@@ -47,11 +91,11 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
           justifyContent: "space-between",
           alignItems: "flex-start",
           borderBottom: `3px solid ${PRIMARY}`,
-          paddingBottom: 10,
-          marginBottom: 16,
+          paddingBottom: 6,
+          marginBottom: 8,
         }}
       >
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: PRIMARY }}>
             Karpas Ambalaže
           </div>
@@ -59,7 +103,24 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
             Kancelarija — sistem za upravljanje
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
+
+        <div style={{ flex: 1, textAlign: "center" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: PRIMARY }}>
+            MP: {mpRedovi.length} ({broj(ukupnoMp)} KM)
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: ACCENT,
+              marginTop: 3,
+            }}
+          >
+            VP: {vpRedovi.length} ({broj(ukupnoVp)} KM)
+          </div>
+        </div>
+
+        <div style={{ flex: 1, textAlign: "right" }}>
           <div
             style={{
               fontSize: 13,
@@ -73,9 +134,6 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
           <div style={{ fontSize: 9, color: "#999", marginTop: 4 }}>
             Datum štampe: {datumStampe}
           </div>
-          <div style={{ fontSize: 9, color: "#999" }}>
-            Broj računa: {redovi.length}
-          </div>
         </div>
       </div>
 
@@ -84,107 +142,196 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
           Nema računa za štampu
         </div>
       ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            tableLayout: "fixed",
-          }}
-        >
-          <colgroup>
-            <col style={{ width: "16%" }} />
-            <col style={{ width: "34%" }} />
-            <col style={{ width: "36%" }} />
-            <col style={{ width: "14%" }} />
-          </colgroup>
-          <thead>
-            <tr style={{ background: "#ede8f6" }}>
-              {[
-                { label: "Broj računa", right: false },
-                { label: "Naziv partnera", right: false },
-                { label: "Napomena", right: false },
-                { label: "Ukupno", right: true },
-              ].map(({ label, right }) => (
-                <th
-                  key={label}
-                  style={{
-                    color: PRIMARY,
-                    fontWeight: 700,
-                    fontSize: 9,
-                    padding: "5px 6px",
-                    textAlign: right ? "right" : "left",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    borderBottom: `1px solid ${PRIMARY}`,
-                  }}
-                >
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {redovi.map((red, i) => (
-              <tr
-                key={`${red.sifra_tabele}-${i}`}
-                style={{ background: i % 2 === 0 ? "#faf9fc" : "white" }}
-              >
-                <td style={cell}>{red.broj_racuna_prikaz}</td>
-                <td style={{ ...cell, wordBreak: "break-word" }}>
-                  {red.naziv_partnera}
-                </td>
-                <td
-                  style={{
-                    ...cell,
-                    wordBreak: "break-word",
-                    fontStyle: "italic",
-                    color: "#666",
-                  }}
-                >
-                  {red.napomena?.trim() || "—"}
-                </td>
-                <td style={{ ...cell, textAlign: "right", fontWeight: 600 }}>
-                  {broj(red.ukupno)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td
-                colSpan={3}
-                style={{
-                  ...cell,
-                  fontWeight: 700,
-                  textAlign: "right",
-                  borderTop: `2px solid ${PRIMARY}`,
-                  borderBottom: "none",
-                }}
-              >
-                UKUPNO
-              </td>
-              <td
-                style={{
-                  ...cell,
-                  fontWeight: 700,
-                  textAlign: "right",
-                  color: PRIMARY,
-                  fontSize: 12,
-                  borderTop: `2px solid ${PRIMARY}`,
-                  borderBottom: "none",
-                }}
-              >
-                {broj(ukupnoSvi)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+        <>
+          {/* ── MP tabela — Broj računa, Partner (+ napomena u istom redu),
+              Radnik, Ukupno, Naplaćeno (prazno, vozač upisuje) ── */}
+          {mpRedovi.length > 0 && (
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                tableLayout: "fixed",
+                marginBottom: 10,
+              }}
+            >
+              <colgroup>
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "45%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "17%" }} />
+                <col style={{ width: "7%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <td colSpan={5} style={nazivGrupe}>
+                    MP RAČUNI ({mpRedovi.length})
+                  </td>
+                </tr>
+                <tr style={{ background: "#f0f0f0" }}>
+                  <th style={zaglavljeCelije}>Broj računa</th>
+                  <th style={zaglavljeCelije}>Partner / Napomena</th>
+                  <th style={zaglavljeCelije}>Radnik</th>
+                  <th style={{ ...zaglavljeCelije, textAlign: "right" }}>
+                    Ukupno
+                  </th>
+                  <th style={zaglavljeCelije}>Napl:</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mpRedovi.map((red, i) => (
+                  <tr
+                    key={`${red.sifra_tabele}-${i}`}
+                    style={{ background: i % 2 === 0 ? "#f2f2f2" : "white" }}
+                  >
+                    <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                      {red.broj_racuna_prikaz}
+                    </td>
+                    <td style={{ ...cell, wordBreak: "break-word" }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {red.naziv_partnera}
+                      </span>
+                      {red.napomena?.trim() && (
+                        <span style={{ fontStyle: "italic", color: "#666" }}>
+                          {" "}
+                          — {red.napomena.trim()}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...cell, wordBreak: "break-word" }}>
+                      {red.radnik?.trim() || "—"}
+                    </td>
+                    <td
+                      style={{ ...cell, textAlign: "right", fontWeight: 600 }}
+                    >
+                      {broj(red.ukupno)}
+                    </td>
+                    {/* Prazno — vozač ovdje rukom upisuje stvarno naplaćen iznos */}
+                    <td style={{ ...cell, borderLeft: "1px dashed #ccc" }} />
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td
+                    colSpan={3}
+                    style={{
+                      ...cell,
+                      fontWeight: 700,
+                      textAlign: "right",
+                      borderTop: `1px solid ${PRIMARY}`,
+                      borderBottom: "none",
+                    }}
+                  >
+                    Ukupno MP
+                  </td>
+                  <td
+                    style={{
+                      ...cell,
+                      fontWeight: 700,
+                      textAlign: "right",
+                      borderTop: `1px solid ${PRIMARY}`,
+                      borderBottom: "none",
+                    }}
+                  >
+                    {broj(ukupnoMp)}
+                  </td>
+                  <td
+                    style={{
+                      ...cell,
+                      borderTop: `1px solid ${PRIMARY}`,
+                      borderBottom: "none",
+                    }}
+                  />
+                </tr>
+              </tfoot>
+            </table>
+          )}
+
+          {/* ── VP tabela — svedeno na minimum: Broj računa, Naziv partnera,
+              i dvije uske kućice (O / P) gdje operater upiše "x" u jednu ── */}
+          {vpRedovi.length > 0 && (
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                tableLayout: "fixed",
+              }}
+            >
+              <colgroup>
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "66%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "8%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <td colSpan={4} style={nazivGrupe}>
+                    VP RAČUNI ({vpRedovi.length})
+                  </td>
+                </tr>
+                <tr style={{ background: "#f0f0f0" }}>
+                  <th style={zaglavljeCelije}>Broj računa</th>
+                  <th style={zaglavljeCelije}>Naziv partnera</th>
+                  <th style={{ ...zaglavljeCelije, textAlign: "center" }}>
+                    O
+                  </th>
+                  <th style={{ ...zaglavljeCelije, textAlign: "center" }}>
+                    P
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {vpRedovi.map((red, i) => (
+                  <tr
+                    key={`${red.sifra_tabele}-${i}`}
+                    style={{ background: i % 2 === 0 ? "#f2f2f2" : "white" }}
+                  >
+                    <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                      {red.broj_racuna_prikaz}
+                    </td>
+                    <td style={{ ...cell, wordBreak: "break-word" }}>
+                      {red.naziv_partnera}
+                    </td>
+                    <td
+                      style={{
+                        ...cell,
+                        textAlign: "center",
+                        borderLeft: "1px dashed #ccc",
+                      }}
+                    />
+                    <td
+                      style={{
+                        ...cell,
+                        textAlign: "center",
+                        borderLeft: "1px dashed #ccc",
+                      }}
+                    />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <div
+            style={{
+              textAlign: "right",
+              fontWeight: 800,
+              fontSize: 12,
+              color: PRIMARY,
+              marginTop: 8,
+              paddingTop: 4,
+              borderTop: `2px solid ${PRIMARY}`,
+            }}
+          >
+            UKUPNO SVE: {broj(ukupnoSvi)} KM
+          </div>
+        </>
       )}
 
       <div
         style={{
-          marginTop: 16,
-          paddingTop: 6,
+          marginTop: 10,
+          paddingTop: 4,
           borderTop: "1px solid #e5e7eb",
           display: "flex",
           justifyContent: "space-between",
@@ -198,10 +345,3 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
     </div>
   );
 }
-
-const cell: React.CSSProperties = {
-  padding: "5px 6px",
-  fontSize: 13,
-  borderBottom: "1px solid #f0edf8",
-  verticalAlign: "middle",
-};
