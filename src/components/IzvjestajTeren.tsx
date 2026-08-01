@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   Loader2,
   MapPin,
@@ -9,6 +9,7 @@ import {
   RotateCcw,
   ScanBarcode,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
 import { IzvjestajTerenA4 } from "../print/templates/IzvjestajTerenA4";
@@ -106,10 +107,36 @@ export function IzvjestajTeren() {
 
   const [stavke, setStavke] = useState<IzvjestajStavka[]>([]);
   const [unosBarkoda, setUnosBarkoda] = useState("");
-  const [greskaSkeniranje, setGreskaSkeniranje] = useState<string | null>(
+  // Rezultat posljednjeg skeniranja — prikazuje se 2 sekunde (skenirana
+  // vrijednost + poruka uspjeh/neuspjeh), pa se sam sakrije.
+  const [rezultatSkeniranja, setRezultatSkeniranja] = useState<{
+    vrijednost: string;
+    uspjesno: boolean;
+    poruka: string;
+  } | null>(null);
+  const timeoutSkeniranjaRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const inputBarkodaRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutSkeniranjaRef.current) clearTimeout(timeoutSkeniranjaRef.current);
+    };
+  }, []);
+
+  const prikaziRezultatSkeniranja = (
+    vrijednost: string,
+    uspjesno: boolean,
+    poruka: string,
+  ) => {
+    if (timeoutSkeniranjaRef.current) clearTimeout(timeoutSkeniranjaRef.current);
+    setRezultatSkeniranja({ vrijednost, uspjesno, poruka });
+    timeoutSkeniranjaRef.current = setTimeout(
+      () => setRezultatSkeniranja(null),
+      2000,
+    );
+  };
 
   useEffect(() => {
     const fetchTereni = async () => {
@@ -168,7 +195,7 @@ export function IzvjestajTeren() {
     setOdabraniTeren(teren);
     setSesijaAktivna(true);
     setPokazuiDropdownTeren(false);
-    setGreskaSkeniranje(null);
+    setRezultatSkeniranja(null);
     setUnosBarkoda("");
     const auto: IzvjestajStavka[] = sviRacuni
       .filter(
@@ -198,7 +225,7 @@ export function IzvjestajTeren() {
     setOdabraniTeren(null);
     setSesijaAktivna(true);
     setPokazuiDropdownTeren(false);
-    setGreskaSkeniranje(null);
+    setRezultatSkeniranja(null);
     setUnosBarkoda("");
     setStavke([]);
     setTimeout(() => inputBarkodaRef.current?.focus(), 0);
@@ -217,18 +244,28 @@ export function IzvjestajTeren() {
 
     if (!pronadjen) {
       pustiZvuk(ZVUK_NIJE_PRONADJEN);
-      setGreskaSkeniranje(`Račun sa šifrom "${vrijednost}" nije pronađen.`);
+      prikaziRezultatSkeniranja(
+        vrijednost,
+        false,
+        `Račun sa šifrom "${vrijednost}" nije pronađen.`,
+      );
       return;
     }
     pustiZvuk(ZVUK_PRONADJEN);
     if (jeStorniran(pronadjen.storniran_racun)) {
-      setGreskaSkeniranje(
+      prikaziRezultatSkeniranja(
+        vrijednost,
+        false,
         `Račun ${oznaka(pronadjen)} je storniran — ne može se dodati.`,
       );
       return;
     }
     if (stavke.some((s) => s.sifra_tabele === Number(pronadjen.sifra_tabele))) {
-      setGreskaSkeniranje(`Račun ${oznaka(pronadjen)} je već u listi.`);
+      prikaziRezultatSkeniranja(
+        vrijednost,
+        false,
+        `Račun ${oznaka(pronadjen)} je već u listi.`,
+      );
       return;
     }
     setStavke((prev) => [
@@ -245,7 +282,11 @@ export function IzvjestajTeren() {
         rucnoDodano: true,
       },
     ]);
-    setGreskaSkeniranje(null);
+    prikaziRezultatSkeniranja(
+      vrijednost,
+      true,
+      `Račun ${oznaka(pronadjen)} dodat u izvještaj.`,
+    );
   };
 
   const ukloniStavku = (sifraTabele: number) => {
@@ -482,10 +523,28 @@ export function IzvjestajTeren() {
           </button>
         </div>
 
-        {greskaSkeniranje && (
-          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-medium">
-            <AlertTriangle size={14} className="flex-shrink-0" />
-            {greskaSkeniranje}
+        {rezultatSkeniranja && (
+          <div
+            className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
+              rezultatSkeniranja.uspjesno
+                ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400"
+                : "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
+            }`}
+          >
+            {rezultatSkeniranja.uspjesno ? (
+              <CheckCircle2 size={14} className="flex-shrink-0" />
+            ) : (
+              <XCircle size={14} className="flex-shrink-0" />
+            )}
+            <span>
+              <span className="font-bold uppercase">
+                {rezultatSkeniranja.uspjesno
+                  ? "Uspješno uneseno"
+                  : "Nije uneseno"}
+              </span>
+              {" — "}
+              Skenirano: "{rezultatSkeniranja.vrijednost}" — {rezultatSkeniranja.poruka}
+            </span>
           </div>
         )}
       </div>
