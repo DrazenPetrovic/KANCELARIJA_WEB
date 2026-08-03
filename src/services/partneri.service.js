@@ -135,6 +135,13 @@ export const setPartneriGlavno = async (partner) => {
         ? rezultatSet[0]
         : { uspjesno: true };
 
+    // erp.sp_partner_unos vraća { status, poruka, partner_id } — status 0/false
+    // znači da procedura nije upisala partnera (npr. duplikat, validacija, greška
+    // u proceduri), ali ne baca SQL izuzetak, pa se to mora provjeriti ovdje.
+    if (rezultat.status === 0 || rezultat.status === false) {
+      throw new Error(rezultat.poruka || "Procedura nije uspjela da unese partnera");
+    }
+
     try {
       await unesiPartneraUStaruBazu(connection, partner);
     } catch (error) {

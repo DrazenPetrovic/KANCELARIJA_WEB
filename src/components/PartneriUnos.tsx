@@ -158,10 +158,9 @@ function SectionCard({
 
 export function PartneriUnos({ username }: { username: string }) {
   const [naziv, setNaziv] = useState("");
-  const [skraceniNaziv, setSkraceniNaziv] = useState("");
   const [jib, setJib] = useState("");
   const [pib, setPib] = useState("");
-  const [pdvObveznik, setPdvObveznik] = useState(true);
+  const [pdvObveznik, setPdvObveznik] = useState(false);
   const [tipPartnera, setTipPartnera] = useState("kupac");
   const [adresa, setAdresa] = useState("");
   const [sifraDrzave, setSifraDrzave] = useState("");
@@ -245,10 +244,9 @@ export function PartneriUnos({ username }: { username: string }) {
 
   const resetujFormu = () => {
     setNaziv("");
-    setSkraceniNaziv("");
     setJib("");
     setPib("");
-    setPdvObveznik(true);
+    setPdvObveznik(false);
     setTipPartnera("kupac");
     setAdresa("");
     setSifraDrzave("");
@@ -291,6 +289,10 @@ export function PartneriUnos({ username }: { username: string }) {
       setGreska("Naziv partnera je obavezan");
       return;
     }
+    if (pdvObveznik && !pib.trim()) {
+      setGreska("PDV obveznik mora imati unesen PIB broj");
+      return;
+    }
     if (jibDuplikat) {
       setGreska(
         `Partner sa JIB-om "${jib.trim()}" već postoji: ${jibDuplikat.naziv}`,
@@ -315,7 +317,6 @@ export function PartneriUnos({ username }: { username: string }) {
 
     const payload: Record<string, unknown> = {
       naziv: naziv.trim(),
-      skraceni_naziv: skraceniNaziv.trim() || undefined,
       jib: jib.trim() || undefined,
       pib: pib.trim() || undefined,
       pdv_obveznik: pdvObveznik ? 1 : 0,
@@ -420,14 +421,6 @@ export function PartneriUnos({ username }: { username: string }) {
               className={inputClass}
             />
           </Field>
-          <Field label="Skraćeni naziv">
-            <input
-              type="text"
-              value={skraceniNaziv}
-              onChange={(e) => setSkraceniNaziv(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
           <Field label="JIB">
             <input
               type="text"
@@ -446,7 +439,11 @@ export function PartneriUnos({ username }: { username: string }) {
             <input
               type="text"
               value={pib}
-              onChange={(e) => setPib(e.target.value)}
+              onChange={(e) => {
+                const vrijednost = e.target.value;
+                setPib(vrijednost);
+                setPdvObveznik(/^\d{12}$/.test(vrijednost.trim()));
+              }}
               className={inputClass}
             />
           </Field>
@@ -458,6 +455,7 @@ export function PartneriUnos({ username }: { username: string }) {
             >
               <option value="kupac">Kupac</option>
               <option value="dobavljac">Dobavljač</option>
+              <option value="oba">Oba</option>
             </select>
           </Field>
           <Field label="Adresa">
@@ -552,14 +550,6 @@ export function PartneriUnos({ username }: { username: string }) {
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label="Kreirao">
-            <input
-              type="text"
-              value={username}
-              disabled
-              className={`${inputClass} opacity-60`}
-            />
           </Field>
         </div>
 
@@ -904,22 +894,6 @@ export function PartneriUnos({ username }: { username: string }) {
         ))}
       </SectionCard>
 
-      {greska && (
-        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 max-w-3xl">
-          <AlertTriangle size={14} />
-          {greska}
-        </div>
-      )}
-      {uspjeh && (
-        <div
-          className="flex items-center gap-2 text-sm max-w-3xl"
-          style={{ color: ACCENT }}
-        >
-          <CheckCircle2 size={14} />
-          {uspjeh}
-        </div>
-      )}
-
       <button
         onClick={() => void handleSacuvaj()}
         disabled={cuvanje}
@@ -1010,6 +984,56 @@ export function PartneriUnos({ username }: { username: string }) {
       </div>
 
       </div>
+
+      {uspjeh && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-[#261f38] shadow-2xl border-2 border-gray-200 dark:border-[#2d2648] p-6">
+            <div className="flex justify-center mb-3">
+              <CheckCircle2 size={40} style={{ color: ACCENT }} />
+            </div>
+            <p className="text-base font-semibold text-gray-800 dark:text-[#ede9f6] text-center">
+              {uspjeh}
+            </p>
+            <div className="mt-5 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setUspjeh(null)}
+                className="min-w-[90px] px-4 py-2 rounded-lg text-white font-semibold transition-all"
+                style={{ backgroundColor: ACCENT }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {greska && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-[#261f38] shadow-2xl border-2 border-red-300 p-6">
+            <div className="flex justify-center mb-3">
+              <AlertTriangle size={40} className="text-red-500" />
+            </div>
+            <p className="text-base font-semibold text-red-700 dark:text-red-400 text-center">
+              {greska}
+            </p>
+            <div className="mt-5 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setGreska(null)}
+                className="min-w-[90px] px-4 py-2 rounded-lg text-white font-semibold transition-all"
+                style={{ backgroundColor: PRIMARY }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
