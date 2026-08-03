@@ -28,7 +28,9 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(netstat -ano)",
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
-      "Bash(command -v chromium-cli)"
+      "Bash(command -v chromium-cli)",
+      "Bash(git check-ignore *)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"

@@ -90,7 +90,7 @@ const izgradiJsonStaraBaza = (partner) => ({
   pib: partner.pib ?? null,
   maticni_broj: null,
   dogovorena_valuta: partner.valuta_placanja ?? null,
-  sifra_ranije: null,
+  sifra_ranije: 0,
   koristiti_u_azuriranju: 1,
   pripada_radniku: partner.pripada_radniku ?? null,
   sinhronizovano: 0,

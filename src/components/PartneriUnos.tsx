@@ -17,6 +17,7 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
+
 interface Drzava {
   sifra_drzave: number;
   naziv_drzave: string;
@@ -317,6 +318,9 @@ export function PartneriUnos({ username }: { username: string }) {
 
     const payload: Record<string, unknown> = {
       naziv: naziv.trim(),
+      // Nema posebnog polja u formi — skraćeni naziv je uvijek identičan
+      // punom nazivu partnera.
+      skraceni_naziv: naziv.trim(),
       jib: jib.trim() || undefined,
       pib: pib.trim() || undefined,
       pdv_obveznik: pdvObveznik ? 1 : 0,
@@ -327,6 +331,9 @@ export function PartneriUnos({ username }: { username: string }) {
       sifra_drzave: sifraDrzave ? Number(sifraDrzave) : undefined,
       postanski_broj: postanskiBroj.trim() || undefined,
       valuta_placanja: valutaPlacanja ? Number(valutaPlacanja) : undefined,
+      // Nema posebnog polja u formi — uvijek se šalje fiksna vrijednost.
+      limit_duga: 0,
+      maticni_broj: "0",
       rabat_procenat: rabatProcenat ? Number(rabatProcenat) : undefined,
       pripada_radniku: sifraKomercijaliste
         ? Number(sifraKomercijaliste)

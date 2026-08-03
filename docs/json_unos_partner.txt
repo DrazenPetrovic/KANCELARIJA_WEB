@@ -1,5 +1,6 @@
 {
   "naziv": "Trgovina Marković d.o.o.",
+  "skraceni_naziv": "Trgovina Marković d.o.o.",
   "jib": "4401234560001",
   "pib": "440123456",
   "pdv_obveznik": 1,
@@ -10,8 +11,10 @@
   "sifra_drzave": 1,
   "postanski_broj": "78000",
   "valuta_placanja": 30,
+  "limit_duga": 0,
+  "maticni_broj": "0",
   "rabat_procenat": 5,
-  "pripada_radniku": 5,
+  "pripada_radniku": 1,
   "kreirao": "korisnik1",
   "poslovnice": [
     {

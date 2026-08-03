@@ -1,0 +1,15 @@
+{
+  "vrsta_partnera": 1,
+  "naziv_partnera": "Trgovina Marković d.o.o.",
+  "adresa_partnera": "Kralja Petra I 15",
+  "sifra_grada": 1,
+  "sifra_drzave": 1,
+  "JIB": "4401234560001",
+  "pib": "440123456",
+  "maticni_broj": null,
+  "dogovorena_valuta": 30,
+  "sifra_ranije": 0,
+  "koristiti_u_azuriranju": 1,
+  "pripada_radniku": 1,
+  "sinhronizovano": 0
+}

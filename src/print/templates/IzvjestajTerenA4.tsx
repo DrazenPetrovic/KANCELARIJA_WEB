@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+import JsBarcode from "jsbarcode";
+
 // Štampač je mrežni monochrome (crno-bijeli) — boje se pretvaraju u blijedi
 // sivi raster i slabo se vide na papiru (isti razlog kao u RacunA4.tsx), pa su
 // obje "boje" ovdje čisto crne. Nazivi su zadržani (PRIMARY/ACCENT) da se ne
@@ -5,6 +8,27 @@
 // tabele, ne boje.
 const PRIMARY = "#000000";
 const ACCENT = "#000000";
+
+// Isti barkod (CODE128 preko sifra_tabele) kao na RacunA4/RacunA5 — ovdje jedan
+// po redu MP tabele, pa svaki red ima svoj <canvas> i sopstveni useEffect.
+// Canvas je stretchovan na 100% širine ćelije (kolona joj daje najviše prostora
+// koliko ima između Radnik i Ukupno) da bude dovoljno velik za skeniranje.
+function BarkodCelija({ vrijednost }: { vrijednost: number | string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    JsBarcode(ref.current, String(vrijednost), {
+      format: "CODE128",
+      width: 2,
+      height: 22,
+      displayValue: false,
+      margin: 0,
+    });
+  }, [vrijednost]);
+
+  return <canvas ref={ref} style={{ width: "100%" }} />;
+}
 
 function formatDatumStampe(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -17,6 +41,16 @@ function formatDatumStampe(date: Date) {
 function broj(v: number | string | null | undefined) {
   const n = Number(v);
   return isNaN(n) ? "0.00" : n.toFixed(2);
+}
+
+// Naziv radnika dolazi u formatu "Prezime Ime" (vidi sp_partneri_pregled_komercijalista) —
+// za štampu se skraćuje na "Prezime I." da stane u usku kolonu.
+function formatRadnik(naziv: string) {
+  const dijelovi = naziv.trim().split(/\s+/);
+  if (dijelovi.length < 2) return naziv.trim();
+  const prezime = dijelovi[0];
+  const inicijal = dijelovi[1].charAt(0).toUpperCase();
+  return `${prezime} ${inicijal}.`;
 }
 
 export interface IzvjestajTerenRed {
@@ -155,15 +189,16 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
               }}
             >
               <colgroup>
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "40%" }} />
+                <col style={{ width: "11%" }} />
                 <col style={{ width: "13%" }} />
-                <col style={{ width: "45%" }} />
-                <col style={{ width: "18%" }} />
                 <col style={{ width: "17%" }} />
                 <col style={{ width: "7%" }} />
               </colgroup>
               <thead>
                 <tr>
-                  <td colSpan={5} style={nazivGrupe}>
+                  <td colSpan={6} style={nazivGrupe}>
                     MP RAČUNI ({mpRedovi.length})
                   </td>
                 </tr>
@@ -171,6 +206,9 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
                   <th style={zaglavljeCelije}>Broj računa</th>
                   <th style={zaglavljeCelije}>Partner / Napomena</th>
                   <th style={zaglavljeCelije}>Radnik</th>
+                  <th style={{ ...zaglavljeCelije, textAlign: "center" }}>
+                    Barkod
+                  </th>
                   <th style={{ ...zaglavljeCelije, textAlign: "right" }}>
                     Ukupno
                   </th>
@@ -198,7 +236,10 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
                       )}
                     </td>
                     <td style={{ ...cell, wordBreak: "break-word" }}>
-                      {red.radnik?.trim() || "—"}
+                      {red.radnik?.trim() ? formatRadnik(red.radnik) : "—"}
+                    </td>
+                    <td style={{ ...cell, textAlign: "center" }}>
+                      <BarkodCelija vrijednost={red.sifra_tabele} />
                     </td>
                     <td
                       style={{ ...cell, textAlign: "right", fontWeight: 600 }}
@@ -213,7 +254,7 @@ export function IzvjestajTerenA4({ terenLabel, redovi }: Props) {
               <tfoot>
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={4}
                     style={{
                       ...cell,
                       fontWeight: 700,

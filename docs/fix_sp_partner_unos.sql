@@ -11,6 +11,9 @@
 --          potvrdjeno: dodavanjem CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci na
 --          DECLARE ovih promjenljivih, kompletan unos (partner + poslovnica + kontakt +
 --          telefoni) prolazi bez greske.
+-- Uzrok 4: INSERT INTO erp.partneri uopste nije imao kolonu pripada_radniku u listi
+--          kolona/VALUES, pa se uvijek upisivao default (0) bez obzira sta JSON salje.
+--          Dodata kolona + NULLIF(...->>'$.pripada_radniku'..., 'null') sa IFNULL na 0.
 
 DROP PROCEDURE IF EXISTS erp.sp_partner_unos;
 DELIMITER $$
@@ -90,7 +93,7 @@ proc: BEGIN
         partner_id, naziv, skraceni_naziv, jib, pib, pdv_obveznik,
         maticni_broj, tip_partnera, adresa, grad, postanski_broj,
         drzava, valuta_placanja, limit_duga, rabat_procenat,
-        napomena, kreirao
+        pripada_radniku, napomena, kreirao
     ) VALUES (
         v_partner_id,
         v_naziv,
@@ -107,6 +110,7 @@ proc: BEGIN
         IFNULL(NULLIF(p_json->>'$.valuta_placanja' COLLATE utf8mb4_unicode_ci, 'null'), 0),
         NULLIF(p_json->>'$.limit_duga' COLLATE utf8mb4_unicode_ci, 'null'),
         IFNULL(NULLIF(p_json->>'$.rabat_procenat' COLLATE utf8mb4_unicode_ci, 'null'), 0.00),
+        IFNULL(NULLIF(p_json->>'$.pripada_radniku' COLLATE utf8mb4_unicode_ci, 'null'), 0),
         NULLIF(p_json->>'$.napomena' COLLATE utf8mb4_unicode_ci, 'null'),
         NULLIF(p_json->>'$.kreirao' COLLATE utf8mb4_unicode_ci, 'null')
     );
