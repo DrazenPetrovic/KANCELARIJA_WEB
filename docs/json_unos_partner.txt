@@ -1,0 +1,47 @@
+{
+  "naziv": "Trgovina Marković d.o.o.",
+  "jib": "4401234560001",
+  "pib": "440123456",
+  "pdv_obveznik": 1,
+  "tip_partnera": "kupac",
+  "adresa": "Kralja Petra I 15",
+  "grad": "Banja Luka",
+  "sifra_grada": 1,
+  "sifra_drzave": 1,
+  "postanski_broj": "78000",
+  "valuta_placanja": 30,
+  "rabat_procenat": 5,
+  "pripada_radniku": 5,
+  "kreirao": "korisnik1",
+  "poslovnice": [
+    {
+      "sifra": "PJ01",
+      "naziv": "Poslovnica centar",
+      "glavna": 1,
+      "jib": "4401234560002",
+      "adresa": "Vase Pelagića 3",
+      "grad": "Banja Luka"
+    }
+  ],
+  "kontakti": [
+    {
+      "ime": "Marko",
+      "prezime": "Marković",
+      "funkcija": "Direktor",
+      "poslovnica_sifra": "PJ01"
+    }
+  ],
+  "telefoni": [
+    {
+      "broj": "051/123-456",
+      "tip": "centrala",
+      "primarni": 1,
+      "poslovnica_sifra": "PJ01"
+    },
+    {
+      "broj": "065/111-222",
+      "tip": "mobilni",
+      "kontakt_index": 0
+    }
+  ]
+}

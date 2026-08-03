@@ -66,7 +66,9 @@
       "Bash(cd \"d:/WEB_KOMERCIJALA/PRODAJA_WEB\" && grep -ril \"A5\" --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" src 2>/dev/null | grep -v node_modules)",
       "Bash(cd \"d:/WEB_KOMERCIJALA/PRODAJA_WEB\" && ls -la src/components/print/templates && echo \"---\" && ls -la src/components/print)",
       "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/components/print/templates/**)",
-      "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/utils/**)"
+      "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/utils/**)",
+      "Bash(node _debug_proc.mjs)",
+      "Bash(node _full_debug.mjs)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"

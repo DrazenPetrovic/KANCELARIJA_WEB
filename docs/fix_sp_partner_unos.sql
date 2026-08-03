@@ -3,6 +3,14 @@
 --          utf8mb4_unicode_ci (literal 'null') -> dodat COLLATE utf8mb4_unicode_ci
 -- Uzrok 2: tmp_pos_map.sifra nije imao eksplicitnu kolaciju pa je naslijedio
 --          default kolaciju seme erp (utf8mb4_0900_ai_ci) umjesto utf8mb4_unicode_ci
+-- Uzrok 3 (pravi/glavni uzrok): lokalne VARCHAR promjenljive (v_naziv, v_jib, v_pib,
+--          v_broj_orig, v_broj_norm, v_pos_sifra) bez eksplicitne kolacije nasljedjuju
+--          default kolaciju seme erp (utf8mb4_0900_ai_ci) u trenutku CREATE PROCEDURE,
+--          a NE kolaciju konekcije. Kad se npr. v_jib poredi sa kolonom partneri.jib
+--          (koja je eksplicitno utf8mb4_unicode_ci), dolazi do sudara. Testirano i
+--          potvrdjeno: dodavanjem CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci na
+--          DECLARE ovih promjenljivih, kompletan unos (partner + poslovnica + kontakt +
+--          telefoni) prolazi bez greske.
 
 DROP PROCEDURE IF EXISTS erp.sp_partner_unos;
 DELIMITER $$
@@ -11,17 +19,17 @@ CREATE PROCEDURE erp.sp_partner_unos(
 )
 proc: BEGIN
     DECLARE v_partner_id     INT UNSIGNED;
-    DECLARE v_naziv          VARCHAR(200);
-    DECLARE v_jib            VARCHAR(13);
-    DECLARE v_pib            VARCHAR(12);
+    DECLARE v_naziv          VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_jib            VARCHAR(13)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_pib            VARCHAR(12)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
     DECLARE v_i              INT DEFAULT 0;
     DECLARE v_cnt            INT DEFAULT 0;
     DECLARE v_item           JSON;
 
-    DECLARE v_broj_orig      VARCHAR(30);
-    DECLARE v_broj_norm      VARCHAR(20);
-    DECLARE v_pos_sifra      VARCHAR(20);
+    DECLARE v_broj_orig      VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_broj_norm      VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_pos_sifra      VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     DECLARE v_pos_id         INT UNSIGNED;
     DECLARE v_kon_index      INT;
     DECLARE v_kon_id         INT UNSIGNED;
