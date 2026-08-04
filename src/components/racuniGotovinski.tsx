@@ -2219,8 +2219,11 @@ export function GotovinskiRacuni() {
                               />
                             )}
                           </div>
-                          <div className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-0.5">
-                            {a.sifra_proizvoda} · {a.jm}
+                          <div
+                            className="text-[11px] font-bold mt-0.5"
+                            style={{ color: nemaStanje ? undefined : ACCENT }}
+                          >
+                            {Number(a.kolicina_proizvoda).toFixed(3)}
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -2231,6 +2234,9 @@ export function GotovinskiRacuni() {
                             {typeof a.mpc === "number"
                               ? a.mpc.toFixed(2)
                               : a.mpc}
+                          </div>
+                          <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            ({a.sifra_proizvoda}) · {a.jm}
                           </div>
                           {nivelacija && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-sky-500 text-white text-[9px] font-bold uppercase tracking-wide shadow-sm animate-pulse">

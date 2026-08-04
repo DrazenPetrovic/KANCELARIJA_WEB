@@ -1,4 +1,11 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -406,6 +413,22 @@ const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   return String(v);
 };
 
+// "Windowing" glavne liste računa — kod nekoliko hiljada redova, renderovanje
+// SVIH <tr> odjednom je sporo (DOM + React reconciliation). Umjesto pravog
+// react-window-a (koji zahtijeva apsolutno pozicionirane div-ove i time bi
+// razbio postojeću <table>/colspan/paired-cell logiku ispod), koristi se
+// jednostavniji pristup nad PRAVOM tabelom: prati se scroll pozicija
+// scroll-kontejnera i u DOM-u se drži samo vidljivi opseg redova (+ overscan),
+// a razlika u visini se nadoknađuje sa dva "spacer" <tr> (prije/poslije), da
+// scrollbar ostane tačne veličine. Pošto su ćelije "whitespace-nowrap" (nema
+// prelamanja teksta), visina reda je vrlo ujednačena, pa je fiksna procjena
+// ROW_HEIGHT_PX dovoljno tačna. Uključuje se samo za glavnu listu (ne za
+// "stavke" pod-tabelu, koja je uvijek mala) i samo kad ima dovoljno redova da
+// se isplati (PRAG_VIRTUALIZACIJE).
+const ROW_HEIGHT_PX = 42;
+const OVERSCAN_REDOVA = 15;
+const PRAG_VIRTUALIZACIJE = 150;
+
 function GenericnaTabela({
   redovi,
   podesavanja,
@@ -448,6 +471,47 @@ function GenericnaTabela({
     return poredajKolone(vidljive, podesavanja);
   }, [redovi, podesavanja]);
 
+  const jeVirtualizovano =
+    !jeStavke && redovi.length > PRAG_VIRTUALIZACIJE;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [visinaKontejnera, setVisinaKontejnera] = useState(600);
+
+  useEffect(() => {
+    if (!jeVirtualizovano) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    setVisinaKontejnera(el.clientHeight);
+    setScrollTop(el.scrollTop);
+    const naScroll = () => setScrollTop(el.scrollTop);
+    const naResize = () => setVisinaKontejnera(el.clientHeight);
+    el.addEventListener("scroll", naScroll, { passive: true });
+    window.addEventListener("resize", naResize);
+    return () => {
+      el.removeEventListener("scroll", naScroll);
+      window.removeEventListener("resize", naResize);
+    };
+  }, [jeVirtualizovano]);
+
+  let startIndex = 0;
+  let endIndex = redovi.length;
+  if (jeVirtualizovano) {
+    const prviVidljivi = Math.floor(scrollTop / ROW_HEIGHT_PX);
+    const brojVidljivih = Math.ceil(visinaKontejnera / ROW_HEIGHT_PX);
+    startIndex = Math.max(0, prviVidljivi - OVERSCAN_REDOVA);
+    endIndex = Math.min(
+      redovi.length,
+      prviVidljivi + brojVidljivih + OVERSCAN_REDOVA,
+    );
+  }
+  const vidljiviRedovi = jeVirtualizovano
+    ? redovi.slice(startIndex, endIndex)
+    : redovi;
+  const visinaPrijeRedova = startIndex * ROW_HEIGHT_PX;
+  const visinaPoslijeRedova = (redovi.length - endIndex) * ROW_HEIGHT_PX;
+  const ukupnoKolona =
+    (imaPartnera ? 1 : 0) + kolone.length + (jeStavke ? 0 : 1);
+
   if (redovi.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-2 text-gray-400 dark:text-[#5f5878]">
@@ -458,7 +522,11 @@ function GenericnaTabela({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div
+      ref={jeVirtualizovano ? scrollRef : undefined}
+      className="overflow-x-auto"
+      style={jeVirtualizovano ? { maxHeight: "70vh", overflowY: "auto" } : undefined}
+    >
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr
@@ -533,7 +601,16 @@ function GenericnaTabela({
           </tr>
         </thead>
         <tbody>
-          {redovi.map((red, i) => {
+          {jeVirtualizovano && visinaPrijeRedova > 0 && (
+            <tr aria-hidden="true">
+              <td
+                colSpan={ukupnoKolona}
+                style={{ height: visinaPrijeRedova, padding: 0, border: "none" }}
+              />
+            </tr>
+          )}
+          {vidljiviRedovi.map((red, iRel) => {
+            const i = jeVirtualizovano ? startIndex + iRel : iRel;
             // Stavke (sp_racuni_po_pregled) nose iste podatke pod drugim
             // imenima kolona ("vrsta"/"stornirano" umjesto "vrsta_racuna_novi"/
             // "storniran_racun") — fallback ispod pokriva oba slučaja, da
@@ -811,6 +888,14 @@ function GenericnaTabela({
               </Fragment>
             );
           })}
+          {jeVirtualizovano && visinaPoslijeRedova > 0 && (
+            <tr aria-hidden="true">
+              <td
+                colSpan={ukupnoKolona}
+                style={{ height: visinaPoslijeRedova, padding: 0, border: "none" }}
+              />
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
@@ -821,6 +906,12 @@ export function RacuniPregled() {
   const { openPrint } = usePrint();
   const [racuni, setRacuni] = useState<RacunRed[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ucitavaStarije, setUcitavaStarije] = useState(false);
+  // Ukupan broj računa u bazi — poznat odmah nakon sp_racuni_gl_stats, prije
+  // nego što se ijedan red učita, pa desna strana brojača ("Ukupno: X / Y")
+  // odmah prikazuje pravi max, dok X (broj učitanih) raste kako pozadinska
+  // nit učitava starije redove.
+  const [maxBroj, setMaxBroj] = useState(0);
   const [greska, setGreska] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
 
@@ -873,23 +964,67 @@ export function RacuniPregled() {
     void fetchPodgrupe();
   }, []);
 
+  // Dvofazno učitavanje (vidi docs/sp_racuni_gl_nit_glavna_pozadina.sql) — kod
+  // velike količine podataka, čekanje na SVE račune prije prikaza forme je
+  // presporo. Umjesto toga:
+  //   1) stats -> max_sifra
+  //   2) granica = max_sifra - 200
+  //   3) "glavna" nit (zadnjih ~200) učitava se prva, forma se odmah otvara
+  //   4) "pozadina" nit (sve starije) učitava se paralelno u pozadini i kad
+  //      završi, dopisuje se u već prikazanu tabelu
   useEffect(() => {
     const fetchRacune = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/pregledi/racuna`, {
+        const statsRes = await fetch(`${API_URL}/api/pregledi/racuna/stats`, {
           credentials: "include",
         });
-        const json = await res.json();
-        if (!res.ok || !json.success) {
+        const statsJson = await statsRes.json();
+        if (!statsRes.ok || !statsJson.success) {
           setGreska(
-            json.error || json.message || "Greška pri učitavanju računa",
+            statsJson.error ||
+              statsJson.message ||
+              "Greška pri učitavanju računa",
+          );
+          setLoading(false);
+          return;
+        }
+
+        const maxSifra = Number(statsJson.data?.max_sifra) || 0;
+        const granica = maxSifra - 200;
+        setMaxBroj(Number(statsJson.data?.ukupan_broj) || 0);
+
+        const glavnaRes = await fetch(
+          `${API_URL}/api/pregledi/racuna/glavna?granica=${granica}`,
+          { credentials: "include" },
+        );
+        const glavnaJson = await glavnaRes.json();
+        if (!glavnaRes.ok || !glavnaJson.success) {
+          setGreska(
+            glavnaJson.error ||
+              glavnaJson.message ||
+              "Greška pri učitavanju računa",
           );
           return;
         }
-        setRacuni(json.data ?? []);
+        setRacuni(glavnaJson.data ?? []);
+        setLoading(false);
+
+        // Pozadinska nit — ne blokira UI, dodaje starije račune kad stignu.
+        setUcitavaStarije(true);
+        try {
+          const pozadinaRes = await fetch(
+            `${API_URL}/api/pregledi/racuna/pozadina?granica=${granica}`,
+            { credentials: "include" },
+          );
+          const pozadinaJson = await pozadinaRes.json();
+          if (pozadinaRes.ok && pozadinaJson.success) {
+            setRacuni((prev) => [...prev, ...(pozadinaJson.data ?? [])]);
+          }
+        } finally {
+          setUcitavaStarije(false);
+        }
       } catch {
         setGreska("Greška pri učitavanju računa");
-      } finally {
         setLoading(false);
       }
     };
@@ -1498,96 +1633,100 @@ export function RacuniPregled() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Receipt size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Pregled računa
-          </h2>
-          {!loading && !greska && (
-            <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-              Ukupno: {filtrirani.length} / {racuni.length}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative max-w-xs flex-1 min-w-[200px]">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
-            />
-            <input
-              type="text"
-              placeholder="Pretraži račune..."
-              value={pretraga}
-              onChange={(e) => setPretraga(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
-            />
+      <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] shrink-0">
+            <Receipt size={20} style={{ color: PRIMARY }} />
           </div>
-          <select
-            value={odabranaVrstaRacuna ?? ""}
-            onChange={(e) =>
-              setOdabranaVrstaRacuna(
-                e.target.value === "" ? null : Number(e.target.value),
-              )
-            }
-            className={`ml-auto px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
-              odabranaVrstaRacuna !== null
-                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
-                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
-            }`}
-          >
-            <option value="">Vrsta računa: sve</option>
-            {VRSTE_RACUNA_NOVI.map((v) => (
-              <option key={v.vrijednost} value={v.vrijednost}>
-                {v.naziv}
-              </option>
-            ))}
-          </select>
-          <select
-            value={odabranoPlaceno}
-            onChange={(e) =>
-              setOdabranoPlaceno(e.target.value as "" | "DA" | "NE")
-            }
-            className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
-              odabranoPlaceno !== ""
-                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
-                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
-            }`}
-          >
-            <option value="">Plaćeno: svi</option>
-            <option value="DA">Plaćeno: Da</option>
-            <option value="NE">Plaćeno: Ne</option>
-          </select>
-          <select
-            value={odabranaPodgrupa ?? ""}
-            onChange={(e) =>
-              setOdabranaPodgrupa(
-                e.target.value === "" ? null : Number(e.target.value),
-              )
-            }
-            disabled={loadingPodgrupe}
-            className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
-              odabranaPodgrupa !== null
-                ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
-                : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
-            }`}
-          >
-            <option value="">
-              {loadingPodgrupe ? "Učitavanje..." : "Sve podgrupe"}
-            </option>
-            {podgrupe.map((p) => (
-              <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
-                {p.opis_podgrupe} ({p.sifra_podgrupe})
-              </option>
-            ))}
-          </select>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
+              Pregled računa
+            </h2>
+            {!loading && !greska && (
+              <p className="text-xs text-gray-400 dark:text-[#5f5878] flex items-center gap-1.5 whitespace-nowrap">
+                Ukupno: {filtrirani.length} / {maxBroj}
+                {ucitavaStarije && (
+                  <span className="flex items-center gap-1 text-[#785E9E] dark:text-[#a89fc2]">
+                    <Loader2 size={11} className="animate-spin" />
+                    učitavam starije...
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         </div>
+
+        <div className="relative max-w-xs flex-1 min-w-[200px]">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+          />
+          <input
+            type="text"
+            placeholder="Pretraži račune..."
+            value={pretraga}
+            onChange={(e) => setPretraga(e.target.value)}
+            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
+          />
+        </div>
+        <select
+          value={odabranaVrstaRacuna ?? ""}
+          onChange={(e) =>
+            setOdabranaVrstaRacuna(
+              e.target.value === "" ? null : Number(e.target.value),
+            )
+          }
+          className={`ml-auto px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+            odabranaVrstaRacuna !== null
+              ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+              : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+          }`}
+        >
+          <option value="">Vrsta računa: sve</option>
+          {VRSTE_RACUNA_NOVI.map((v) => (
+            <option key={v.vrijednost} value={v.vrijednost}>
+              {v.naziv}
+            </option>
+          ))}
+        </select>
+        <select
+          value={odabranoPlaceno}
+          onChange={(e) =>
+            setOdabranoPlaceno(e.target.value as "" | "DA" | "NE")
+          }
+          className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+            odabranoPlaceno !== ""
+              ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+              : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+          }`}
+        >
+          <option value="">Plaćeno: svi</option>
+          <option value="DA">Plaćeno: Da</option>
+          <option value="NE">Plaćeno: Ne</option>
+        </select>
+        <select
+          value={odabranaPodgrupa ?? ""}
+          onChange={(e) =>
+            setOdabranaPodgrupa(
+              e.target.value === "" ? null : Number(e.target.value),
+            )
+          }
+          disabled={loadingPodgrupe}
+          className={`px-3 py-2 text-sm border rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-800 dark:text-[#ede9f6] ${
+            odabranaPodgrupa !== null
+              ? "border-[#785E9E] bg-[#ede8f5] dark:bg-[#312a50] dark:border-[#785E9E]"
+              : "border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d]"
+          }`}
+        >
+          <option value="">
+            {loadingPodgrupe ? "Učitavanje..." : "Sve podgrupe"}
+          </option>
+          {podgrupe.map((p) => (
+            <option key={p.sifra_podgrupe} value={p.sifra_podgrupe}>
+              {p.opis_podgrupe} ({p.sifra_podgrupe})
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">

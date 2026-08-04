@@ -46,6 +46,40 @@ export const getPregledRacuna = async () => {
   });
 };
 
+// Dvofazno ucitavanje pregleda racuna (vidi docs/sp_racuni_gl_nit_glavna_pozadina.sql) —
+// stats vraca ukupan broj i max/min sifra_tabele, na osnovu cega frontend racuna
+// granicu (max - 200) i prvo ucitava "glavnu" (zadnjih ~200) pa zatim "pozadinsku"
+// (sve starije) niti.
+export const getPregledRacunaStats = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      "CALL erp.sp_racuni_gl_stats(@a, @b, @c)",
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return rezultatSet[0] ?? { ukupan_broj: 0, max_sifra: 0, min_sifra: 0 };
+  });
+};
+
+export const getPregledRacunaGlavna = async (granica) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_racuni_gl_nit_glavna(?)",
+      [granica],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+export const getPregledRacunaPozadina = async (granica) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_racuni_gl_nit_pozadina(?)",
+      [granica],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getRacunPoPregled = async (sifraTabele) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

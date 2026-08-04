@@ -1,0 +1,83 @@
+FISKALNE KASE (ESIR) — PUŠTANJE U RAD NA NOVOM RAČUNARU
+==========================================================
+
+ZAŠTO JE OVO POTREBNO
+----------------------
+Browser (ne backend server) direktno zove ESIR uređaj preko fetch-a
+(vidi src/components/racuniGotovinski.tsx). Kancelarija se u produkciji
+servira preko HTTPS-a (https://karpas.app/kancelarija), a HTTPS stranica
+ne smije pozivati plain http:// resurs na LAN IP adresi — browser to
+blokira kao "mixed content". Jedini izuzetak je 127.0.0.1.
+
+Zato produkcijski build (.env.production) ne zove LAN IP ESIR uređaja
+direktno, nego lokalni port-forward na samom kasirskom računaru:
+
+  127.0.0.1:13566  ->  192.168.0.250:3566   (gotovinski ESIR)
+  127.0.0.1:13567  ->  192.168.0.251:3566   (žiralni ESIR)
+
+Ovaj port-forward (Windows "netsh interface portproxy") je LOKALNO
+podešavanje po mašini — ne prenosi se automatski, ne dolazi sa update-om
+aplikacije. Mora se ručno pokrenuti (kao Administrator) na SVAKOM novom
+ili reinstaliranom kasirskom računaru. Ako se ovo ne uradi, ESIR na tom
+računaru neće raditi iako je u istoj LAN mreži kao i uređaj.
+
+
+KOMANDE ZA PODEŠAVANJE (pokrenuti u PowerShell/CMD kao Administrator)
+-----------------------------------------------------------------------
+
+netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=13566 connectaddress=192.168.0.250 connectport=3566
+netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=13567 connectaddress=192.168.0.251 connectport=3566
+
+
+PROVJERA DA LI SU PRAVILA POSTAVLJENA
+---------------------------------------
+
+netsh interface portproxy show all
+
+
+UKLANJANJE PRAVILA (ako zatreba, npr. mijenja se IP uređaja)
+----------------------------------------------------------------
+
+netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=13566
+netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=13567
+
+
+PROVJERA MREŽNE DOSTUPNOSTI SAMOG ESIR UREĐAJA (PowerShell)
+-----------------------------------------------------------------
+
+Test-NetConnection 192.168.0.250 -Port 3566
+Test-NetConnection 192.168.0.251 -Port 3566
+
+Ako ovo ne prođe, računar nema mrežnu vidljivost ka uređaju (druga
+VLAN/subnet/WiFi pristupna tačka i sl.) — portproxy tu ništa ne rješava,
+prvo treba riješiti mrežnu dostupnost.
+
+
+CHECKLISTA — ZAŠTO ESIR NE RADI NA KONKRETNOM RAČUNARU
+----------------------------------------------------------
+
+1. Da li postoji portproxy pravilo na toj mašini?
+   -> netsh interface portproxy show all
+   (Najčešći uzrok — mašina nikad nije imala ovu komandu pokrenutu.)
+
+2. Da li mašina uopšte može da dosegne ESIR uređaj na LAN-u?
+   -> Test-NetConnection 192.168.0.250 -Port 3566 (i .251)
+
+3. Da li Windows Firewall blokira outbound konekciju na toj mašini?
+
+4. Da li je "IP Helper" servis (implementira portproxy) omogućen i
+   pokrenut nakon restarta mašine?
+
+5. Da li ta mašina uopšte otvara produkcijsku HTTPS stranicu, ili
+   koristi lokalni dev server (http://localhost:5174)? Kod dev servera
+   (.env, ne .env.production) poziva se LAN IP uređaja DIREKTNO
+   (192.168.0.250:3566 / .251:3566) i portproxy tu nije potreban, ali
+   mora postojati direktna mrežna vidljivost ka uređaju.
+
+
+RELEVANTNI FAJLOVI
+--------------------
+.env.production                        — VITE_ESIR_URL_* (127.0.0.1:1356x)
+.env                                    — VITE_ESIR_URL_* (direktan LAN IP, za dev)
+src/components/racuniGotovinski.tsx     — poziv ESIR-a za gotovinski račun
+src/components/racuniZiralni.tsx        — poziv ESIR-a za žiralni račun
