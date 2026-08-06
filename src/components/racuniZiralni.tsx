@@ -178,6 +178,10 @@ interface NarudzbaZavrsenaProizvod {
   kolicina: number;
   napomena: string;
   verifikovano: number;
+  // Cijena koju komercijalista predlaže (ne nameće) na osnovu stanja na terenu —
+  // vidi erp.sp_dostava_tereni_proizvodi. Samo za upoređivanje/upozorenje pri
+  // uvozu, nikad se ne upisuje automatski na račun.
+  trazena_cijena: number | null;
 }
 
 interface NarudzbaZavrsenaKupac {
@@ -405,6 +409,13 @@ export function ZiralniRacuni() {
   // ne obara već potvrđeno čuvanje računa, samo operater mora da potvrdi da je
   // vidio da te cijene NISU zapamćene kao dogovorene.
   const [dogovorenaCijenaGreska, setDogovorenaCijenaGreska] = useState<
+    string | null
+  >(null);
+  // Upozorenje nakon uvoza sa terena — proizvodi kod kojih se predložena
+  // "tražena cijena" (prijedlog komercijaliste) razlikuje od cijene koja je
+  // stvarno stavljena na račun (dogovorena ili kataloški VPC). Samo informativno,
+  // operater sam odlučuje da li će ručno promijeniti cijenu.
+  const [trazeneCijenePoruka, setTrazeneCijenePoruka] = useState<
     string | null
   >(null);
   // Koraci čuvanja računa — prikazuju se kao status-bar preko liste stavki dok
@@ -1661,6 +1672,7 @@ export function ZiralniRacuni() {
         verifikovano: number | string;
         naziv_partnera?: string;
         nacin_placanja?: string;
+        trazena_cijena?: number | string | null;
       }>;
 
       // Ključ mora uključiti i referentni_broj — isti kupac (i isti proizvodi)
@@ -1716,6 +1728,10 @@ export function ZiralniRacuni() {
               : Number(row.kolicina_proizvoda) || 0,
           napomena: row.napomena || "",
           verifikovano: Number(row.verifikovano),
+          trazena_cijena:
+            row.trazena_cijena != null && row.trazena_cijena !== ""
+              ? Number(row.trazena_cijena)
+              : null,
         });
       });
 
@@ -1771,6 +1787,7 @@ export function ZiralniRacuni() {
     if (odabraniPartner?.sifra_partnera !== k.sifra_kupca) return;
 
     const preskoceniProizvodi: string[] = [];
+    const upozorenjaTrazenaCijena: string[] = [];
     const noveStavke: StavkaRacuna[] = [];
     k.proizvodi.forEach((p) => {
       // Spremljena količina 0 — ništa nije stvarno spremljeno sa terena za ovaj
@@ -1786,7 +1803,7 @@ export function ZiralniRacuni() {
         preskoceniProizvodi.push(p.naziv_proizvoda);
         return;
       }
-      const vpc =
+      const vpcKatalog =
         typeof artikal.vpc === "number"
           ? artikal.vpc
           : parseFloat(String(artikal.vpc)) || 0;
@@ -1794,9 +1811,53 @@ export function ZiralniRacuni() {
         typeof artikal.nabavna_cijena === "number"
           ? artikal.nabavna_cijena
           : parseFloat(String(artikal.nabavna_cijena)) || 0;
-      // Uvoz sa terena ne nosi rabatne nivoe — osnova je kataloški VPC (0% rabat).
+
+      // Dogovorena (posebna) cijena ovog partnera za ovaj artikal — ako postoji i
+      // validna je (manja od kataloškog VPC-a, ne manja od nabavne cijene), ide u
+      // VPC1 umjesto kataloškog VPC-a, isti princip kao pri ručnom dodavanju
+      // artikla na račun (vidi handleKlikArtikl). Rabat 1 se računa kao razlika
+      // dogovorene cijene prema kataloškom VPC-u.
+      const dogovorena = dogovoreneCijeneMap.get(
+        `${String(k.sifra_kupca)}_${String(p.sifra_proizvoda)}`,
+      );
+      const dogovorenaVpcRaw =
+        dogovorena?.dogovorena_cijena_vpc != null
+          ? Number(dogovorena.dogovorena_cijena_vpc)
+          : null;
+      const dogovorenaVpcValidna =
+        dogovorenaVpcRaw != null &&
+        dogovorenaVpcRaw < vpcKatalog &&
+        dogovorenaVpcRaw >= nabavnaCijena;
+
+      const vpc1 = dogovorenaVpcValidna ? (dogovorenaVpcRaw as number) : vpcKatalog;
+      const rab1 = dogovorenaVpcValidna
+        ? Math.round(
+            ((vpcKatalog - (dogovorenaVpcRaw as number)) / vpcKatalog) *
+              100 *
+              100,
+          ) / 100
+        : 0;
+
+      // Tražena cijena sa terena — prijedlog komercijaliste (erp.sp_dostava_tereni_proizvodi,
+      // kolona trazena_cijena), NIKAD se ne upisuje automatski na račun, samo se
+      // upoređuje sa cijenom koja je stvarno stavljena (dogovorena, ako je aktivna,
+      // inače kataloški VPC) i operater se upozorava ako se razlikuju. Prijedlog
+      // ispod nabavne cijene se ignoriše kao neispravan.
+      if (p.trazena_cijena != null && p.trazena_cijena >= nabavnaCijena) {
+        const referentnaCijena = dogovorenaVpcValidna
+          ? (dogovorenaVpcRaw as number)
+          : vpcKatalog;
+        if (Math.abs(p.trazena_cijena - referentnaCijena) >= 0.005) {
+          upozorenjaTrazenaCijena.push(
+            `${p.naziv_proizvoda}: tražena ${p.trazena_cijena.toFixed(2)} KM (${
+              dogovorenaVpcValidna ? "dogovorena" : "VPC"
+            }: ${referentnaCijena.toFixed(2)} KM)`,
+          );
+        }
+      }
+
       const obracunavaSePdv = odabranaPodgrupa?.obracunava_se_pdv !== 1;
-      const vrednost = Math.round(p.kolicina * vpc * 100) / 100;
+      const vrednost = Math.round(p.kolicina * vpc1 * 100) / 100;
       const pdv = obracunavaSePdv
         ? Math.round(vrednost * STOPA_PDV * 100) / 100
         : 0;
@@ -1805,14 +1866,14 @@ export function ZiralniRacuni() {
         naziv_proizvoda: artikal.naziv_proizvoda,
         jm: artikal.jm,
         kolicina: p.kolicina,
-        vpc,
-        vpc1: vpc,
-        rab1: 0,
-        vpc2: vpc,
+        vpc: vpcKatalog,
+        vpc1,
+        rab1,
+        vpc2: vpc1,
         rab2: 0,
-        vpc3: vpc,
+        vpc3: vpc1,
         rab3: 0,
-        osnova: vpc,
+        osnova: vpc1,
         vrednost,
         pdv,
         ukupno: Math.round((vrednost + pdv) * 100) / 100,
@@ -1829,7 +1890,18 @@ export function ZiralniRacuni() {
         `Preskočeni proizvodi (nema ih u katalogu ili nema stanja):\n${preskoceniProizvodi.join("\n")}`,
       );
     }
-  }, [pendingUvozNarudzbe, odabraniPartner, artikli, odabranaPodgrupa]);
+    setTrazeneCijenePoruka(
+      upozorenjaTrazenaCijena.length > 0
+        ? upozorenjaTrazenaCijena.join("\n")
+        : null,
+    );
+  }, [
+    pendingUvozNarudzbe,
+    odabraniPartner,
+    artikli,
+    odabranaPodgrupa,
+    dogovoreneCijeneMap,
+  ]);
 
   return (
     <>
@@ -3034,6 +3106,52 @@ export function ZiralniRacuni() {
               <div className="px-6 pb-5">
                 <button
                   onClick={() => setDogovorenaCijenaGreska(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Razumijem
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Upozorenje — nakon uvoza sa terena, tražena cijena (prijedlog komercijaliste)
+          se razlikuje od cijene koja je stvarno stavljena na račun. Informativno,
+          operater ništa ne mora mijenjati. */}
+      {trazeneCijenePoruka &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setTrazeneCijenePoruka(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3"
+                style={{ background: "#f59e0b" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  Predložena tražena cijena sa terena
+                </span>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-xs text-gray-500 dark:text-[#7d7498] mb-3">
+                  Komercijalista je predložio drugačiju cijenu za sljedeće
+                  proizvode. Cijena na računu NIJE promijenjena — provjeri i po
+                  potrebi izmijeni ručno.
+                </p>
+                <p className="text-sm text-gray-700 dark:text-[#c5bfd8] whitespace-pre-line">
+                  {trazeneCijenePoruka}
+                </p>
+              </div>
+              <div className="px-6 pb-5">
+                <button
+                  onClick={() => setTrazeneCijenePoruka(null)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
                   style={{ background: PRIMARY }}
                 >

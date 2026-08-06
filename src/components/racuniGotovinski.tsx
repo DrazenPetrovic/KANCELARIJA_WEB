@@ -176,6 +176,10 @@ interface NarudzbaZavrsenaProizvod {
   kolicina: number;
   napomena: string;
   verifikovano: number;
+  // Cijena koju komercijalista predlaže (ne nameće) na osnovu stanja na terenu —
+  // vidi erp.sp_dostava_tereni_proizvodi. Samo za upoređivanje/upozorenje pri
+  // uvozu, nikad se ne upisuje automatski na račun.
+  trazena_cijena: number | null;
 }
 
 interface NarudzbaZavrsenaKupac {
@@ -1250,6 +1254,7 @@ export function GotovinskiRacuni() {
         verifikovano: number | string;
         naziv_partnera?: string;
         nacin_placanja?: string;
+        trazena_cijena?: number | string | null;
       }>;
 
       // Ključ mora uključiti i referentni_broj — isti kupac (i isti proizvodi)
@@ -1305,6 +1310,10 @@ export function GotovinskiRacuni() {
               : Number(row.kolicina_proizvoda) || 0,
           napomena: row.napomena || "",
           verifikovano: Number(row.verifikovano),
+          trazena_cijena:
+            row.trazena_cijena != null && row.trazena_cijena !== ""
+              ? Number(row.trazena_cijena)
+              : null,
         });
       });
 
@@ -1391,6 +1400,7 @@ export function GotovinskiRacuni() {
     }
 
     const preskoceniProizvodi: string[] = [];
+    const upozorenjaTrazenaCijena: string[] = [];
     const noveStavke: StavkaRacuna[] = [];
     k.proizvodi.forEach((p) => {
       // Spremljena količina 0 — ništa nije stvarno spremljeno sa terena za ovaj
@@ -1414,6 +1424,20 @@ export function GotovinskiRacuni() {
         typeof artikal.nabavna_cijena === "number"
           ? artikal.nabavna_cijena
           : parseFloat(String(artikal.nabavna_cijena)) || 0;
+
+      // Tražena cijena sa terena — prijedlog komercijaliste (erp.sp_dostava_tereni_proizvodi,
+      // kolona trazena_cijena). Gotovinski nema dogovorene cijene, pa se poredi
+      // direktno sa kataloškim MPC-om. Ne mijenja se ništa automatski, samo se
+      // operater obavještava ako se razlikuje. Prijedlog ispod nabavne cijene se
+      // ignoriše kao neispravan.
+      if (p.trazena_cijena != null && p.trazena_cijena >= nabavnaCijena) {
+        if (Math.abs(p.trazena_cijena - mpc) >= 0.005) {
+          upozorenjaTrazenaCijena.push(
+            `${p.naziv_proizvoda}: tražena ${p.trazena_cijena.toFixed(2)} KM (MPC: ${mpc.toFixed(2)} KM)`,
+          );
+        }
+      }
+
       noveStavke.push({
         sifra_proizvoda: artikal.sifra_proizvoda,
         naziv_proizvoda: artikal.naziv_proizvoda,
@@ -1438,6 +1462,11 @@ export function GotovinskiRacuni() {
     if (preskoceniProizvodi.length > 0) {
       alert(
         `Preskočeni proizvodi (nema ih u katalogu ili nema stanja):\n${preskoceniProizvodi.join("\n")}`,
+      );
+    }
+    if (upozorenjaTrazenaCijena.length > 0) {
+      alert(
+        `Tražena cijena sa terena se razlikuje od MPC-a:\n${upozorenjaTrazenaCijena.join("\n")}`,
       );
     }
   }, [pendingUvozNarudzbe, odabraniPartner, artikli]);
