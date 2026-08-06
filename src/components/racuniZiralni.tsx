@@ -438,7 +438,7 @@ export function ZiralniRacuni() {
       try {
         const [partneriRes, lokacijeRes] = await Promise.all([
           fetch(`${API_URL}/api/partneri`, { credentials: "include" }),
-          fetch(`${API_URL}/api/partneri/dodatne-lokacije`, {
+          fetch(`${API_URL}/api/partneri/dodatne-lokacije-pregled`, {
             credentials: "include",
           }),
         ]);

@@ -47,6 +47,16 @@ export const getPartneriDodatneLokacije = async (req, res) => {
   }
 };
 
+export const getPartneriDodatneLokacijePregled = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriDodatneLokacijePregled();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled partnera dodatne lokacije (pregled) error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju partnera dodatne lokacije" });
+  }
+};
+
 export const getPartneriZaLokalnuDostavu = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriZaLokalnuDostavu();

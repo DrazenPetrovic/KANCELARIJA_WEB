@@ -7,6 +7,7 @@ router.get("/", PartneriController.getPartneri);
 router.get("/razni", PartneriController.getPartneriRazni);
 router.post("/razni", PartneriController.createPartnerRazni);
 router.get("/dodatne-lokacije", PartneriController.getPartneriDodatneLokacije);
+router.get("/dodatne-lokacije-pregled", PartneriController.getPartneriDodatneLokacijePregled);
 router.get("/lokalna-dostava", PartneriController.getPartneriZaLokalnuDostavu);
 router.get("/komercijalisti", PartneriController.getKomercijalisti);
 router.get("/dogovorene-cijene", PartneriController.getDogovoreneCijene);

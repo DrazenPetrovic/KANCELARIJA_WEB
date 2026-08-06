@@ -16,24 +16,38 @@ export const getPartneriRazni = async () => {
   });
 };
 
-export const dodajPartneraRaznog = async ({ nazivPartnera, pripadaRadniku, sifraGrada }) => {
+export const dodajPartneraRaznog = async ({
+  nazivPartnera,
+  pripadaRadniku,
+  sifraGrada,
+}) => {
   return withConnection(async (connection) => {
-    await connection.execute(
-      "CALL erp.sp_partneri_dodaj_raznog(?, ?, ?)",
-      [nazivPartnera, pripadaRadniku, sifraGrada],
-    );
+    await connection.execute("CALL erp.sp_partneri_dodaj_raznog(?, ?, ?)", [
+      nazivPartnera,
+      pripadaRadniku,
+      sifraGrada,
+    ]);
 
     const [redovi] = await connection.execute(
       "CALL erp.sp_pregled_partnera_razni()",
     );
-    const listaRaznih = Array.isArray(redovi) && redovi.length > 0 ? redovi[0] : [];
+    const listaRaznih =
+      Array.isArray(redovi) && redovi.length > 0 ? redovi[0] : [];
     const noviKupac = listaRaznih.reduce(
       (najveci, p) =>
-        !najveci || Number(p.sifra_partnera) > Number(najveci.sifra_partnera) ? p : najveci,
+        !najveci || Number(p.sifra_partnera) > Number(najveci.sifra_partnera)
+          ? p
+          : najveci,
       null,
     );
 
-    return noviKupac ?? { sifra_partnera: null, naziv_partnera: nazivPartnera, pripada_radniku: pripadaRadniku };
+    return (
+      noviKupac ?? {
+        sifra_partnera: null,
+        naziv_partnera: nazivPartnera,
+        pripada_radniku: pripadaRadniku,
+      }
+    );
   });
 };
 
@@ -41,6 +55,15 @@ export const getPartneriDodatneLokacije = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
       "CALL erp.dostava_lok_partneri_izdvojene_lokacije()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+export const getPartneriDodatneLokacijePregled = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.sp_partneri_dodatne_lokacije_pregled()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
@@ -139,7 +162,9 @@ export const setPartneriGlavno = async (partner) => {
     // znači da procedura nije upisala partnera (npr. duplikat, validacija, greška
     // u proceduri), ali ne baca SQL izuzetak, pa se to mora provjeriti ovdje.
     if (rezultat.status === 0 || rezultat.status === false) {
-      throw new Error(rezultat.poruka || "Procedura nije uspjela da unese partnera");
+      throw new Error(
+        rezultat.poruka || "Procedura nije uspjela da unese partnera",
+      );
     }
 
     try {
@@ -210,9 +235,7 @@ export const getPartneriGradovi = async () => {
 // kontakata/telefona i primarnim telefonom. Vidi erp.sp_partneri_lista_sve.
 export const getPartneriListaSve = async () => {
   return withConnection(async (connection) => {
-    const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_lista_sve()",
-    );
+    const [rows] = await connection.execute("CALL erp.sp_partneri_lista_sve()");
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
