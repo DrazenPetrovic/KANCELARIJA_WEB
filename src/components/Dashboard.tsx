@@ -138,6 +138,29 @@ type MenuSection =
   | "analitika-mjesecni-prihodi"
   | null;
 
+const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
+  "file-opcije": "Opcije",
+  "partneri-unos": "Partneri – unos",
+  "partneri-pregled": "Partneri – pregled",
+  "pregledi-racuna": "Pregledi računa",
+  "pregled-kalkulacija": "Pregled kalkulacija",
+  "ugovorene-cijene": "Ugovorene cijene",
+  "narudzbe-pregled": "Pregled narudžbi",
+  "narudzbe-teren": "Unos narudžbe teren",
+  "narudzbe-lokalno": "Unos narudžbe lokalno",
+  "narudzbe-zavrsene-lokalno": "Završene lokalne narudžbe",
+  "klise-unos": "Unos kliše",
+  "klise-naplata": "Unos naplate klišea",
+  "klise-dobavljac": "Unos podataka od dobavljača",
+  "klise-pregled": "Kliše – pregled",
+  "racuni-gotovinski": "Gotovinski račun",
+  "racuni-virmanski": "Virmanski račun",
+  "racuni-izvjestaj-teren": "Izvještaj teren",
+  "racuni-knjizna-gotovinski": "Knjižna gotovinski",
+  "racuni-knjizna-virmanski": "Knjižna virmanski",
+  "analitika-mjesecni-prihodi": "Mjesečni prihodi",
+};
+
 export function Dashboard({
   username,
   vrstaRadnika,
@@ -220,6 +243,9 @@ export function Dashboard({
   const isArhiva = activeSection?.startsWith("file-arhiva-") ?? false;
   const aktivnaGodina = isArhiva
     ? activeSection!.replace("file-arhiva-", "")
+    : null;
+  const aktivniProzor = activeSection
+    ? (SECTION_LABELS[activeSection] ?? null)
     : null;
 
   useEffect(() => {
@@ -471,6 +497,14 @@ export function Dashboard({
               </div>
             </div>
           </div>
+
+          {aktivniProzor && (
+            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center pointer-events-none px-2">
+              <p className="text-lg lg:text-2xl font-extrabold uppercase tracking-wide text-white text-center whitespace-nowrap">
+                {aktivniProzor}
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex flex-col gap-0.5">
