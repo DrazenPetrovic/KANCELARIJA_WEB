@@ -1838,25 +1838,30 @@ export function ZiralniRacuni() {
           ) / 100
         : 0;
 
+      const obracunavaSePdv = odabranaPodgrupa?.obracunava_se_pdv !== 1;
+
       // Tražena cijena sa terena — prijedlog komercijaliste (erp.sp_dostava_tereni_proizvodi,
-      // kolona trazena_cijena), NIKAD se ne upisuje automatski na račun, samo se
-      // upoređuje sa cijenom koja je stvarno stavljena (dogovorena, ako je aktivna,
-      // inače kataloški VPC) i operater se upozorava ako se razlikuju. Prijedlog
-      // ispod nabavne cijene se ignoriše kao neispravan.
+      // kolona trazena_cijena), NIKAD se ne upisuje automatski na račun. Komercijalisti
+      // je UVIJEK unose sa PDV-om, dok je osnova žiralnog računa (VPC/dogovorena cijena)
+      // bez PDV-a, pa se prije poređenja mora dodati PDV (ako ga podgrupa uopšte
+      // obračunava). Tolerancija od 0.05 KM upija zaokruživanje na 2 decimale —
+      // upozorenje ide samo kad je stvarna razlika veća ili jednaka tome.
       if (p.trazena_cijena != null && p.trazena_cijena >= nabavnaCijena) {
         const referentnaCijena = dogovorenaVpcValidna
           ? (dogovorenaVpcRaw as number)
           : vpcKatalog;
-        if (Math.abs(p.trazena_cijena - referentnaCijena) >= 0.005) {
+        const referentnaCijenaSaPdv = obracunavaSePdv
+          ? Math.round(referentnaCijena * (1 + STOPA_PDV) * 100) / 100
+          : referentnaCijena;
+        if (Math.abs(p.trazena_cijena - referentnaCijenaSaPdv) >= 0.05) {
           upozorenjaTrazenaCijena.push(
             `${p.naziv_proizvoda}: tražena ${p.trazena_cijena.toFixed(2)} KM (${
               dogovorenaVpcValidna ? "dogovorena" : "VPC"
-            }: ${referentnaCijena.toFixed(2)} KM)`,
+            } + PDV: ${referentnaCijenaSaPdv.toFixed(2)} KM)`,
           );
         }
       }
 
-      const obracunavaSePdv = odabranaPodgrupa?.obracunava_se_pdv !== 1;
       const vrednost = Math.round(p.kolicina * vpc1 * 100) / 100;
       const pdv = obracunavaSePdv
         ? Math.round(vrednost * STOPA_PDV * 100) / 100

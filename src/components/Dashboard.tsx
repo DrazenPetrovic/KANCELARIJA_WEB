@@ -15,6 +15,7 @@ import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
+import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -57,6 +58,7 @@ import {
   ShoppingCart,
   Sun,
   Tags,
+  TrendingUp,
   Truck,
   UserPlus,
   Users,
@@ -133,6 +135,7 @@ type MenuSection =
   | "racuni-izvjestaj-teren"
   | "racuni-knjizna-gotovinski"
   | "racuni-knjizna-virmanski"
+  | "analitika-mjesecni-prihodi"
   | null;
 
 export function Dashboard({
@@ -167,13 +170,27 @@ export function Dashboard({
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
-    "file" | "partneri" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
+    | "file"
+    | "partneri"
+    | "pregledi"
+    | "narudzbe"
+    | "proizvodnja"
+    | "racuni"
+    | "analitika"
+    | null
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
-    "file" | "partneri" | "pregledi" | "narudzbe" | "proizvodnja" | "racuni" | null
+    | "file"
+    | "partneri"
+    | "pregledi"
+    | "narudzbe"
+    | "proizvodnja"
+    | "racuni"
+    | "analitika"
+    | null
   >(null);
 
   const pinUnesenRef = useRef<Record<EsirUredjaj, boolean>>({
@@ -187,12 +204,14 @@ export function Dashboard({
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
   const proizvodnjaBtnRef = useRef<HTMLButtonElement>(null);
   const racuniBtnRef = useRef<HTMLButtonElement>(null);
+  const analitikaBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
   const partneriDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
   const proizvodnjaDrop = useRef<HTMLDivElement>(null);
   const racuniDropRef = useRef<HTMLDivElement>(null);
+  const analitikaDropRef = useRef<HTMLDivElement>(null);
 
   const isAdministrator = vrstaRadnika === 1;
   const isStandardUser = vrstaRadnika === 3;
@@ -222,13 +241,17 @@ export function Dashboard({
         proizvodnjaDrop.current?.contains(t);
       const inRacuni =
         racuniBtnRef.current?.contains(t) || racuniDropRef.current?.contains(t);
+      const inAnalitika =
+        analitikaBtnRef.current?.contains(t) ||
+        analitikaDropRef.current?.contains(t);
       if (
         !inFile &&
         !inPartneri &&
         !inPregledi &&
         !inNarudzbe &&
         !inProizvodnja &&
-        !inRacuni
+        !inRacuni &&
+        !inAnalitika
       )
         setOpenMenu(null);
     };
@@ -346,7 +369,8 @@ export function Dashboard({
       | "pregledi"
       | "narudzbe"
       | "proizvodnja"
-      | "racuni",
+      | "racuni"
+      | "analitika",
   ) => {
     const ref =
       menu === "file"
@@ -359,7 +383,9 @@ export function Dashboard({
               ? narudzbeBtnRef
               : menu === "racuni"
                 ? racuniBtnRef
-                : proizvodnjaBtnRef;
+                : menu === "analitika"
+                  ? analitikaBtnRef
+                  : proizvodnjaBtnRef;
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 6, left: r.left });
@@ -383,7 +409,8 @@ export function Dashboard({
       | "pregledi"
       | "narudzbe"
       | "proizvodnja"
-      | "racuni",
+      | "racuni"
+      | "analitika",
     isActive: boolean,
   ): React.CSSProperties => ({
     background: isActive || hoveredBtn === menu ? ACCENT : PRIMARY,
@@ -1511,6 +1538,95 @@ export function Dashboard({
                     document.body,
                   )}
               </div>
+
+              {/* ANALITIKA */}
+              <div>
+                <button
+                  ref={analitikaBtnRef}
+                  onClick={() => toggleMenu("analitika")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "analitika",
+                    !!(
+                      openMenu === "analitika" ||
+                      activeSection?.startsWith("analitika-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("analitika")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <TrendingUp size={13} style={{ color: "#111" }} />
+                  </span>
+                  Analitika
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "analitika" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "analitika" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={analitikaDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-56 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <TrendingUp size={12} />
+                        Analitika
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() =>
+                            handleSectionChange("analitika-mjesecni-prihodi")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "analitika-mjesecni-prihodi",
+                          )}
+                          style={
+                            activeSection === "analitika-mjesecni-prihodi"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "analitika-mjesecni-prihodi" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "analitika-mjesecni-prihodi"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Calendar
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection ===
+                                  "analitika-mjesecni-prihodi"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Mjesečni prihodi
+                        </button>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
             </>
           )}
         </div>
@@ -1692,6 +1808,10 @@ export function Dashboard({
           )}
 
           {activeSection === "racuni-knjizna-virmanski" && <KnjiznaVirmanski />}
+
+          {activeSection === "analitika-mjesecni-prihodi" && (
+            <MjesecniPrihodi />
+          )}
         </main>
       </BazaContext.Provider>
 

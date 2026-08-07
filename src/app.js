@@ -18,6 +18,7 @@ import gradoviRoutes from "./routes/gradovi.routes.js";
 import radniciRoutes from "./routes/radnici.routes.js";
 import nivelacijeRoutes from "./routes/nivelacije.routes.js";
 import racuniRoutes from "./routes/racuni.routes.js";
+import mjesecniPrihodiRoutes from "./routes/mjesecniPrihodi.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +51,7 @@ export const createApp = () => {
   app.use("/api/radnici", radniciRoutes);
   app.use("/api/nivelacije", nivelacijeRoutes);
   app.use("/api/racuni", racuniRoutes);
+  app.use("/api/mjesecni-prihodi", mjesecniPrihodiRoutes);
 
   // Serviranje frontenda u produkciji
   if (env.NODE_ENV === "production") {
