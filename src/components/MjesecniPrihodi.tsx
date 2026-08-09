@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
   Calendar,
@@ -45,7 +45,12 @@ interface CelijaVrijednosti {
 const praznaCelija: CelijaVrijednosti = { ukupno: 0, pdv: 0, rabat: 0, vpc: 0 };
 
 const formatIznos = (v: number | null | undefined) =>
-  `${Number(v ?? 0).toFixed(2)} KM`;
+  `${Number(v ?? 0)
+    .toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+    .replace(/,/g, " ")} KM`;
 
 const jeStorno = (v: number) => Number(v) === 1;
 
@@ -78,6 +83,15 @@ const prviDanMjeseca = () => {
 };
 
 const danas = () => new Date().toISOString().slice(0, 10);
+
+// dd.MM.yyyy — za prikaz u poljima Datum od / Datum do.
+const formatDatumDMY = (v: string | undefined | null): string | null => {
+  if (!v) return null;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}.`;
+};
 
 // Vizuelni identitet grupe po nazivu načina plaćanja — vrijednosti dolaze iz
 // baze pa se prepoznaju po ključnoj riječi, ne po tačnom stringu.
@@ -178,6 +192,18 @@ export function MjesecniPrihodi() {
   const [redovi, setRedovi] = useState<PrihodRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
+  const datumOdRef = useRef<HTMLInputElement>(null);
+  const datumDoRef = useRef<HTMLInputElement>(null);
+
+  const otvoriPicker = (ref: React.RefObject<HTMLInputElement>) => {
+    const input = ref.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+    }
+  };
 
   const ucitaj = () => {
     if (!datumOd || !datumDo) return;
@@ -278,23 +304,43 @@ export function MjesecniPrihodi() {
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
               Datum od
             </span>
-            <input
-              type="date"
-              value={datumOd}
-              onChange={(e) => setDatumOd(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6]"
-            />
+            <div
+              className="relative cursor-pointer"
+              onClick={() => otvoriPicker(datumOdRef)}
+            >
+              <input
+                ref={datumOdRef}
+                type="date"
+                value={datumOd}
+                onChange={(e) => setDatumOd(e.target.value)}
+                style={{ color: "transparent" }}
+                className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] cursor-pointer"
+              />
+              <div className="absolute inset-0 flex items-center px-3 text-sm text-gray-800 dark:text-[#ede9f6] pointer-events-none">
+                {formatDatumDMY(datumOd) ?? "Izaberite datum"}
+              </div>
+            </div>
           </div>
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
               Datum do
             </span>
-            <input
-              type="date"
-              value={datumDo}
-              onChange={(e) => setDatumDo(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6]"
-            />
+            <div
+              className="relative cursor-pointer"
+              onClick={() => otvoriPicker(datumDoRef)}
+            >
+              <input
+                ref={datumDoRef}
+                type="date"
+                value={datumDo}
+                onChange={(e) => setDatumDo(e.target.value)}
+                style={{ color: "transparent" }}
+                className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] cursor-pointer"
+              />
+              <div className="absolute inset-0 flex items-center px-3 text-sm text-gray-800 dark:text-[#ede9f6] pointer-events-none">
+                {formatDatumDMY(datumDo) ?? "Izaberite datum"}
+              </div>
+            </div>
           </div>
           <button
             type="button"

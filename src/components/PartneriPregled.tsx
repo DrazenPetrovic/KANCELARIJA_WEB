@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -168,6 +168,19 @@ const STATUS_OPTIONS = [
   { value: "neaktivni", label: "Neaktivni" },
 ];
 
+// "Windowing" tabele partnera — kod velike baze partnera renderovanje SVIH
+// <tr> odjednom usporava DOM i React reconciliation. Isti pristup kao u
+// pregledu računa (racuniPregled.tsx): prati se scroll pozicija scroll-
+// kontejnera i u DOM-u se drži samo vidljivi opseg redova (+ overscan), a
+// razlika u visini se nadoknađuje sa dva "spacer" <tr> (prije/poslije), da
+// scrollbar ostane tačne veličine. Podaci se i dalje učitavaju svi odjednom
+// (/api/partneri/lista-sve) — virtualizuje se samo renderovanje, bez
+// potrebe za brojanjem zapisa na serveru unaprijed.
+const ROW_HEIGHT_PX = 56;
+const OVERSCAN_REDOVA = 15;
+const PRAG_VIRTUALIZACIJE = 150;
+const BROJ_KOLONA = 8;
+
 export function PartneriPregled() {
   const [data, setData] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,6 +292,44 @@ export function PartneriPregled() {
     });
   }, [data, pretraga, tipFilter, statusFilter]);
 
+  const jeVirtualizovano = filtrirani.length > PRAG_VIRTUALIZACIJE;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [visinaKontejnera, setVisinaKontejnera] = useState(600);
+
+  useEffect(() => {
+    if (!jeVirtualizovano) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    setVisinaKontejnera(el.clientHeight);
+    setScrollTop(el.scrollTop);
+    const naScroll = () => setScrollTop(el.scrollTop);
+    const naResize = () => setVisinaKontejnera(el.clientHeight);
+    el.addEventListener("scroll", naScroll, { passive: true });
+    window.addEventListener("resize", naResize);
+    return () => {
+      el.removeEventListener("scroll", naScroll);
+      window.removeEventListener("resize", naResize);
+    };
+  }, [jeVirtualizovano]);
+
+  let startIndex = 0;
+  let endIndex = filtrirani.length;
+  if (jeVirtualizovano) {
+    const prviVidljivi = Math.floor(scrollTop / ROW_HEIGHT_PX);
+    const brojVidljivih = Math.ceil(visinaKontejnera / ROW_HEIGHT_PX);
+    startIndex = Math.max(0, prviVidljivi - OVERSCAN_REDOVA);
+    endIndex = Math.min(
+      filtrirani.length,
+      prviVidljivi + brojVidljivih + OVERSCAN_REDOVA,
+    );
+  }
+  const vidljiviPartneri = jeVirtualizovano
+    ? filtrirani.slice(startIndex, endIndex)
+    : filtrirani;
+  const visinaPrijeRedova = startIndex * ROW_HEIGHT_PX;
+  const visinaPoslijeRedova = (filtrirani.length - endIndex) * ROW_HEIGHT_PX;
+
   return (
     <div className="space-y-4">
       {/* Naslov */}
@@ -367,10 +418,18 @@ export function PartneriPregled() {
         )}
 
         {!loading && !error && filtrirani.length > 0 && (
-          <div className="overflow-x-auto">
+          <div
+            ref={jeVirtualizovano ? scrollRef : undefined}
+            className="overflow-x-auto"
+            style={
+              jeVirtualizovano
+                ? { maxHeight: "70vh", overflowY: "auto" }
+                : undefined
+            }
+          >
             <table className="w-full">
               <thead>
-                <tr>
+                <tr className={jeVirtualizovano ? "sticky top-0 z-10" : undefined}>
                   <TH>Šifra</TH>
                   <TH>Naziv</TH>
                   <TH>JIB / PIB</TH>
@@ -382,7 +441,15 @@ export function PartneriPregled() {
                 </tr>
               </thead>
               <tbody>
-                {filtrirani.map((p) => (
+                {jeVirtualizovano && visinaPrijeRedova > 0 && (
+                  <tr aria-hidden="true">
+                    <td
+                      colSpan={BROJ_KOLONA}
+                      style={{ height: visinaPrijeRedova, padding: 0, border: "none" }}
+                    />
+                  </tr>
+                )}
+                {vidljiviPartneri.map((p) => (
                   <tr
                     key={p.partner_id}
                     onClick={() => otvoriPartnera(p)}
@@ -469,6 +536,14 @@ export function PartneriPregled() {
                     </TD>
                   </tr>
                 ))}
+                {jeVirtualizovano && visinaPoslijeRedova > 0 && (
+                  <tr aria-hidden="true">
+                    <td
+                      colSpan={BROJ_KOLONA}
+                      style={{ height: visinaPoslijeRedova, padding: 0, border: "none" }}
+                    />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

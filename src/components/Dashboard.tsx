@@ -16,6 +16,7 @@ import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
+import { Kif } from "./Kif";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -136,6 +137,7 @@ type MenuSection =
   | "racuni-knjizna-gotovinski"
   | "racuni-knjizna-virmanski"
   | "analitika-mjesecni-prihodi"
+  | "analitika-kif"
   | null;
 
 const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
@@ -159,6 +161,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "racuni-knjizna-gotovinski": "Knjižna gotovinski",
   "racuni-knjizna-virmanski": "Knjižna virmanski",
   "analitika-mjesecni-prihodi": "Mjesečni prihodi",
+  "analitika-kif": "KIF",
 };
 
 export function Dashboard({
@@ -500,7 +503,7 @@ export function Dashboard({
 
           {aktivniProzor && (
             <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center pointer-events-none px-2">
-              <p className="text-lg lg:text-2xl font-extrabold uppercase tracking-wide text-white text-center whitespace-nowrap">
+              <p className="text-[30px] font-extrabold uppercase tracking-wide text-white text-center whitespace-nowrap">
                 {aktivniProzor}
               </p>
             </div>
@@ -1656,6 +1659,38 @@ export function Dashboard({
                           </span>
                           Mjesečni prihodi
                         </button>
+
+                        <button
+                          onClick={() => handleSectionChange("analitika-kif")}
+                          className={dropdownItemClass(
+                            activeSection === "analitika-kif",
+                          )}
+                          style={
+                            activeSection === "analitika-kif"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "analitika-kif" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "analitika-kif"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <BookMarked
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "analitika-kif"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          KIF
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -1846,6 +1881,8 @@ export function Dashboard({
           {activeSection === "analitika-mjesecni-prihodi" && (
             <MjesecniPrihodi />
           )}
+
+          {activeSection === "analitika-kif" && <Kif />}
         </main>
       </BazaContext.Provider>
 
