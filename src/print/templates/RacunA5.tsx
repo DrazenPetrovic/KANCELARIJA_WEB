@@ -237,10 +237,11 @@ export function RacunA5({ racun, stavke }: Props) {
                 colSpan={5}
                 style={{
                   ...cell,
-                  fontWeight: 700,
-                  fontSize: 10,
+                  background: `${ACCENT}1a`,
+                  fontWeight: 800,
+                  fontSize: 12,
                   textAlign: "right",
-                  color: "#333",
+                  color: PRIMARY,
                 }}
               >
                 UKUPNO:
@@ -248,8 +249,9 @@ export function RacunA5({ racun, stavke }: Props) {
               <td
                 style={{
                   ...cell,
+                  background: `${ACCENT}1a`,
                   fontWeight: 800,
-                  fontSize: 12,
+                  fontSize: 14,
                   textAlign: "right",
                   color: ACCENT,
                 }}
