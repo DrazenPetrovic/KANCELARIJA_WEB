@@ -504,7 +504,7 @@ export function RacunA4({ racun, stavke }: Props) {
           </div>
         </div>
 
-        {/* ── Potpisi: Fakturisao (lijevo) / M.P. (sredina) / Robu preuzeo (desno) ── */}
+        {/* ── Potpisi: Fakturisao (lijevo) / Racun primio + M.P. (desno) ── */}
         <div
           style={{
             display: "flex",
@@ -528,17 +528,6 @@ export function RacunA4({ racun, stavke }: Props) {
             <div style={{ borderTop: "1px solid #333" }} />
           </div>
 
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#444",
-              paddingBottom: 1,
-            }}
-          >
-            M.P.
-          </div>
-
           <div style={{ width: "35%" }}>
             <div
               style={{
@@ -549,9 +538,20 @@ export function RacunA4({ racun, stavke }: Props) {
                 marginBottom: 28,
               }}
             >
-              Robu preuzeo
+              Racun primio
             </div>
             <div style={{ borderTop: "1px solid #333" }} />
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#444",
+                marginTop: 6,
+              }}
+            >
+              M.P.
+            </div>
           </div>
         </div>
       </div>
