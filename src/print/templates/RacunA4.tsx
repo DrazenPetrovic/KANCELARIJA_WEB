@@ -495,7 +495,7 @@ export function RacunA4({ racun, stavke }: Props) {
                   { label: "Rabat 1", value: rRab1 },
                   { label: "Rabat 2", value: rRab2 },
                   { label: "Osnova", value: rOsnova },
-                  { label: "PDV (stopa 17%)", value: rPdv },
+                  { label: "PDV (17%)", value: rPdv },
                 ].map(({ label, value }) => (
                   <tr key={label}>
                     <td style={{ padding: "2px 0", color: "#666" }}>{label}</td>
