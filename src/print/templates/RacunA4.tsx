@@ -159,13 +159,13 @@ export function RacunA4({ racun, stavke }: Props) {
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             gap: 24,
             marginBottom: 10,
           }}
         >
           {/* Lijevo — partner (+ poslovna jedinica) */}
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: "0 1 auto", maxWidth: "60%" }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: PRIMARY }}>
               {racun.naziv_partnera}
             </div>
@@ -218,7 +218,16 @@ export function RacunA4({ racun, stavke }: Props) {
           </div>
 
           {/* Desno — datumi */}
-          <div style={{ flex: 1, fontSize: 11, color: "#444" }}>
+          <div
+            style={{
+              flex: "0 0 auto",
+              fontSize: 11,
+              color: "#444",
+              border: "1px solid #999",
+              borderRadius: 4,
+              padding: "6px 10px",
+            }}
+          >
             <div style={{ marginBottom: 3 }}>
               <span style={{ fontWeight: 700, color: PRIMARY }}>
                 Datum izdavanja:{" "}
@@ -244,6 +253,53 @@ export function RacunA4({ racun, stavke }: Props) {
               {formatDatum(racun.datum_isporuke)}
             </div>
           </div>
+
+          {/* Krajnje desno — fiskalni podaci (Br. fiskalnog + QR) */}
+          {racun.br_fiskalnog !== undefined &&
+            racun.br_fiskalnog !== null &&
+            racun.br_fiskalnog !== "" && (
+              <div style={{ marginLeft: "auto", flex: "0 0 auto" }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: PRIMARY,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    textAlign: "center",
+                    marginBottom: 3,
+                  }}
+                >
+                  Fiskalni račun
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    fontSize: 11,
+                    color: "#444",
+                    border: "1px solid #999",
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                  }}
+                >
+                  {racun.verifikacioni_qr && (
+                    <img
+                      src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                      alt="QR kod za verifikaciju"
+                      style={{ width: 60, height: 60, flexShrink: 0 }}
+                    />
+                  )}
+                  <div style={{ fontSize: 10, color: "#444" }}>
+                    <span style={{ fontWeight: 700, color: PRIMARY }}>
+                      Br. fiskalnog računa:{" "}
+                    </span>
+                    {racun.br_fiskalnog}
+                  </div>
+                </div>
+              </div>
+            )}
         </div>
 
         <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 10 }} />
@@ -436,26 +492,6 @@ export function RacunA4({ racun, stavke }: Props) {
                 </span>
               </div>
             )}
-
-            {racun.br_fiskalnog !== undefined &&
-              racun.br_fiskalnog !== null &&
-              racun.br_fiskalnog !== "" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {racun.verifikacioni_qr && (
-                    <img
-                      src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
-                      alt="QR kod za verifikaciju"
-                      style={{ width: 60, height: 60, flexShrink: 0 }}
-                    />
-                  )}
-                  <div style={{ fontSize: 10, color: "#444" }}>
-                    <span style={{ fontWeight: 700, color: PRIMARY }}>
-                      Br. fiskalnog računa:{" "}
-                    </span>
-                    {racun.br_fiskalnog}
-                  </div>
-                </div>
-              )}
           </div>
 
           <div style={{ width: "62mm", flexShrink: 0 }}>
@@ -465,7 +501,6 @@ export function RacunA4({ racun, stavke }: Props) {
                   { label: "Vrijednost", value: rVrednost },
                   { label: "Rabat 1", value: rRab1 },
                   { label: "Rabat 2", value: rRab2 },
-                  { label: "Rabat 3", value: rRab3 },
                   { label: "Osnova", value: rOsnova },
                   { label: "PDV", value: rPdv },
                 ].map(({ label, value }) => (
@@ -504,45 +539,60 @@ export function RacunA4({ racun, stavke }: Props) {
           </div>
         </div>
 
-        {/* ── Potpisi: Fakturisao (lijevo) / Racun primio + M.P. (desno) ── */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            marginTop: 40,
-          }}
-        >
-          <div style={{ width: "35%" }}>
+        {/* ── Potpisi: red 1 - naslovi, red 2 - linije, red 3 - M.P. na sredini ── */}
+        <div style={{ marginTop: 40 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
             <div
               style={{
+                width: "35%",
                 textAlign: "center",
                 fontSize: 11,
                 fontWeight: 700,
                 color: PRIMARY,
-                marginBottom: 28,
               }}
             >
               Fakturisao
             </div>
-            <div style={{ borderTop: "1px solid #333" }} />
-          </div>
-
-          <div style={{ width: "35%" }}>
             <div
               style={{
+                width: "35%",
                 textAlign: "center",
                 fontSize: 11,
                 fontWeight: 700,
                 color: PRIMARY,
-                marginBottom: 28,
               }}
             >
               Racun primio
             </div>
-            <div style={{ borderTop: "1px solid #333" }} />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: 28,
+            }}
+          >
+            <div style={{ width: "35%", borderTop: "1px solid #333" }} />
+            <div style={{ width: "35%", borderTop: "1px solid #333" }} />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
             <div
               style={{
+                width: "35%",
+                textAlign: "center",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#444",
+                marginTop: 6,
+              }}
+            >
+              M.P.
+            </div>
+            <div
+              style={{
+                width: "35%",
                 textAlign: "center",
                 fontSize: 12,
                 fontWeight: 700,

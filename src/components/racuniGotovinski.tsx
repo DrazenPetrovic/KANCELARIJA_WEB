@@ -1390,10 +1390,20 @@ export function GotovinskiRacuni() {
 
     if (jeRazniKupac) {
       if (odabraniPartner?.sifra_partnera !== 300) return;
+      // pripada_radniku se MORA uzeti iz stvarne liste "raznih" partnera
+      // (partneriRazni) — hardkodovana 0 ovdje bi na čuvanju računa pala na
+      // fallback (trenutno ulogovani operater) umjesto stvarnog komercijaliste
+      // zaduženog za ovog raznog kupca. Lista se učitava asinhrono tek kad
+      // odabraniPartner postane 300 (vidi efekat iznad), pa se ovdje mora
+      // sačekati da završi (inače bi prvi uvoz u sesiji zatekao praznu listu).
+      if (loadingPartneriRazni) return;
+      const razniPartner = partneriRazni.find(
+        (p) => p.sifra_partnera === k.sifra_kupca,
+      );
       setOdabraniRazni({
         sifra_partnera: k.sifra_kupca,
         naziv_partnera: k.naziv_kupca,
-        pripada_radniku: 0,
+        pripada_radniku: razniPartner?.pripada_radniku ?? 0,
       });
     } else if (odabraniPartner?.sifra_partnera !== k.sifra_kupca) {
       return;
@@ -1469,7 +1479,13 @@ export function GotovinskiRacuni() {
         `Tražena cijena sa terena se razlikuje od MPC-a:\n${upozorenjaTrazenaCijena.join("\n")}`,
       );
     }
-  }, [pendingUvozNarudzbe, odabraniPartner, artikli]);
+  }, [
+    pendingUvozNarudzbe,
+    odabraniPartner,
+    artikli,
+    partneriRazni,
+    loadingPartneriRazni,
+  ]);
 
   // Šalje { header, items } proceduri erp.sp_racuni_unos preko POST /api/racuni/unos.
   // Procedura vraća kod=0 uz sifra_tabele/broj_racuna pri uspjehu, ili kod!=0 uz poruku
