@@ -338,13 +338,12 @@ export function RacunA4({ racun, stavke }: Props) {
             <thead>
               <tr style={{ background: PRIMARY }}>
                 {[
-                  { label: "Artikal", right: false, w: "22%" },
+                  { label: "Artikal", right: false, w: "31%" },
                   { label: "JM", right: false, w: "5%" },
                   { label: "Kol.", right: true, w: "7%" },
                   { label: "VPC", right: true, w: "8%" },
                   { label: "VPC 1 / Rab.1", right: true, w: "9%" },
                   { label: "VPC 2 / Rab.2", right: true, w: "9%" },
-                  { label: "VPC 3 / Rab.3", right: true, w: "9%" },
                   { label: "Osnova", right: true, w: "9%" },
                   { label: "Vrijednost", right: true, w: "9%" },
                   { label: "PDV", right: true, w: "7%" },
@@ -397,12 +396,6 @@ export function RacunA4({ racun, stavke }: Props) {
                     {broj(s.vpc2)}
                     <div style={{ fontSize: 9, color: "#888" }}>
                       {broj(s.rab2)}%
-                    </div>
-                  </td>
-                  <td style={{ ...cell, textAlign: "right" }}>
-                    {broj(s.vpc3)}
-                    <div style={{ fontSize: 9, color: "#888" }}>
-                      {broj(s.rab3)}%
                     </div>
                   </td>
                   <td
@@ -502,7 +495,7 @@ export function RacunA4({ racun, stavke }: Props) {
                   { label: "Rabat 1", value: rRab1 },
                   { label: "Rabat 2", value: rRab2 },
                   { label: "Osnova", value: rOsnova },
-                  { label: "PDV", value: rPdv },
+                  { label: "PDV (stopa 17%)", value: rPdv },
                 ].map(({ label, value }) => (
                   <tr key={label}>
                     <td style={{ padding: "2px 0", color: "#666" }}>{label}</td>
