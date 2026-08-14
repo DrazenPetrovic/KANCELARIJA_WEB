@@ -2083,11 +2083,16 @@ export function ZiralniRacuni() {
                     {odabraniPartner.pib && ` · PIB: ${odabraniPartner.pib}`}
                   </div>
                   {odabranaPoslovnaJedinica && (
-                    <div className="text-[10px] text-white/90 flex items-center gap-1 mt-0.5 truncate font-semibold">
-                      <span className="px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold flex-shrink-0">
+                    <div className="flex items-center gap-1 mt-0.5 truncate">
+                      <span className="px-1 py-0.5 rounded-full bg-white/20 text-[9px] font-bold text-white/90 flex-shrink-0">
                         PJ
                       </span>
-                      {odabranaPoslovnaJedinica.naziv_lokacije ?? "-"}
+                      <span
+                        className="px-1.5 py-0.5 rounded-full bg-white text-xs font-bold truncate"
+                        style={{ color: PRIMARY }}
+                      >
+                        {odabranaPoslovnaJedinica.naziv_lokacije ?? "-"}
+                      </span>
                       {(odabraniPartner.dodatne_lokacije?.length ?? 0) > 1 && (
                         <button
                           onClick={() => setPokazuiModalPoslovnaJedinica(true)}
