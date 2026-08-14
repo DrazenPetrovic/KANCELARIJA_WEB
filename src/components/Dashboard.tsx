@@ -17,6 +17,7 @@ import { PartneriPregled } from "./PartneriPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
+import { IzvodiPregled } from "./IzvodiPregled";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -63,6 +64,7 @@ import {
   Truck,
   UserPlus,
   Users,
+  Wallet,
 } from "lucide-react";
 
 const PRIMARY = "#785E9E";
@@ -127,6 +129,7 @@ type MenuSection =
   | "narudzbe-teren"
   | "narudzbe-lokalno"
   | "narudzbe-zavrsene-lokalno"
+  | "finansije-izvodi-pregled"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -151,6 +154,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "narudzbe-teren": "Unos narudžbe teren",
   "narudzbe-lokalno": "Unos narudžbe lokalno",
   "narudzbe-zavrsene-lokalno": "Završene lokalne narudžbe",
+  "finansije-izvodi-pregled": "Pregled izvoda",
   "klise-unos": "Unos kliše",
   "klise-naplata": "Unos naplate klišea",
   "klise-dobavljac": "Unos podataka od dobavljača",
@@ -200,6 +204,7 @@ export function Dashboard({
     | "partneri"
     | "pregledi"
     | "narudzbe"
+    | "finansije"
     | "proizvodnja"
     | "racuni"
     | "analitika"
@@ -207,12 +212,14 @@ export function Dashboard({
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
+  const [izvodiExpanded, setIzvodiExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
     | "file"
     | "partneri"
     | "pregledi"
     | "narudzbe"
+    | "finansije"
     | "proizvodnja"
     | "racuni"
     | "analitika"
@@ -228,6 +235,7 @@ export function Dashboard({
   const partneriBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
+  const finansijeBtnRef = useRef<HTMLButtonElement>(null);
   const proizvodnjaBtnRef = useRef<HTMLButtonElement>(null);
   const racuniBtnRef = useRef<HTMLButtonElement>(null);
   const analitikaBtnRef = useRef<HTMLButtonElement>(null);
@@ -235,6 +243,7 @@ export function Dashboard({
   const partneriDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
+  const finansijeDropRef = useRef<HTMLDivElement>(null);
   const proizvodnjaDrop = useRef<HTMLDivElement>(null);
   const racuniDropRef = useRef<HTMLDivElement>(null);
   const analitikaDropRef = useRef<HTMLDivElement>(null);
@@ -265,6 +274,9 @@ export function Dashboard({
       const inNarudzbe =
         narudzbeBtnRef.current?.contains(t) ||
         narudzbeDropRef.current?.contains(t);
+      const inFinansije =
+        finansijeBtnRef.current?.contains(t) ||
+        finansijeDropRef.current?.contains(t);
       const inProizvodnja =
         proizvodnjaBtnRef.current?.contains(t) ||
         proizvodnjaDrop.current?.contains(t);
@@ -278,6 +290,7 @@ export function Dashboard({
         !inPartneri &&
         !inPregledi &&
         !inNarudzbe &&
+        !inFinansije &&
         !inProizvodnja &&
         !inRacuni &&
         !inAnalitika
@@ -397,6 +410,7 @@ export function Dashboard({
       | "partneri"
       | "pregledi"
       | "narudzbe"
+      | "finansije"
       | "proizvodnja"
       | "racuni"
       | "analitika",
@@ -410,11 +424,13 @@ export function Dashboard({
             ? preglediBtnRef
             : menu === "narudzbe"
               ? narudzbeBtnRef
-              : menu === "racuni"
-                ? racuniBtnRef
-                : menu === "analitika"
-                  ? analitikaBtnRef
-                  : proizvodnjaBtnRef;
+              : menu === "finansije"
+                ? finansijeBtnRef
+                : menu === "racuni"
+                  ? racuniBtnRef
+                  : menu === "analitika"
+                    ? analitikaBtnRef
+                    : proizvodnjaBtnRef;
     if (ref.current) {
       const r = ref.current.getBoundingClientRect();
       setDropPos({ top: r.bottom + 6, left: r.left });
@@ -422,6 +438,7 @@ export function Dashboard({
     setOpenMenu((prev) => (prev === menu ? null : menu));
     if (menu !== "file") setArchiveExpanded(false);
     if (menu !== "proizvodnja") setKliseExpanded(false);
+    if (menu !== "finansije") setIzvodiExpanded(false);
   };
 
   const handleSectionChange = (section: MenuSection) => {
@@ -429,6 +446,7 @@ export function Dashboard({
     setOpenMenu(null);
     setArchiveExpanded(false);
     setKliseExpanded(false);
+    setIzvodiExpanded(false);
   };
 
   const navBtnStyle = (
@@ -437,6 +455,7 @@ export function Dashboard({
       | "partneri"
       | "pregledi"
       | "narudzbe"
+      | "finansije"
       | "proizvodnja"
       | "racuni"
       | "analitika",
@@ -1223,6 +1242,112 @@ export function Dashboard({
                     document.body,
                   )}
               </div>
+              {/* FINANSIJE */}
+              <div>
+                <button
+                  ref={finansijeBtnRef}
+                  onClick={() => toggleMenu("finansije")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "finansije",
+                    !!(
+                      openMenu === "finansije" ||
+                      activeSection?.startsWith("finansije-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("finansije")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <Wallet size={13} style={{ color: "#111" }} />
+                  </span>
+                  Finansije
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "finansije" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "finansije" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={finansijeDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <Wallet size={12} />
+                        Finansije
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        {/* Izvodi toggle */}
+                        <button
+                          onClick={() => setIzvodiExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <BookOpen size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Izvodi
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${izvodiExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {izvodiExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            <button
+                              onClick={() =>
+                                handleSectionChange("finansije-izvodi-pregled")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "finansije-izvodi-pregled"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "finansije-izvodi-pregled"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Eye
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "finansije-izvodi-pregled"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Pregled izvoda
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
               {/* RAČUNI */}
               <div>
                 <button
@@ -1844,6 +1969,8 @@ export function Dashboard({
           {activeSection === "narudzbe-teren" && <NarudzbeUnosTeren />}
 
           {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
+
+          {activeSection === "finansije-izvodi-pregled" && <IzvodiPregled />}
 
           {activeSection === "narudzbe-zavrsene-lokalno" && (
             <NarudzbeZavrseneLokalno />

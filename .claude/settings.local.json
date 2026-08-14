@@ -32,7 +32,9 @@
       "Bash(git check-ignore *)",
       "Bash(git checkout *)",
       "Bash(node _check_gl_pregled.mjs)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(node --check \"d:\\\\WEB_KOMERCIJALA\\\\KANCELARIJA_WEB\\\\src\\\\services\\\\izvodi.service.js\")",
+      "Bash(echo \"TSC EXIT:$?\")"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"

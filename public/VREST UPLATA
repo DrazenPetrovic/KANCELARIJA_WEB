@@ -1,0 +1,13 @@
+0 Dugovanja kupcu 
+1 uplate kupaca 
+2 uplata dobavljacima(kalk) 
+3 uplata (KUF) 
+4 Dugovanja (dobavljacu) 
+5 davanje pozajmice
+6 vraćanje date pozajmice 
+7 primanje pozajmice 
+8 vraćanje primljene pozajmice 
+9 povrat pretplate (povrat dobavljacu pogresne uplate) 
+10 prijem pretplate (kupac vraća pogrešnu uplatu) 
+11 prijme pretplate dobavljaca (primijem pretplate od dobavljaca) 
+12 povrat pretplate kupcu (povrat kupcu pogresne uplate)'
