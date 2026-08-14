@@ -31,7 +31,8 @@
       "Bash(command -v chromium-cli)",
       "Bash(git check-ignore *)",
       "Bash(git checkout *)",
-      "Bash(node _check_gl_pregled.mjs)"
+      "Bash(node _check_gl_pregled.mjs)",
+      "Bash(echo \"EXIT:$?\")"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"

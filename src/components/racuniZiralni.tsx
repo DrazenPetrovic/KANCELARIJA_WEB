@@ -385,6 +385,12 @@ export function ZiralniRacuni() {
     useState<NarudzbaZavrsenaKupac | null>(null);
   const [pendingUvozNarudzbe, setPendingUvozNarudzbe] =
     useState<NarudzbaZavrsenaKupac | null>(null);
+  // Napomena(e) koje je komercijalista upisao na terenu za uvezenu narudžbu —
+  // prikazuje se operateru u modalu izbora poslovne jedinice jer taj tekst nije
+  // uvijek pouzdan (slobodan unos), pa operater sam bira tačnu poslovnu jedinicu.
+  const [napomenaUvezeneNarudzbe, setNapomenaUvezeneNarudzbe] = useState<
+    string | null
+  >(null);
   // Šifre tabele (tmp_pregled_narucenig_proizvoda) uvezenog kupca — spremne da se
   // kasnije pošalju proceduri koja ažurira polje "stampano" nakon čuvanja računa.
   const [sifreTabeleZaStampano, setSifreTabeleZaStampano] = useState<
@@ -753,10 +759,30 @@ export function ZiralniRacuni() {
   // primeniPodgrupuPremaDrzavi. Ako stavke već postoje, podgrupa se ne dira
   // (promjena bi obrisala unos — operater to radi ručno preko padajućeg menija,
   // koji traži potvrdu).
-  const primeniOdabirPartnera = (p: Partner) => {
+  // opcije.forsirajIzborLokacije — kad se partner postavlja kroz uvoz narudžbe,
+  // podatak o lokaciji sa terena postoji samo kao slobodan tekst u napomeni
+  // komercijaliste (nepouzdan), pa se auto-izbor preskače i operater UVIJEK
+  // eksplicitno bira poslovnu jedinicu čim partner ima bar jednu (kad nema
+  // nijednu, nema šta ni birati, pa se modal ne otvara).
+  const primeniOdabirPartnera = (
+    p: Partner,
+    opcije?: { forsirajIzborLokacije?: boolean },
+  ) => {
     setOdabraniPartner(p);
+    if (!opcije?.forsirajIzborLokacije) {
+      // Ručan izbor partnera (pretraga) — eventualna napomena od prethodno
+      // uvezene narudžbe više nije relevantna za ovog partnera.
+      setNapomenaUvezeneNarudzbe(null);
+    }
     const lokacije = p.dodatne_lokacije ?? [];
-    if (lokacije.length === 1) {
+    if (opcije?.forsirajIzborLokacije && lokacije.length > 0) {
+      setOdabranaPoslovnaJedinica(null);
+      setPokazuiModalPoslovnaJedinica(true);
+    } else if (opcije?.forsirajIzborLokacije) {
+      // lokacije.length === 0 — nema poslovnih jedinica, ništa za izbor.
+      setOdabranaPoslovnaJedinica(null);
+      setPokazuiModalPoslovnaJedinica(false);
+    } else if (lokacije.length === 1) {
       setOdabranaPoslovnaJedinica(lokacije[0]);
       setPokazuiModalPoslovnaJedinica(false);
     } else if (lokacije.length > 1) {
@@ -931,6 +957,7 @@ export function ZiralniRacuni() {
     setOdabraniPartner(null);
     setOdabranaPoslovnaJedinica(null);
     setPokazuiModalPoslovnaJedinica(false);
+    setNapomenaUvezeneNarudzbe(null);
     setOdabraniTeren(null);
     setNapomena("");
     setSifreTabeleZaStampano([]);
@@ -1762,8 +1789,21 @@ export function ZiralniRacuni() {
       );
       return;
     }
-    primeniOdabirPartnera(partner);
+    primeniOdabirPartnera(partner, { forsirajIzborLokacije: true });
     setPendingUvozNarudzbe(k);
+    // Napomene komercijaliste sa terena (slobodan tekst, npr. naziv lokacije) —
+    // spoje se u jedan tekst bez ponavljanja, za prikaz u modalu izbora poslovne
+    // jedinice.
+    const napomeneSaTerena = Array.from(
+      new Set(
+        k.proizvodi
+          .map((p) => p.napomena.trim())
+          .filter((n) => n.length > 0),
+      ),
+    );
+    setNapomenaUvezeneNarudzbe(
+      napomeneSaTerena.length > 0 ? napomeneSaTerena.join(" · ") : null,
+    );
     setPokazuiModalNarudzbe(false);
     setOdabraniKupacNarudzbe(null);
     // Novi podaci povučeni iz terena — napomena od prethodnog partnera/računa
@@ -3994,6 +4034,7 @@ export function ZiralniRacuni() {
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) {
                 setPokazuiModalPoslovnaJedinica(false);
+                setNapomenaUvezeneNarudzbe(null);
               }
             }}
           >
@@ -4010,7 +4051,10 @@ export function ZiralniRacuni() {
                   Izaberi poslovnu jedinicu
                 </div>
                 <button
-                  onClick={() => setPokazuiModalPoslovnaJedinica(false)}
+                  onClick={() => {
+                    setPokazuiModalPoslovnaJedinica(false);
+                    setNapomenaUvezeneNarudzbe(null);
+                  }}
                   className="text-white/80 hover:text-white"
                 >
                   <X size={16} />
@@ -4021,13 +4065,32 @@ export function ZiralniRacuni() {
                 <span className="font-semibold">
                   {odabraniPartner.naziv_partnera}
                 </span>{" "}
-                ima više poslovnih jedinica — izaberi koja ide na ovaj račun.
+                {(odabraniPartner.dodatne_lokacije?.length ?? 0) > 1
+                  ? "ima više poslovnih jedinica — izaberi koja ide na ovaj račun."
+                  : "izaberi poslovnu jedinicu koja ide na ovaj račun."}
               </div>
+              {napomenaUvezeneNarudzbe && (
+                <div className="mx-4 mt-3 flex items-start gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-400/10 px-3 py-2">
+                  <StickyNote
+                    size={16}
+                    className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                      Napomena komercijaliste (sa terena)
+                    </div>
+                    <div className="text-xs font-semibold text-amber-900 dark:text-amber-200 break-words">
+                      {napomenaUvezeneNarudzbe}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="overflow-y-auto p-2 flex flex-col gap-1">
                 <button
                   onClick={() => {
                     setOdabranaPoslovnaJedinica(null);
                     setPokazuiModalPoslovnaJedinica(false);
+                    setNapomenaUvezeneNarudzbe(null);
                   }}
                   className={`text-left px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
                     !odabranaPoslovnaJedinica
@@ -4048,6 +4111,7 @@ export function ZiralniRacuni() {
                     onClick={() => {
                       setOdabranaPoslovnaJedinica(lok);
                       setPokazuiModalPoslovnaJedinica(false);
+                      setNapomenaUvezeneNarudzbe(null);
                     }}
                     className={`text-left px-3 py-2 rounded-xl text-xs border transition-all ${
                       odabranaPoslovnaJedinica?.sifra === lok.sifra
