@@ -18,6 +18,7 @@ import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { IzvodiPregled } from "./IzvodiPregled";
+import { BlagajnaPregled } from "./BlagajnaPregled";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -130,6 +131,7 @@ type MenuSection =
   | "narudzbe-lokalno"
   | "narudzbe-zavrsene-lokalno"
   | "finansije-izvodi-pregled"
+  | "finansije-blagajna-pregled"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -155,6 +157,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "narudzbe-lokalno": "Unos narudžbe lokalno",
   "narudzbe-zavrsene-lokalno": "Završene lokalne narudžbe",
   "finansije-izvodi-pregled": "Pregled izvoda",
+  "finansije-blagajna-pregled": "Pregled blagajne",
   "klise-unos": "Unos kliše",
   "klise-naplata": "Unos naplate klišea",
   "klise-dobavljac": "Unos podataka od dobavljača",
@@ -213,6 +216,7 @@ export function Dashboard({
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
   const [izvodiExpanded, setIzvodiExpanded] = useState(false);
+  const [blagajnaExpanded, setBlagajnaExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
     | "file"
@@ -438,7 +442,10 @@ export function Dashboard({
     setOpenMenu((prev) => (prev === menu ? null : menu));
     if (menu !== "file") setArchiveExpanded(false);
     if (menu !== "proizvodnja") setKliseExpanded(false);
-    if (menu !== "finansije") setIzvodiExpanded(false);
+    if (menu !== "finansije") {
+      setIzvodiExpanded(false);
+      setBlagajnaExpanded(false);
+    }
   };
 
   const handleSectionChange = (section: MenuSection) => {
@@ -447,6 +454,7 @@ export function Dashboard({
     setArchiveExpanded(false);
     setKliseExpanded(false);
     setIzvodiExpanded(false);
+    setBlagajnaExpanded(false);
   };
 
   const navBtnStyle = (
@@ -1343,6 +1351,61 @@ export function Dashboard({
                             </button>
                           </div>
                         )}
+
+                        {/* Blagajna toggle */}
+                        <button
+                          onClick={() => setBlagajnaExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <Banknote size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Blagajna
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${blagajnaExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {blagajnaExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            <button
+                              onClick={() =>
+                                handleSectionChange(
+                                  "finansije-blagajna-pregled",
+                                )
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "finansije-blagajna-pregled"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "finansije-blagajna-pregled"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Eye
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "finansije-blagajna-pregled"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Pregled blagajne
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>,
                     document.body,
@@ -1971,6 +2034,10 @@ export function Dashboard({
           {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
 
           {activeSection === "finansije-izvodi-pregled" && <IzvodiPregled />}
+
+          {activeSection === "finansije-blagajna-pregled" && (
+            <BlagajnaPregled />
+          )}
 
           {activeSection === "narudzbe-zavrsene-lokalno" && (
             <NarudzbeZavrseneLokalno />

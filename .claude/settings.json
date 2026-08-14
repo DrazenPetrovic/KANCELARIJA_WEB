@@ -68,7 +68,8 @@
       "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/components/print/templates/**)",
       "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/utils/**)",
       "Bash(node _debug_proc.mjs)",
-      "Bash(node _full_debug.mjs)"
+      "Bash(node _full_debug.mjs)",
+      "Bash(node --input-type=module -e ' *)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"
