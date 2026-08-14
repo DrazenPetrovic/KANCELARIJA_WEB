@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  CheckCircle2,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -10,6 +12,9 @@ import {
   Search,
   Wallet,
 } from "lucide-react";
+
+// Tolerancija za poređenje novčanih iznosa (zaokruživanje na 2 decimale).
+const TOLERANCIJA_SALDA = 0.01;
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -248,6 +253,31 @@ export function IzvodiPregled() {
     [filtrirani],
   );
 
+  // Kontinuitet salda ima smisla samo unutar jedne banke (kad je filter po
+  // banci aktivan) — krajnje stanje starijeg izvoda mora biti početno stanje
+  // sljedećeg. Računa se nad SVIM izvodima te banke (ne dira ih tekstualna
+  // pretraga), da poredak ostane ispravan bez obzira na trenutni upit.
+  const neusaglasenKontinuitet = useMemo(() => {
+    const skup = new Set<number>();
+    if (!filterBanka) return skup;
+    const izvodiBanke = izvodi.filter(
+      (i) => String(i.sifra_banke) === filterBanka,
+    );
+    const hronoloski = [...izvodiBanke].sort(
+      (a, b) => a.redni_broj - b.redni_broj,
+    );
+    for (let i = 1; i < hronoloski.length; i++) {
+      const prethodnoKrajnje = Number(hronoloski[i - 1].krajnje_stanje) || 0;
+      const trenutnoPocetno = Number(hronoloski[i].pocetno_stanje) || 0;
+      if (
+        Math.abs(prethodnoKrajnje - trenutnoPocetno) > TOLERANCIJA_SALDA
+      ) {
+        skup.add(hronoloski[i].redni_broj);
+      }
+    }
+    return skup;
+  }, [izvodi, filterBanka]);
+
   const brojOtvorenih = useMemo(
     () => izvodi.filter((i) => Number(i.izvod_zatvoren) !== 1).length,
     [izvodi],
@@ -430,6 +460,19 @@ export function IzvodiPregled() {
             const otvoreno = prosireno.has(izvod.redni_broj);
             const uplateIzvoda =
               uplatePoIzvodu.get(String(izvod.redni_broj)) ?? [];
+
+            // (početno + uplate) - isplate mora dati krajnje stanje.
+            const izracunatoKrajnje =
+              (Number(izvod.pocetno_stanje) || 0) +
+              (Number(izvod.ukupno_uplata) || 0) -
+              (Number(izvod.ukupno_isplata) || 0);
+            const neslaganjeSalda =
+              Math.abs(izracunatoKrajnje - (Number(izvod.krajnje_stanje) || 0)) >
+              TOLERANCIJA_SALDA;
+            const neslaganjeKontinuiteta = neusaglasenKontinuitet.has(
+              izvod.redni_broj,
+            );
+
             return (
               <div
                 key={izvod.redni_broj}
@@ -468,45 +511,81 @@ export function IzvodiPregled() {
                       {izvod.redni_broj}
                     </div>
                   </div>
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none whitespace-nowrap">
-                    <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
-                      Izvod #{izvod.sifra_izvoda}
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none whitespace-nowrap">
+                    <div className="flex flex-col items-center">
+                      <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
+                        Izvod #{izvod.sifra_izvoda}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+                        {formatDatum(izvod.datum_izvoda)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400 dark:text-[#5f5878]">
-                      {formatDatum(izvod.datum_izvoda)}
+                    <div className="hidden md:flex flex-col items-center gap-1 pointer-events-auto">
+                      <span
+                        title={
+                          neslaganjeSalda
+                            ? "Početno + uplate - isplate ne odgovara krajnjem stanju"
+                            : "Saldo se slaže: početno + uplate - isplate = krajnje stanje"
+                        }
+                      >
+                        {neslaganjeSalda ? (
+                          <AlertTriangle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle2 size={16} style={{ color: ACCENT }} />
+                        )}
+                      </span>
+                      {!!filterBanka && (
+                        <span
+                          title={
+                            neslaganjeKontinuiteta
+                              ? "Početno stanje se ne poklapa sa krajnjim stanjem prethodnog izvoda ove banke"
+                              : "Kontinuitet salda sa prethodnim izvodom ove banke je ispravan"
+                          }
+                        >
+                          {neslaganjeKontinuiteta ? (
+                            <AlertTriangle size={16} className="text-red-500" />
+                          ) : (
+                            <CheckCircle2 size={16} style={{ color: ACCENT }} />
+                          )}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="hidden md:flex items-center gap-6 text-xs text-gray-500 dark:text-[#9e96b8] flex-shrink-0">
-                    <div>
-                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                        Početno
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
+                          Krajnje
+                        </span>
+                        <span className="font-semibold" style={{ color: PRIMARY }}>
+                          {formatKM(izvod.krajnje_stanje)}
+                        </span>
                       </div>
-                      <div className="font-semibold">
-                        {formatKM(izvod.pocetno_stanje)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                        Uplata
-                      </div>
-                      <div className="font-semibold" style={{ color: ACCENT }}>
-                        {formatKM(izvod.ukupno_uplata)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                        Isplata
-                      </div>
-                      <div className="font-semibold text-red-500">
-                        {formatKM(izvod.ukupno_isplata)}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
+                          Početno
+                        </span>
+                        <span className="font-semibold text-red-500">
+                          {formatKM(izvod.pocetno_stanje)}
+                        </span>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                        Krajnje
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
+                          Uplata
+                        </span>
+                        <span className="font-semibold" style={{ color: ACCENT }}>
+                          {formatKM(izvod.ukupno_uplata)}
+                        </span>
                       </div>
-                      <div className="font-semibold" style={{ color: PRIMARY }}>
-                        {formatKM(izvod.krajnje_stanje)}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
+                          Isplata
+                        </span>
+                        <span className="font-semibold text-red-500">
+                          {formatKM(izvod.ukupno_isplata)}
+                        </span>
                       </div>
                     </div>
                   </div>
