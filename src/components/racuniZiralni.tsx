@@ -1510,6 +1510,7 @@ export function ZiralniRacuni() {
               slovima: podaci.header.slovima,
               napomena: podaci.header.napomena || null,
               br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
+              datum_vreme_fiskalnog: esirInvoiceResponse?.sdcDateTime ?? null,
               verifikacioni_qr: esirInvoiceResponse?.verificationQRCode ?? null,
             }}
             stavke={stavkeZaPrint.map((s) => ({

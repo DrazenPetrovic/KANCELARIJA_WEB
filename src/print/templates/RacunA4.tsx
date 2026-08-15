@@ -35,6 +35,8 @@ export interface RacunA4Zaglavlje {
   slovima?: string | null;
   napomena?: string | null;
   br_fiskalnog?: string | number | null;
+  // Datum i vrijeme fiskalizacije (ESIR invoiceResponse.sdcDateTime).
+  datum_vreme_fiskalnog?: string | null;
   // Base64 GIF slika QR koda (ESIR invoiceResponse.verificationQRCode) — samo
   // za fiskalizovane račune.
   verifikacioni_qr?: string | null;
@@ -71,6 +73,19 @@ function formatDatum(dt: string | undefined | null) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
+}
+
+function formatDatumVrijeme(dt: string | undefined | null) {
+  if (!dt) return null;
+  const d = new Date(dt);
+  if (isNaN(d.getTime())) return dt;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${dd}.${mm}.${yyyy}. ${hh}:${min}:${ss}`;
 }
 
 function broj(v: number | string | null | undefined) {
@@ -155,6 +170,10 @@ export function RacunA4({ racun, stavke }: Props) {
       />
 
       <div style={{ padding: "8mm 9px", boxSizing: "border-box" }}>
+        {/* ── Lijevo: partner/datumi + linija + račun-otpremnica/barkod + linija |
+            Desno: fiskalni podaci (raste nezavisno, ne gura lijevu kolonu) ── */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
         {/* ── Osnovni podaci (partner + PJ lijevo, datumi desno) ── */}
         <div
           style={{
@@ -254,52 +273,6 @@ export function RacunA4({ racun, stavke }: Props) {
             </div>
           </div>
 
-          {/* Krajnje desno — fiskalni podaci (Br. fiskalnog + QR) */}
-          {racun.br_fiskalnog !== undefined &&
-            racun.br_fiskalnog !== null &&
-            racun.br_fiskalnog !== "" && (
-              <div style={{ marginLeft: "auto", flex: "0 0 auto" }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    color: PRIMARY,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    textAlign: "center",
-                    marginBottom: 3,
-                  }}
-                >
-                  Fiskalni račun
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: 11,
-                    color: "#444",
-                    border: "1px solid #999",
-                    borderRadius: 4,
-                    padding: "6px 10px",
-                  }}
-                >
-                  {racun.verifikacioni_qr && (
-                    <img
-                      src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
-                      alt="QR kod za verifikaciju"
-                      style={{ width: 60, height: 60, flexShrink: 0 }}
-                    />
-                  )}
-                  <div style={{ fontSize: 10, color: "#444" }}>
-                    <span style={{ fontWeight: 700, color: PRIMARY }}>
-                      Br. fiskalnog računa:{" "}
-                    </span>
-                    {racun.br_fiskalnog}
-                  </div>
-                </div>
-              </div>
-            )}
         </div>
 
         <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 10 }} />
@@ -331,6 +304,61 @@ export function RacunA4({ racun, stavke }: Props) {
         </div>
 
         <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 12 }} />
+        </div>
+
+        {/* Desno — fiskalni podaci (Br. fiskalnog + datum + QR); nezavisna
+            kolona koja raste u visinu bez uticaja na liniju/račun-otpremnicu
+            u lijevoj koloni. */}
+        {racun.br_fiskalnog !== undefined &&
+          racun.br_fiskalnog !== null &&
+          racun.br_fiskalnog !== "" && (
+            <div style={{ flex: "0 0 auto", marginTop: "-0.3cm" }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: PRIMARY,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  textAlign: "center",
+                  lineHeight: 1,
+                  marginBottom: 2,
+                }}
+              >
+                Fiskalni račun
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 1,
+                  fontSize: 11,
+                  color: "#444",
+                  border: "1px solid #999",
+                  borderRadius: 4,
+                  padding: "2px 10px 5px",
+                }}
+              >
+                <div style={{ fontSize: 10, color: "#444", textAlign: "center", lineHeight: 1 }}>
+                  {racun.br_fiskalnog}
+                </div>
+                {formatDatumVrijeme(racun.datum_vreme_fiskalnog) && (
+                  <div style={{ fontSize: 8, color: "#666", textAlign: "center" }}>
+                    {formatDatumVrijeme(racun.datum_vreme_fiskalnog)}
+                  </div>
+                )}
+                {racun.verifikacioni_qr && (
+                  <img
+                    src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                    alt="QR kod za verifikaciju"
+                    style={{ width: 140, height: 140, flexShrink: 0 }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Tabela stavki ── */}
         <div style={{ marginBottom: 16 }}>

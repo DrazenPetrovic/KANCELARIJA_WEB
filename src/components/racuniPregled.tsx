@@ -23,6 +23,7 @@ import {
   izdajFiskalniRacun,
   izdvojiFiskalnePodatke,
   proveriFiskalizacijuPoRequestId,
+  preuzmiFiskalniRacun,
   ESIR_OZNAKA_SA_PDV,
   ESIR_SLIP_PRESET_58MM,
   ESIR_INVOICE_TYPE,
@@ -1125,6 +1126,33 @@ export function RacuniPregled() {
       return;
     }
 
+    // QR kod se ne čuva u bazi — ako je račun fiskalizovan, preuzima se ponovo
+    // od ESIR-a (GET /api/invoices/:invoiceNumber) da bi se odštampao uz
+    // ostatak računa. Best-effort: ako ESIR nije dostupan, štampa se bez QR-a.
+    let verifikacioniQr: string | null = null;
+    let datumVremeFiskalnog: string | null =
+      (red.datum_vreme_fiskalnog as string | null) ?? null;
+    const brFiskalnog = red.br_fiskalnog;
+    if (
+      brFiskalnog !== null &&
+      brFiskalnog !== undefined &&
+      String(brFiskalnog).trim() !== ""
+    ) {
+      try {
+        const fiskalniRacun = await preuzmiFiskalniRacun(
+          uredjajZaVrstuRacuna(red),
+          String(brFiskalnog),
+        );
+        verifikacioniQr = fiskalniRacun.verificationQRCode ?? null;
+        datumVremeFiskalnog = fiskalniRacun.sdcDateTime ?? datumVremeFiskalnog;
+      } catch (greska) {
+        console.error(
+          "Preuzimanje QR koda od ESIR-a nije uspjelo:",
+          greska,
+        );
+      }
+    }
+
     const brojRacuna = String(red.vrsta_racuna_novo ?? "-");
 
     if (vrsta !== 1 && vrsta !== 3) {
@@ -1156,6 +1184,8 @@ export function RacuniPregled() {
               slovima: (red.slovima as string | null) ?? null,
               napomena: (red.napomena as string | null) ?? null,
               br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+              datum_vreme_fiskalnog: datumVremeFiskalnog,
+              verifikacioni_qr: verifikacioniQr,
             }}
             stavke={stavkeZaStampu.map((s) => {
               const ukupno = brojPolje(s, "prodajna_vrednost");
@@ -1204,6 +1234,7 @@ export function RacuniPregled() {
             rabat_km: (red.rabat_km as number | string | null) ?? null,
             slovima: (red.slovima as string | null) ?? null,
             br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+            verifikacioni_qr: verifikacioniQr,
             sifra_tabele: sifraTabele,
           }}
           stavke={stavkeZaStampu.map((s) => ({

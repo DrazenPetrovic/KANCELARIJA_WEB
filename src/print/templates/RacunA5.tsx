@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 
-const PRIMARY = "#785E9E";
-const ACCENT = "#8FC74A";
+// Monohromatska (crno-bijela) paleta — nazivi PRIMARY/ACCENT su zadržani (koriste
+// se posvuda u fajlu preko alfa-suffiksa, npr. `${PRIMARY}30`) da se ne bi morala
+// mijenjati svaka pojedinačna upotreba.
+const PRIMARY = "#000000";
+const ACCENT = "#595959";
 
 export interface RacunA5Zaglavlje {
   broj_racuna: string;
@@ -98,6 +101,7 @@ export function RacunA5({ racun, stavke }: Props) {
           marginTop: "10px",
           marginLeft: "5px",
           marginRight: "5px",
+          filter: "grayscale(100%)",
         }}
       />
 
@@ -141,10 +145,11 @@ export function RacunA5({ racun, stavke }: Props) {
             )}
         </div>
 
-        {/* ── Podaci o partneru ── */}
-      <div style={{ marginBottom: 16 }}>
+        {/* ── Podaci o partneru + fiskalni podaci (2/3 partner, 1/3 fiskalni) ── */}
+      <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "stretch" }}>
         <div
           style={{
+            flex: "2 1 0%",
             background: `${PRIMARY}0a`,
             border: `1px solid ${PRIMARY}30`,
             borderRadius: 6,
@@ -165,6 +170,51 @@ export function RacunA5({ racun, stavke }: Props) {
             </div>
           )}
         </div>
+
+        {/* ── Broj fiskalnog računa + QR kod za verifikaciju ── */}
+        {racun.br_fiskalnog !== undefined &&
+          racun.br_fiskalnog !== null &&
+          racun.br_fiskalnog !== "" && (
+            <div style={{ flex: "1 1 0%" }}>
+              <div
+                style={{
+                  fontSize: 8,
+                  fontWeight: 800,
+                  color: PRIMARY,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  textAlign: "center",
+                  marginBottom: 3,
+                }}
+              >
+                Fiskalni račun
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 9,
+                  color: "#444",
+                  border: "1px solid #999",
+                  borderRadius: 4,
+                  padding: "6px 10px",
+                }}
+              >
+                <div style={{ fontSize: 8, color: "#444", textAlign: "center" }}>
+                  {racun.br_fiskalnog}
+                </div>
+                {racun.verifikacioni_qr && (
+                  <img
+                    src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                    alt="QR kod za verifikaciju"
+                    style={{ width: 60, height: 60, flexShrink: 0 }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
       </div>
 
       {/* ── Tabela stavki ── */}
@@ -202,7 +252,7 @@ export function RacunA5({ racun, stavke }: Props) {
             {stavke.map((s, i) => (
               <tr
                 key={`${s.sifra_proizvoda}-${i}`}
-                style={{ background: i % 2 === 0 ? "#f4f1f9" : "white" }}
+                style={{ background: i % 2 === 0 ? "#f2f2f2" : "white" }}
               >
                 <td style={cell}>{i + 1}</td>
                 <td style={{ ...cell, fontWeight: 600, color: PRIMARY }}>
@@ -266,35 +316,6 @@ export function RacunA5({ racun, stavke }: Props) {
           </tfoot>
         </table>
       </div>
-
-      {/* ── Broj fiskalnog računa + QR kod za verifikaciju ── */}
-      {racun.br_fiskalnog !== undefined &&
-        racun.br_fiskalnog !== null &&
-        racun.br_fiskalnog !== "" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ fontSize: 9, color: "#444" }}>
-              <span style={{ fontWeight: 700, color: PRIMARY }}>
-                Br. fiskalnog računa:{" "}
-              </span>
-              {racun.br_fiskalnog}
-            </div>
-            {racun.verifikacioni_qr && (
-              <img
-                src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
-                alt="QR kod za verifikaciju"
-                style={{ width: 60, height: 60, flexShrink: 0 }}
-              />
-            )}
-          </div>
-        )}
 
       {/* ── Napomena ── */}
       {racun.napomena && (

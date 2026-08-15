@@ -69,7 +69,9 @@
       "Read(//d/WEB_KOMERCIJALA/PRODAJA_WEB/src/utils/**)",
       "Bash(node _debug_proc.mjs)",
       "Bash(node _full_debug.mjs)",
-      "Bash(node --input-type=module -e ' *)"
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:3566/api/attention --max-time 3)",
+      "Bash(python3 -c *)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"
