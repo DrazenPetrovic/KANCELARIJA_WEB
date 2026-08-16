@@ -90,18 +90,6 @@ export const getRacunPoPregled = async (req, res) => {
   }
 };
 
-export const getDogovoreneCijenePotpun = async (req, res) => {
-  try {
-    const data = await RacuniService.getDogovoreneCijenePregledPotpun();
-    return res.json({ success: true, data, count: data.length });
-  } catch (error) {
-    console.error("Pregled ugovorenih cijena error:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Greška pri učitavanju ugovorenih cijena" });
-  }
-};
-
 export const unosDogovorenihCijena = async (req, res) => {
   try {
     const stavke = req.body?.stavke;

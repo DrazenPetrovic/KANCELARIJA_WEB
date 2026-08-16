@@ -11,10 +11,6 @@ router.get(
   RacuniController.getRacuniProizvodaRadniNalog,
 );
 router.get("/pregled-stavke", RacuniController.getRacunPoPregled);
-router.get(
-  "/dogovorene-cijene-potpun",
-  RacuniController.getDogovoreneCijenePotpun,
-);
 router.post(
   "/dogovorene-cijene",
   RacuniController.unosDogovorenihCijena,

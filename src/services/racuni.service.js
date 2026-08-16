@@ -93,12 +93,12 @@ export const getRacunPoPregled = async (sifraTabele) => {
 // Upis/ažuriranje dogovorenih (posebnih) cijena partner-proizvod — poziva se
 // nakon čuvanja žiralnog računa, za stavke gdje je operater ručno promijenio
 // VPC1 (drugačiji od kataloškog VPC-a), da se ta cijena kasnije tretira kao
-// ugovorena. Vidi erp.sp_partneri_dogovorene_cijene_unos.
+// ugovorena. Vidi erp.artikli_dogovorene_cijene_unos.
 export const upisiDogovoreneCijene = async (stavke) => {
   return withConnection(async (connection) => {
     const json = JSON.stringify({ stavke });
     const [rows] = await connection.query(
-      "CALL erp.sp_partneri_dogovorene_cijene_unos(?)",
+      "CALL erp.artikli_dogovorene_cijene_unos(?)",
       [json],
     );
     const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
@@ -124,42 +124,6 @@ const procitajPolje = (obj, kandidati) => {
   }
 
   return undefined;
-};
-
-// Pregled dogovorenih (posebnih) cijena partner-proizvod — potpuna lista (sa jm),
-// za ekran "Ugovorene cijene" u meniju Pregledi. Vidi
-// erp.sp_partneri_dogovorene_cijene_pregled_potpun.
-//
-// Proceduri u SELECT-u fale/su pogrešni aliasi za dvije kolone: naziv partnera
-// se vraća kao "naziv_pertnera" (tipfeler — fali "a"), a rabat_1_proc uopšte
-// nema alias (IFNULL(rabat_1_proc,0)) pa stiže pod sirovim tekstom izraza kao
-// imenom kolone. procitajPolje čita polje po više mogućih naziva (normalizacija
-// skida sve što nije slovo/broj), da frontend uvijek dobije očekivana imena.
-export const getDogovoreneCijenePregledPotpun = async () => {
-  return withConnection(async (connection) => {
-    const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_dogovorene_cijene_pregled_potpun()",
-    );
-    const lista = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
-    return lista.map((red) => ({
-      sifra_tbl: procitajPolje(red, ["sifra_tbl"]),
-      partner_id: procitajPolje(red, ["partner_id"]),
-      naziv_partnera: procitajPolje(red, ["naziv_partnera", "naziv_pertnera"]),
-      proizvod_id: procitajPolje(red, ["proizvod_id"]),
-      naziv_proizvoda: procitajPolje(red, ["naziv_proizvoda"]),
-      jm: procitajPolje(red, ["jm"]),
-      dogovorena_cijena_vpc: procitajPolje(red, ["dogovorena_cijena_vpc"]),
-      dogovorena_cijena_mpc: procitajPolje(red, ["dogovorena_cijena_mpc"]),
-      rabat_1_proc:
-        procitajPolje(red, [
-          "rabat_1_proc",
-          "IFNULL(rabat_1_proc,0)",
-          "rabat1proc",
-        ]) ?? 0,
-      sinhronizovano: procitajPolje(red, ["sinhronizovano"]),
-      vreme_izmjene: procitajPolje(red, ["vreme_izmjene"]),
-    }));
-  });
 };
 
 const mapirajOdgovor = (obj) => {

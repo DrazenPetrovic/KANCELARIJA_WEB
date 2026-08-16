@@ -183,11 +183,11 @@ export const setPartneriGlavno = async (partner) => {
 // Dogovorene (posebne) cijene partner-proizvod — učitava se u cjelosti pri
 // otvaranju forme za unos žiralnog računa i uparuje na frontendu po
 // (partner_id, proizvod_id) kad se artikal dodaje na račun. Vidi
-// erp.sp_partneri_dogovorene_cijene_pregled.
+// erp.artikli_dogovorene_cijene_pregled.
 export const getPartneriDogovoreneCijene = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_dogovorene_cijene_pregled()",
+      "CALL erp.artikli_dogovorene_cijene_pregled()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
@@ -196,11 +196,11 @@ export const getPartneriDogovoreneCijene = async () => {
 // Lakša/brža varijanta gornje procedure — samo minimalna polja potrebna za
 // uparivanje cijene pri dodavanju artikla na žiralni račun (sifra_tbl,
 // partner_id, proizvod_id, dogovorena_cijena_vpc), bez naziva/JM/dodatnih
-// polja. Vidi erp.sp_partneri_dogovorene_cijene_osnovno.
+// polja. Vidi erp.artikli_dogovorene_cijene_osnovno.
 export const getPartneriDogovoreneCijeneOsnovno = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_dogovorene_cijene_osnovno()",
+      "CALL erp.artikli_dogovorene_cijene_osnovno()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });

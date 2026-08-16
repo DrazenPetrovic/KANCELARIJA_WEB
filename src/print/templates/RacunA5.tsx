@@ -111,19 +111,24 @@ export function RacunA5({ racun, stavke }: Props) {
           boxSizing: "border-box",
         }}
       >
-        {/* ── Zaglavlje dokumenta ── */}
+        {/* ── Lijevo: broj računa/datum/barkod + podaci o partneru |
+            Desno: fiskalni podaci (QR maksimalne veličine, raste nezavisno,
+            od kraja memoranduma do početka tabele stavki) — ista logika kao A4. ── */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+        {/* ── Zaglavlje dokumenta (broj računa, datum, barkod) ── */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             gap: 10,
             borderBottom: `2px solid ${PRIMARY}`,
             paddingBottom: 8,
             marginBottom: 12,
           }}
         >
-          <div style={{ textAlign: "center", flex: 1 }}>
+          <div>
             <div
               style={{
                 fontSize: 18,
@@ -145,11 +150,10 @@ export function RacunA5({ racun, stavke }: Props) {
             )}
         </div>
 
-        {/* ── Podaci o partneru + fiskalni podaci (2/3 partner, 1/3 fiskalni) ── */}
-      <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "stretch" }}>
+        {/* ── Podaci o partneru ── */}
         <div
           style={{
-            flex: "2 1 0%",
+            marginBottom: 16,
             background: `${PRIMARY}0a`,
             border: `1px solid ${PRIMARY}30`,
             borderRadius: 6,
@@ -170,12 +174,13 @@ export function RacunA5({ racun, stavke }: Props) {
             </div>
           )}
         </div>
+        </div>
 
-        {/* ── Broj fiskalnog računa + QR kod za verifikaciju ── */}
+        {/* ── Desno — fiskalni podaci (Br. fiskalnog + QR maksimalne veličine) ── */}
         {racun.br_fiskalnog !== undefined &&
           racun.br_fiskalnog !== null &&
           racun.br_fiskalnog !== "" && (
-            <div style={{ flex: "1 1 0%" }}>
+            <div style={{ flex: "0 0 auto", marginTop: "-0.8cm" }}>
               <div
                 style={{
                   fontSize: 8,
@@ -194,28 +199,28 @@ export function RacunA5({ racun, stavke }: Props) {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 1,
                   fontSize: 9,
                   color: "#444",
                   border: "1px solid #999",
                   borderRadius: 4,
-                  padding: "6px 10px",
+                  padding: "2px 10px 5px",
                 }}
               >
-                <div style={{ fontSize: 8, color: "#444", textAlign: "center" }}>
+                <div style={{ fontSize: 8, color: "#444", textAlign: "center", lineHeight: 1 }}>
                   {racun.br_fiskalnog}
                 </div>
                 {racun.verifikacioni_qr && (
                   <img
                     src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
                     alt="QR kod za verifikaciju"
-                    style={{ width: 60, height: 60, flexShrink: 0 }}
+                    style={{ width: 140, height: 140, flexShrink: 0 }}
                   />
                 )}
               </div>
             </div>
           )}
-      </div>
+        </div>
 
       {/* ── Tabela stavki ── */}
       <div style={{ marginBottom: 14 }}>
@@ -223,11 +228,10 @@ export function RacunA5({ racun, stavke }: Props) {
           <thead>
             <tr style={{ background: PRIMARY }}>
               {[
-                { label: "#", right: false, w: "4%" },
-                { label: "Artikal", right: false, w: "25%" },
-                { label: "JM", right: false, w: "9%" },
-                { label: "Količina", right: true, w: "14%" },
-                { label: "Cijena (KM)", right: true, w: "18%" },
+                { label: "Artikal", right: false, w: "43.3%" },
+                { label: "JM", right: true, w: "5%" },
+                { label: "Količina", right: true, w: "10%" },
+                { label: "Cijena (KM)", right: true, w: "11.7%" },
                 { label: "Ukupno (KM)", right: true, w: "18%" },
               ].map(({ label, right, w }) => (
                 <th
@@ -254,18 +258,17 @@ export function RacunA5({ racun, stavke }: Props) {
                 key={`${s.sifra_proizvoda}-${i}`}
                 style={{ background: i % 2 === 0 ? "#f2f2f2" : "white" }}
               >
-                <td style={cell}>{i + 1}</td>
                 <td style={{ ...cell, fontWeight: 600, color: PRIMARY }}>
                   {s.naziv_proizvoda}
                 </td>
-                <td style={cell}>{s.jm}</td>
-                <td style={{ ...cell, textAlign: "right" }}>
+                <td style={{ ...cell, textAlign: "right" }}>{s.jm}</td>
+                <td style={{ ...cell, textAlign: "right", paddingRight: 2 }}>
                   {Number(s.kolicina).toLocaleString("bs-BA", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </td>
-                <td style={{ ...cell, textAlign: "right" }}>
+                <td style={{ ...cell, textAlign: "right", paddingLeft: 2 }}>
                   {broj(s.prodajna_cijena)}
                 </td>
                 <td
@@ -287,30 +290,19 @@ export function RacunA5({ racun, stavke }: Props) {
                 colSpan={5}
                 style={{
                   ...cell,
-                  background: `${ACCENT}1a`,
                   fontWeight: 800,
-                  fontSize: 12,
                   textAlign: "right",
                   color: PRIMARY,
                 }}
               >
-                UKUPNO:
-              </td>
-              <td
-                style={{
-                  ...cell,
-                  background: `${ACCENT}1a`,
-                  fontWeight: 800,
-                  fontSize: 14,
-                  textAlign: "right",
-                  color: ACCENT,
-                }}
-              >
-                {ukupno.toLocaleString("bs-BA", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{" "}
-                KM
+                <span style={{ fontSize: 18, marginRight: 12 }}>UKUPNO:</span>
+                <span style={{ fontSize: 18 }}>
+                  {ukupno.toLocaleString("bs-BA", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  KM
+                </span>
               </td>
             </tr>
           </tfoot>
@@ -352,6 +344,6 @@ export function RacunA5({ racun, stavke }: Props) {
 const cell: React.CSSProperties = {
   padding: "4px 6px",
   fontSize: 9,
-  borderBottom: "1px solid #ede8f6",
+  borderBottom: "1px solid #ccc",
   verticalAlign: "middle",
 };

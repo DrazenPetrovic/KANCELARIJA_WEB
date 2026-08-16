@@ -244,7 +244,7 @@ interface Partner {
 }
 
 // Posebna (dogovorena) cijena za par partner-proizvod — vidi
-// erp.sp_partneri_dogovorene_cijene_osnovno (laganija varijanta, samo polja
+// erp.artikli_dogovorene_cijene_osnovno (laganija varijanta, samo polja
 // potrebna za uparivanje cijene — vidi i UgovoreneCijenePregled.tsx za potpuni
 // pregled sa nazivima/JM/rabatom). Učitava se u cjelosti pri otvaranju forme
 // (odvojeno, ne blokira prikaz) i uparuje po (partner_id, proizvod_id) kad se
@@ -1350,7 +1350,7 @@ export function ZiralniRacuni() {
 
       // Ako je operater ručno promijenio VPC1 (drugačiji od kataloškog VPC-a) za
       // neku stavku, ta cijena se pamti kao dogovorena za ovog partnera i taj
-      // proizvod — vidi erp.sp_partneri_dogovorene_cijene_unos. Best-effort,
+      // proizvod — vidi erp.artikli_dogovorene_cijene_unos. Best-effort,
       // ne blokira već potvrđeno čuvanje računa. dogovorena_cijena_mpc = VPC1 + 17%
       // (STOPA_PDV), rabat_1_proc je već izračunati procenat VPC vs VPC1 (s.rab1).
       const izmijenjeneCijene = odabraniPartner

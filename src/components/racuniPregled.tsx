@@ -1258,28 +1258,54 @@ export function RacuniPregled() {
   // ostaju kakvi jesu) — ovo je samo dodatni fizički otisak kopije preko ESIR-a.
   // Uređaj se bira po vrsti računa — vidi uredjajZaVrstuRacuna (1 = kasa .250,
   // sve ostalo = kasa .251).
-  const handleStampajKopijuEsira = async (red: RacunRed) => {
+  // Priprema zahtjev za kopiju (fetch originalnog dokumenta + stavki, sastavljanje
+  // invoiceRequest-a) BEZ slanja ka ESIR-u — odvojeno od posaljiKopijuEsiru da bi se
+  // korisniku mogli prikazati tačni parametri prije potvrde slanja.
+  const pripremiKopijuEsiraZahtjev = async (
+    red: RacunRed,
+  ): Promise<{ uredjaj: EsirUredjaj; invoiceRequest: EsirInvoiceRequest } | null> => {
     const sifraTabele = nadjiSifruTabele(red);
-    if (sifraTabele === null) return;
+    if (sifraTabele === null) return null;
     const uredjaj = uredjajZaVrstuRacuna(red);
 
     const brFiskalnogOriginal = red.br_fiskalnog;
-    const datumVremeFiskalnogOriginal = red.datum_vreme_fiskalnog;
     if (
       brFiskalnogOriginal === null ||
       brFiskalnogOriginal === undefined ||
-      String(brFiskalnogOriginal).trim() === "" ||
-      datumVremeFiskalnogOriginal === null ||
-      datumVremeFiskalnogOriginal === undefined ||
-      String(datumVremeFiskalnogOriginal).trim() === ""
+      String(brFiskalnogOriginal).trim() === ""
     ) {
       setFiskalnaPoruka({
         naslov: "Nedostaju fiskalni podaci",
         poruka:
-          "Nema sačuvanog broja/vremena originalnog fiskalnog računa — kopija se ne može zatražiti.",
+          "Nema sačuvanog broja originalnog fiskalnog računa — kopija se ne može zatražiti.",
         tip: "greska",
       });
-      return;
+      return null;
+    }
+
+    // referentDocumentNumber/DT MORAJU biti tačno onakvi kakve ih ESIR interno
+    // vodi za originalni dokument (inače vraća 400 Bad Request) — zato se ne
+    // koristi ono što je sačuvano u bazi (može biti prazno/drugačije formatirano
+    // od stvarnog sdcDateTime), nego se svježe preuzima od ESIR-a po broju
+    // fiskalnog računa (isti GET poziv kao za QR kod u handleStampaj).
+    let referentDocumentNumber: string;
+    let referentDocumentDT: string;
+    try {
+      const originalniRacun = await preuzmiFiskalniRacun(
+        uredjaj,
+        String(brFiskalnogOriginal),
+      );
+      referentDocumentNumber = originalniRacun.invoiceNumber;
+      referentDocumentDT = originalniRacun.sdcDateTime;
+    } catch (greska) {
+      setFiskalnaPoruka({
+        naslov: "Greška",
+        poruka: `Nije moguće preuzeti originalni fiskalni račun od ESIR-a: ${
+          greska instanceof Error ? greska.message : "nepoznata greška"
+        }`,
+        tip: "greska",
+      });
+      return null;
     }
 
     let stavke: RacunRed[] = [];
@@ -1296,7 +1322,7 @@ export function RacuniPregled() {
         poruka: "Greška pri učitavanju stavki za štampu kopije.",
         tip: "greska",
       });
-      return;
+      return null;
     }
     if (stavke.length === 0) {
       setFiskalnaPoruka({
@@ -1304,7 +1330,7 @@ export function RacuniPregled() {
         poruka: "Nema stavki za ovaj račun — ne mogu odštampati kopiju.",
         tip: "greska",
       });
-      return;
+      return null;
     }
 
     const items: EsirStavka[] = stavke.map((s) => {
@@ -1338,8 +1364,8 @@ export function RacuniPregled() {
     const invoiceRequest: EsirInvoiceRequest = {
       invoiceType: "Copy",
       transactionType: "Sale",
-      referentDocumentNumber: String(brFiskalnogOriginal),
-      referentDocumentDT: String(datumVremeFiskalnogOriginal),
+      referentDocumentNumber,
+      referentDocumentDT,
       // Isto kao pripremiBuyerId() u originalnom unosu (racuniZiralni/racuniGotovinski) —
       // šalje se partnerov JIB kakav god da je (i za "Razni kupci" je to "0", ne šifra
       // partnera "300"), da se poklapa sa onim što je ESIR već prihvatio pri originalnoj
@@ -1351,6 +1377,15 @@ export function RacuniPregled() {
       cashier: String(red.naziv_radnika ?? "").toUpperCase(),
     };
 
+    return { uredjaj, invoiceRequest };
+  };
+
+  // Stvarno slanje ka ESIR-u — poziva se tek nakon što korisnik potvrdi
+  // parametre prikazane u modalu (vidi handleDesniKlikFiskalni dugme "Odštampaj kopiju").
+  const posaljiKopijuEsiru = async (
+    uredjaj: EsirUredjaj,
+    invoiceRequest: EsirInvoiceRequest,
+  ) => {
     setFiskalizacijaUToku(true);
     try {
       const esirRezultat = await izdajFiskalniRacun(uredjaj, invoiceRequest, {
@@ -1830,15 +1865,25 @@ export function RacuniPregled() {
               >
                 {imaFiskalni ? (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       setKontekstMeniFiskalni(null);
+                      setFiskalizacijaUToku(true);
+                      const priprema = await pripremiKopijuEsiraZahtjev(red);
+                      setFiskalizacijaUToku(false);
+                      if (!priprema) return;
                       setFiskalnaPoruka({
-                        naslov: "Štampa kopije",
-                        poruka:
-                          "Biće odštampana KOPIJA fiskalnog računa preko ESIR uređaja. Da li želite da nastavite?",
+                        naslov: "Štampa kopije — parametri zahtjeva",
+                        poruka: `Uređaj: ${priprema.uredjaj}\n\nBiće poslat sledeći zahtjev ka ESIR-u:\n\n${JSON.stringify(
+                          priprema.invoiceRequest,
+                          null,
+                          2,
+                        )}\n\nDa li želite da nastavite?`,
                         tip: "pitanje",
                         onPotvrdi: () => {
-                          void handleStampajKopijuEsira(red);
+                          void posaljiKopijuEsiru(
+                            priprema.uredjaj,
+                            priprema.invoiceRequest,
+                          );
                         },
                       });
                     }}
@@ -1875,9 +1920,9 @@ export function RacuniPregled() {
             }
           }}
         >
-          <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[420px] max-w-[92vw] overflow-hidden">
+          <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[420px] max-w-[92vw] max-h-[85vh] overflow-hidden flex flex-col">
             <div
-              className="px-6 py-4 flex items-center gap-3"
+              className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
               style={{
                 background:
                   fiskalnaPoruka.tip === "greska"
@@ -1896,10 +1941,10 @@ export function RacuniPregled() {
                 {fiskalnaPoruka.naslov}
               </div>
             </div>
-            <div className="px-6 py-5 text-sm text-gray-700 dark:text-[#c5bfd8] whitespace-pre-line">
+            <div className="px-6 py-5 text-sm text-gray-700 dark:text-[#c5bfd8] whitespace-pre-line overflow-y-auto flex-1 min-h-0">
               {fiskalnaPoruka.poruka}
             </div>
-            <div className="px-6 pb-5 flex justify-end gap-2">
+            <div className="px-6 pb-5 pt-3 flex justify-end gap-2 flex-shrink-0 border-t border-gray-100 dark:border-[#2d2648]">
               {fiskalnaPoruka.onPotvrdi ? (
                 <>
                   <button
