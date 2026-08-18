@@ -14,6 +14,7 @@ import { KnjiznaVirmanski } from "./racuniKnjiznaVirmanski.tsx";
 import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
+import { ArtikliPregled } from "./ArtikliPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
@@ -55,6 +56,7 @@ import {
   LogOut,
   MapPin,
   Moon,
+  Package,
   PenLine,
   Receipt,
   Settings,
@@ -123,6 +125,7 @@ type MenuSection =
   | "file-arhiva-2021"
   | "partneri-unos"
   | "partneri-pregled"
+  | "artikli-pregled"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
@@ -149,6 +152,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "file-opcije": "Opcije",
   "partneri-unos": "Partneri – unos",
   "partneri-pregled": "Partneri – pregled",
+  "artikli-pregled": "Artikli – pregled",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
@@ -205,6 +209,7 @@ export function Dashboard({
   const [openMenu, setOpenMenu] = useState<
     | "file"
     | "partneri"
+    | "artikli"
     | "pregledi"
     | "narudzbe"
     | "finansije"
@@ -221,6 +226,7 @@ export function Dashboard({
   const [hoveredBtn, setHoveredBtn] = useState<
     | "file"
     | "partneri"
+    | "artikli"
     | "pregledi"
     | "narudzbe"
     | "finansije"
@@ -237,6 +243,7 @@ export function Dashboard({
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const partneriBtnRef = useRef<HTMLButtonElement>(null);
+  const artikliBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
   const finansijeBtnRef = useRef<HTMLButtonElement>(null);
@@ -245,6 +252,7 @@ export function Dashboard({
   const analitikaBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
   const partneriDropRef = useRef<HTMLDivElement>(null);
+  const artikliDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
   const finansijeDropRef = useRef<HTMLDivElement>(null);
@@ -272,6 +280,9 @@ export function Dashboard({
       const inPartneri =
         partneriBtnRef.current?.contains(t) ||
         partneriDropRef.current?.contains(t);
+      const inArtikli =
+        artikliBtnRef.current?.contains(t) ||
+        artikliDropRef.current?.contains(t);
       const inPregledi =
         preglediBtnRef.current?.contains(t) ||
         preglediDropRef.current?.contains(t);
@@ -292,6 +303,7 @@ export function Dashboard({
       if (
         !inFile &&
         !inPartneri &&
+        !inArtikli &&
         !inPregledi &&
         !inNarudzbe &&
         !inFinansije &&
@@ -412,6 +424,7 @@ export function Dashboard({
     menu:
       | "file"
       | "partneri"
+      | "artikli"
       | "pregledi"
       | "narudzbe"
       | "finansije"
@@ -424,7 +437,9 @@ export function Dashboard({
         ? fileBtnRef
         : menu === "partneri"
           ? partneriBtnRef
-          : menu === "pregledi"
+          : menu === "artikli"
+            ? artikliBtnRef
+            : menu === "pregledi"
             ? preglediBtnRef
             : menu === "narudzbe"
               ? narudzbeBtnRef
@@ -461,6 +476,7 @@ export function Dashboard({
     menu:
       | "file"
       | "partneri"
+      | "artikli"
       | "pregledi"
       | "narudzbe"
       | "finansije"
@@ -883,6 +899,96 @@ export function Dashboard({
                               style={{
                                 color:
                                   activeSection === "partneri-pregled"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Pregled
+                        </button>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+
+              {/* ARTIKLI */}
+              <div>
+                <button
+                  ref={artikliBtnRef}
+                  onClick={() => toggleMenu("artikli")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "artikli",
+                    !!(
+                      openMenu === "artikli" ||
+                      activeSection?.startsWith("artikli-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("artikli")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <Package size={13} style={{ color: "#111" }} />
+                  </span>
+                  Artikli
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "artikli" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "artikli" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={artikliDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <Package size={12} />
+                        Artikli
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() => handleSectionChange("artikli-pregled")}
+                          className={dropdownItemClass(
+                            activeSection === "artikli-pregled",
+                          )}
+                          style={
+                            activeSection === "artikli-pregled"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "artikli-pregled"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "artikli-pregled"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Eye
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "artikli-pregled"
                                     ? "#fff"
                                     : PRIMARY,
                               }}
@@ -2006,6 +2112,8 @@ export function Dashboard({
           )}
 
           {activeSection === "partneri-pregled" && <PartneriPregled />}
+
+          {activeSection === "artikli-pregled" && <ArtikliPregled />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 

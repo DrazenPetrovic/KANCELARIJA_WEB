@@ -42,3 +42,33 @@ export const getNivelacijeAktivne = async (req, res) => {
     return res.status(500).json({ success: false, error: "Greška pri učitavanju aktivnih nivelacija" });
   }
 };
+
+export const azurirajTrenutnoStanje = async (req, res) => {
+  try {
+    const { sifraProizvoda, vpcStvarna, vpcTrenutna, sifraNivelacije } = req.body;
+
+    if (
+      sifraProizvoda === undefined ||
+      vpcStvarna === undefined ||
+      vpcTrenutna === undefined ||
+      sifraNivelacije === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaju obavezni podaci (sifraProizvoda, vpcStvarna, vpcTrenutna, sifraNivelacije)",
+      });
+    }
+
+    const data = await NivelacijeService.azurirajTrenutnoStanje({
+      sifraProizvoda,
+      vpcStvarna,
+      vpcTrenutna,
+      sifraNivelacije,
+    });
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Ažuriranje trenutnog stanja nivelacije error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri ažuriranju trenutnog stanja nivelacije" });
+  }
+};

@@ -5,5 +5,6 @@ const router = Router();
 
 router.post("/", NivelacijeController.createNivelacija);
 router.get("/aktivne", NivelacijeController.getNivelacijeAktivne);
+router.post("/trenutno-stanje", NivelacijeController.azurirajTrenutnoStanje);
 
 export default router;

@@ -71,7 +71,15 @@
       "Bash(node _full_debug.mjs)",
       "Bash(node --input-type=module -e ' *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:3566/api/attention --max-time 3)",
-      "Bash(python3 -c *)"
+      "Bash(python3 -c *)",
+      "Bash(node check_proc_tmp.mjs)",
+      "Bash(node create_proc_tmp.mjs)",
+      "Bash(node test_proc_tmp.mjs)",
+      "Bash(node --check src/services/nivelacije.service.js)",
+      "Bash(node --check src/controllers/nivelacije.controller.js)",
+      "Bash(node --check src/routes/nivelacije.routes.js)",
+      "Bash(node check_schema_tmp.mjs)",
+      "Bash(node check_new_proc_tmp.mjs)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"

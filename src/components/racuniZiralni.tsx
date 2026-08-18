@@ -1030,6 +1030,24 @@ export function ZiralniRacuni() {
         setNivelacijaGreska(json.error || "Greška pri unosu nivelacije");
         return;
       }
+      const sifraNivelacije = json.data?.sifra_nivelacije;
+      if (sifraNivelacije) {
+        try {
+          await fetch(`${API_URL}/api/nivelacije/trenutno-stanje`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              sifraProizvoda: artikalZaCijenu.sifra_proizvoda,
+              vpcStvarna: staraVpc,
+              vpcTrenutna: novaVpcBroj,
+              sifraNivelacije,
+            }),
+          });
+        } catch {
+          // Ne blokira glavni tok - nivelacija je već uspješno sačuvana.
+        }
+      }
       const novaMpcBroj = parseFloat(novaMpc) || 0;
       setArtikli((prev) =>
         prev.map((a) =>
