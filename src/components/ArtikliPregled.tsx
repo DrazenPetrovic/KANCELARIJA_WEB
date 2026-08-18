@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Package, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Loader2,
+  Package,
+  Search,
+} from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
+const ACCENT = "#8FC74A";
 
 // Paleta boja pozadine po grupi proizvoda — redom se dodjeljuje svakoj grupi
 // (ciklično), da se grupe vizuelno razlikuju u tabeli. Svaka boja ima varijantu
@@ -43,15 +52,29 @@ interface ArtikalGrupa {
 const TH = ({
   children,
   center,
+  sortDir,
+  onClick,
 }: {
   children: React.ReactNode;
   center?: boolean;
+  sortDir?: "asc" | "desc" | null;
+  onClick?: () => void;
 }) => (
   <th
-    className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap bg-[#f4f1f9] dark:bg-[#2a2340] ${center ? "text-center" : "text-left"}`}
-    style={{ color: PRIMARY }}
+    className={`px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap text-white ${center ? "text-center" : "text-left"} ${onClick ? "cursor-pointer select-none hover:brightness-110 transition-[filter]" : ""}`}
+    style={{ backgroundColor: PRIMARY, borderBottom: `2px solid ${ACCENT}` }}
+    onClick={onClick}
   >
-    {children}
+    {onClick ? (
+      <span className={`inline-flex items-center gap-1 ${center ? "justify-center" : ""}`}>
+        {children}
+        {sortDir === "asc" && <ArrowUp size={12} />}
+        {sortDir === "desc" && <ArrowDown size={12} />}
+        {!sortDir && <ArrowUpDown size={12} className="opacity-50" />}
+      </span>
+    ) : (
+      children
+    )}
   </th>
 );
 
@@ -80,7 +103,7 @@ const formatBroj = (v: number | string | undefined) => {
 const ROW_HEIGHT_PX = 44;
 const OVERSCAN_REDOVA = 15;
 const PRAG_VIRTUALIZACIJE = 150;
-const BROJ_KOLONA = 8;
+const BROJ_KOLONA = 9;
 
 export function ArtikliPregled() {
   const { theme } = useTheme();
@@ -90,6 +113,19 @@ export function ArtikliPregled() {
   const [error, setError] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
   const [grupaFilter, setGrupaFilter] = useState("sve");
+  const [sortPolje, setSortPolje] = useState<"sifra" | "naziv" | "grupa">(
+    "naziv",
+  );
+  const [sortSmjer, setSortSmjer] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (polje: "sifra" | "naziv" | "grupa") => {
+    if (sortPolje === polje) {
+      setSortSmjer((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortPolje(polje);
+      setSortSmjer("asc");
+    }
+  };
 
   useEffect(() => {
     const ucitaj = async () => {
@@ -131,17 +167,20 @@ export function ArtikliPregled() {
         );
       })
       .sort((a, b) => {
-        const grupaCmp = (a.naziv_grupe || "").localeCompare(
-          b.naziv_grupe || "",
+        const polje =
+          sortPolje === "sifra"
+            ? "sifra_proizvoda"
+            : sortPolje === "grupa"
+              ? "naziv_grupe"
+              : "naziv_proizvoda";
+        const cmp = String(a[polje] ?? "").localeCompare(
+          String(b[polje] ?? ""),
           "bs",
+          { numeric: true },
         );
-        if (grupaCmp !== 0) return grupaCmp;
-        return (a.naziv_proizvoda || "").localeCompare(
-          b.naziv_proizvoda || "",
-          "bs",
-        );
+        return sortSmjer === "asc" ? cmp : -cmp;
       });
-  }, [data, pretraga, grupaFilter]);
+  }, [data, pretraga, grupaFilter, sortPolje, sortSmjer]);
 
   // Boja pozadine po grupi — dodjeljuje se redom kojim se grupe pojavljuju u
   // listi grupa sa servera (stabilan redoslijed, neovisan o filterima).
@@ -288,12 +327,39 @@ export function ArtikliPregled() {
                 : undefined
             }
           >
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col style={{ width: 85 }} />
+                <col style={{ width: 40 }} />
+                <col />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 70 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 90 }} />
+              </colgroup>
               <thead>
                 <tr className={jeVirtualizovano ? "sticky top-0 z-10" : undefined}>
-                  <TH>Šifra</TH>
-                  <TH>Naziv</TH>
-                  <TH>Grupa</TH>
+                  <TH
+                    onClick={() => handleSort("sifra")}
+                    sortDir={sortPolje === "sifra" ? sortSmjer : null}
+                  >
+                    Šifra
+                  </TH>
+                  <TH center> </TH>
+                  <TH
+                    onClick={() => handleSort("naziv")}
+                    sortDir={sortPolje === "naziv" ? sortSmjer : null}
+                  >
+                    Naziv artikla
+                  </TH>
+                  <TH
+                    onClick={() => handleSort("grupa")}
+                    sortDir={sortPolje === "grupa" ? sortSmjer : null}
+                  >
+                    Grupa
+                  </TH>
                   <TH center>JM</TH>
                   <TH center>Količina</TH>
                   <TH center>Nabavna</TH>
@@ -321,15 +387,34 @@ export function ArtikliPregled() {
                         {a.sifra_proizvoda}
                       </span>
                     </TD>
+                    <TD center>
+                      {Number(a.kolicina_proizvoda) === 0 && (
+                        <span title="Nema na stanju" className="inline-flex">
+                          <AlertTriangle
+                            size={13}
+                            className="text-red-500 dark:text-red-400"
+                          />
+                        </span>
+                      )}
+                    </TD>
                     <TD>
-                      <span className="font-medium">{a.naziv_proizvoda}</span>
-                      {a.barkod && (
-                        <span className="block text-xs text-gray-400 dark:text-[#5f5878]">
+                      <span
+                        className="block truncate font-medium"
+                        title={a.naziv_proizvoda}
+                      >
+                        {a.naziv_proizvoda}
+                      </span>
+                      {a.barkod && a.barkod !== "0" && (
+                        <span className="block truncate text-xs text-gray-400 dark:text-[#5f5878]">
                           {a.barkod}
                         </span>
                       )}
                     </TD>
-                    <TD>{a.naziv_grupe || "–"}</TD>
+                    <TD>
+                      <span className="block truncate" title={a.naziv_grupe}>
+                        {a.naziv_grupe || "–"}
+                      </span>
+                    </TD>
                     <TD center>{a.jm || "–"}</TD>
                     <TD center>{formatBroj(a.kolicina_proizvoda)}</TD>
                     <TD center>{formatBroj(a.nabavna_cijena)}</TD>

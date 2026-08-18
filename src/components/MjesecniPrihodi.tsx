@@ -77,12 +77,19 @@ const pronadjiCeliju = (
   };
 };
 
-const prviDanMjeseca = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+// Formatira lokalni datum kao yyyy-MM-dd (bez prolaska kroz UTC, jer
+// toISOString() pomjera datum unazad za korisnike u zonama ispred UTC-a).
+const formatDatumISO = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-const danas = () => new Date().toISOString().slice(0, 10);
+const prviDanMjeseca = () => {
+  const d = new Date();
+  return formatDatumISO(new Date(d.getFullYear(), d.getMonth(), 1));
+};
+
+const danas = () => formatDatumISO(new Date());
 
 // dd.MM.yyyy — za prikaz u poljima Datum od / Datum do.
 const formatDatumDMY = (v: string | undefined | null): string | null => {

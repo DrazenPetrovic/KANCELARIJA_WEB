@@ -4,7 +4,8 @@ Oblik: { header, items } — header je jedan objekat (glavna tabela računa),
 items je niz objekata (jedan po stavki/proizvodu na računu).
 
 Napomena (iz koda): MPC je uvijek osnova obračuna za gotovinski račun
-(ista vrijednost ide i na fiskalni račun). VPC = MPC / 1.17, PDV po artiklu = MPC - VPC.
+(ista vrijednost ide i na fiskalni račun). VPC = MPC / 1.17,
+PDV po artiklu = (MPC - VPC) * količina (ukupan PDV za cijelu stavku, ne po jedinici).
 Polja vezana za rabate (rabat_proc, rabat_km, rabat_proc_2, rabat_km_2, rab_proc_3,
 rabat_km_3) su za gotovinski (maloprodajni) račun UVIJEK 0 — postoje u ovom obliku
 samo zato što ga dijeli sa žiralnim računom (koji rabate stvarno koristi).
@@ -49,7 +50,7 @@ rabat_km_2                 - broj, rabat 2 u KM — uvijek 0 za gotovinski
 rab_proc_3                 - broj, rabat 3 u % — uvijek 0 za gotovinski
 rabat_km_3                 - broj, rabat 3 u KM — uvijek 0 za gotovinski
 vpc_rabat_1                - broj, VPC nakon rabata 1 — kod gotovinskog isti kao vpc
-pdv_po_artiklu             - broj, PDV iznos po artiklu (MPC - VPC)
+pdv_po_artiklu             - broj, ukupan PDV za stavku ((MPC - VPC) * količina)
 nabavna_cijena_proizvoda   - broj, stvarna nabavna (kupovna) cijena artikla
 
 ------------------------------------------------------------------------------
@@ -91,7 +92,7 @@ DUMMY PRIMJER (kompletan JSON koji bi otišao na server):
       "rab_proc_3": 0,
       "rabat_km_3": 0,
       "vpc_rabat_1": 8.55,
-      "pdv_po_artiklu": 1.45,
+      "pdv_po_artiklu": 2.90,
       "nabavna_cijena_proizvoda": 6.20
     },
     {

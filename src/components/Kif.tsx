@@ -45,12 +45,19 @@ const formatIznos = (v: number | null | undefined) =>
     })
     .replace(/,/g, " ")} KM`;
 
-const prviDanMjeseca = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+// Formatira lokalni datum kao yyyy-MM-dd (bez prolaska kroz UTC, jer
+// toISOString() pomjera datum unazad za korisnike u zonama ispred UTC-a).
+const formatDatumISO = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-const danas = () => new Date().toISOString().slice(0, 10);
+const prviDanMjeseca = () => {
+  const d = new Date();
+  return formatDatumISO(new Date(d.getFullYear(), d.getMonth(), 1));
+};
+
+const danas = () => formatDatumISO(new Date());
 
 const formatSifru = (v: string | number | null | undefined): string =>
   v && String(v) !== "0" ? String(v) : "-";

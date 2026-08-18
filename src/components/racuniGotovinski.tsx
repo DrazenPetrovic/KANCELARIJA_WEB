@@ -980,8 +980,9 @@ export function GotovinskiRacuni() {
 
   // Priprema kompletnog JSON-a (header + items) za slanje kroz proceduru.
   // MPC je uvijek osnova obračuna (ista vrijednost ide i fiskalnom računu):
-  // VPC = MPC / 1.17, PDV po artiklu = MPC - VPC. Rabat i njegovi nivoi su za
-  // gotovinski (maloprodajni) račun uvijek 0 — postoje zbog žiralnih računa.
+  // VPC = MPC / 1.17, PDV po artiklu = (MPC - VPC) * količina (ukupan PDV za
+  // cijelu stavku, ne po jedinici). Rabat i njegovi nivoi su za gotovinski
+  // (maloprodajni) račun uvijek 0 — postoje zbog žiralnih računa.
   const pripremiRacunZaUnos = (): RacunZaUnos => {
     const items: StavkaZaUnos[] = stavke.map((s) => {
       const sifraProizvoda = Number(String(s.sifra_proizvoda).trim());
@@ -992,7 +993,7 @@ export function GotovinskiRacuni() {
       }
       const mpc = round2(s.mpc);
       const vpc = round2(mpc / (1 + STOPA_PDV));
-      const pdvPoArtiklu = round2(mpc - vpc);
+      const pdvPoArtiklu = round2((mpc - vpc) * s.kolicina);
       return {
         sifra_proizvoda: sifraProizvoda,
         cijena_proizvoda: round2(s.nabavna_cijena),
