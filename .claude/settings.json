@@ -79,7 +79,10 @@
       "Bash(node --check src/controllers/nivelacije.controller.js)",
       "Bash(node --check src/routes/nivelacije.routes.js)",
       "Bash(node check_schema_tmp.mjs)",
-      "Bash(node check_new_proc_tmp.mjs)"
+      "Bash(node check_new_proc_tmp.mjs)",
+      "Bash(node -e \"console.log\\(require.resolve\\('dotenv'\\)\\)\")",
+      "Bash(node _tmp_check.mjs)",
+      "Bash(rm _tmp_check.mjs)"
     ],
     "additionalDirectories": [
       "D:\\Desktop\\PRINT_AGENT"
