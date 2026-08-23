@@ -22,3 +22,26 @@ export const getMjesecniPrihodi = async (req, res) => {
     });
   }
 };
+
+export const getMjesecniPrihodiIzvoz = async (req, res) => {
+  try {
+    const { datumOd, datumDo } = req.query;
+    if (!datumOd || !datumDo) {
+      return res.status(400).json({
+        success: false,
+        error: "Parametri 'datumOd' i 'datumDo' su obavezni",
+      });
+    }
+    const data = await MjesecniPrihodiService.getMjesecniPrihodiIzvoz(
+      datumOd,
+      datumDo,
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled izvoznih faktura error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju izvoznih faktura",
+    });
+  }
+};

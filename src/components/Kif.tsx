@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookMarked,
-  Calendar,
   CreditCard,
-  FileText,
+  Landmark,
   Loader2,
-  Percent,
+  Printer,
+  Receipt,
   RefreshCcw,
   Tags,
+  TrendingUp,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { KifPregledTemplate } from "../print/templates/KifPregledTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
+const STOPA_PDV = 0.17;
 
 // Red vraćen sa erp.sp_kif(datumOd, datumDo).
 interface KifRed {
@@ -98,14 +102,29 @@ function StatTile({
   vrijednost,
   naziv,
   boja,
+  podnaslov,
+  izracunato,
 }: {
   icon: React.ReactNode;
   vrijednost: string;
   naziv: string;
   boja: string;
+  // Dodatna linija ispod naziva (npr. "17% = X KM") — za polja koja su izvedena
+  // iz drugih vrijednosti u hederu, ne dolaze direktno iz baze.
+  podnaslov?: string;
+  // Vizuelno izdvaja polje isprekidanim okvirom u boji polja — označava da je
+  // vrijednost izračunata, a ne sirov zbir kolone.
+  izracunato?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm px-4 py-3 flex-1 min-w-[170px]">
+    <div
+      className={`flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[170px] ${
+        izracunato
+          ? "border-2 border-dashed"
+          : "border border-gray-100 dark:border-[#2d2648]"
+      }`}
+      style={izracunato ? { borderColor: boja } : undefined}
+    >
       <div
         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ background: `${boja}1f` }}
@@ -119,6 +138,11 @@ function StatTile({
         <div className="text-xs text-gray-400 dark:text-[#5f5878] truncate">
           {naziv}
         </div>
+        {podnaslov && (
+          <div className="text-[10px] font-semibold truncate" style={{ color: boja }}>
+            {podnaslov}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -166,6 +190,7 @@ const TD = ({
 );
 
 export function Kif() {
+  const { openPrint } = usePrint();
   const [datumOd, setDatumOd] = useState(prviDanMjeseca());
   const [datumDo, setDatumDo] = useState(danas());
   // Primijenjeni period — mijenja se samo na klik "Prikaži", da odabir datuma
@@ -286,6 +311,16 @@ export function Kif() {
     () => redoviFiltrirano.reduce((s, r) => s + Number(r.ukupno || 0), 0),
     [redoviFiltrirano],
   );
+  // KIF nema direktno veleprodajnu vrednost (VPC prije rabata) — izvodi se iz
+  // osnovice (VPC nakon rabata) i rabata: VP = Osnovica + Rabat.
+  const ukupnoVeleprodajnaVrednost = useMemo(
+    () => ukupnoOsnovica + ukupnoRabat,
+    [ukupnoOsnovica, ukupnoRabat],
+  );
+  const osnovicaPdv17 = useMemo(
+    () => ukupnoOsnovica * STOPA_PDV,
+    [ukupnoOsnovica],
+  );
 
   return (
     <div className="space-y-4">
@@ -302,6 +337,29 @@ export function Kif() {
             Knjiga izlaznih faktura za izabrani period
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() =>
+            openPrint({
+              title: `KIF ${formatDatumDMY(primenjeniOd) ?? ""} - ${formatDatumDMY(primenjeniDo) ?? ""}`,
+              orientation: "portrait",
+              format: "A4",
+              component: (
+                <KifPregledTemplate
+                  redovi={redoviFiltrirano}
+                  datumOd={primenjeniOd}
+                  datumDo={primenjeniDo}
+                />
+              ),
+            })
+          }
+          disabled={loading || redoviFiltrirano.length === 0}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+          style={{ background: PRIMARY }}
+        >
+          <Printer size={15} />
+          Štampaj
+        </button>
       </div>
 
       {/* Filteri */}
@@ -358,42 +416,49 @@ export function Kif() {
           >
             <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
             Prikaži
+            {!loading && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-xs font-bold">
+                {redoviFiltrirano.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Statistika */}
+      {/* Statistika — isti raspored kao u Mjesečnim prihodima */}
       {!loading && !greska && (
         <div className="flex flex-wrap gap-3">
           <StatTile
-            icon={<FileText size={16} />}
-            vrijednost={String(redoviFiltrirano.length)}
-            naziv="Broj računa"
-            boja={PRIMARY}
+            icon={<TrendingUp size={16} />}
+            vrijednost={formatIznos(ukupnoUkupno)}
+            naziv="Ukupno"
+            boja={ACCENT}
           />
           <StatTile
-            icon={<Tags size={16} />}
-            vrijednost={formatIznos(ukupnoOsnovica)}
-            naziv="Osnovica za PDV"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Percent size={16} />}
-            vrijednost={formatIznos(ukupnoPdv)}
-            naziv="PDV ukupno"
+            icon={<Landmark size={16} />}
+            vrijednost={formatIznos(ukupnoVeleprodajnaVrednost)}
+            naziv="Veleprodajna vrednost"
             boja={PRIMARY}
           />
           <StatTile
             icon={<CreditCard size={16} />}
             vrijednost={formatIznos(ukupnoRabat)}
-            naziv="Rabat ukupno"
+            naziv="Rabat"
             boja={PRIMARY}
           />
           <StatTile
-            icon={<Calendar size={16} />}
-            vrijednost={formatIznos(ukupnoVrijednost)}
-            naziv="Vrijednost ukupno"
-            boja={ACCENT}
+            icon={<Receipt size={16} />}
+            vrijednost={formatIznos(ukupnoOsnovica)}
+            naziv="Osnovica"
+            podnaslov={`17% = ${formatIznos(osnovicaPdv17)}`}
+            boja={PRIMARY}
+            izracunato
+          />
+          <StatTile
+            icon={<Tags size={16} />}
+            vrijednost={formatIznos(ukupnoPdv)}
+            naziv="PDV"
+            boja={PRIMARY}
           />
         </div>
       )}

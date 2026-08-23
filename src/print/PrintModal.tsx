@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Printer, ZoomIn, ZoomOut, CheckCircle2, Loader2 } from "lucide-react";
+import { X, Printer, ZoomIn, ZoomOut, CheckCircle2, Loader2, FileDown } from "lucide-react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { PrintJob } from "../context/PrintContext";
@@ -33,6 +33,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
   const [printSuccess, setPrintSuccess] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isSavingPdf, setIsSavingPdf] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<PrintServiceStatus | null>(
     null,
   );
@@ -115,15 +116,10 @@ export function PrintModal({ job, onClose, printerName }: Props) {
     );
   };
 
-  const sendDirectPrintFromPreview = async (status: PrintServiceStatus) => {
+  const buildPdf = async (): Promise<jsPDF> => {
     const printSource = directPrintRef.current;
     if (!printSource) {
       throw { code: "INVALID_REQUEST", message: "Nema izvora za štampu" };
-    }
-
-    const resolvedPrinter = resolvePrinterName(status);
-    if (!resolvedPrinter) {
-      throw { code: "PRINTER_NOT_FOUND", message: "Printer nije pronađen" };
     }
 
     const renderScale = 2;
@@ -193,6 +189,16 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       pageIndex++;
     }
 
+    return pdf;
+  };
+
+  const sendDirectPrintFromPreview = async (status: PrintServiceStatus) => {
+    const resolvedPrinter = resolvePrinterName(status);
+    if (!resolvedPrinter) {
+      throw { code: "PRINTER_NOT_FOUND", message: "Printer nije pronađen" };
+    }
+
+    const pdf = await buildPdf();
     const documentBase64 = bytesToBase64(
       new Uint8Array(pdf.output("arraybuffer")),
     );
@@ -270,6 +276,22 @@ export function PrintModal({ job, onClose, printerName }: Props) {
     }
   };
 
+  const sanitizeFileName = (name: string) =>
+    name.trim().replace(/[\\/:*?"<>|]+/g, "_") || "dokument";
+
+  const handleSaveAsPdf = async () => {
+    setPrintError(null);
+    setIsSavingPdf(true);
+    try {
+      const pdf = await buildPdf();
+      pdf.save(`${sanitizeFileName(job.title)}.pdf`);
+    } catch {
+      setPrintError("Greška prilikom kreiranja PDF-a");
+    } finally {
+      setIsSavingPdf(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
@@ -289,12 +311,12 @@ export function PrintModal({ job, onClose, printerName }: Props) {
           </div>
         )}
 
-        {isPrinting && !showSuccessOverlay && (
+        {(isPrinting || isSavingPdf) && !showSuccessOverlay && (
           <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-white/90 dark:bg-[#261f38]/90 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={48} className="animate-spin" style={{ color: PRIMARY }} />
               <p className="text-sm font-semibold text-gray-700 dark:text-[#c5bfd8]">
-                Štampanje u toku...
+                {isSavingPdf ? "Kreiranje PDF-a..." : "Štampanje u toku..."}
               </p>
             </div>
           </div>
@@ -470,7 +492,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
                 onClick={() => {
                   void handlePrint();
                 }}
-                disabled={isPrinting}
+                disabled={isPrinting || isSavingPdf}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ background: PRIMARY }}
               >
@@ -479,11 +501,27 @@ export function PrintModal({ job, onClose, printerName }: Props) {
                 ) : (
                   <Printer size={15} />
                 )}
-                {isPrinting ? "Štampanje..." : "Štampaj / PDF"}
+                {isPrinting ? "Štampanje..." : "Štampaj"}
+              </button>
+              <button
+                onClick={() => {
+                  void handleSaveAsPdf();
+                }}
+                disabled={isPrinting || isSavingPdf}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ borderColor: PRIMARY, color: PRIMARY }}
+              >
+                {isSavingPdf ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <FileDown size={15} />
+                )}
+                {isSavingPdf ? "Snimanje..." : "Sačuvaj kao PDF"}
               </button>
               <button
                 onClick={onClose}
-                className="w-full px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-[#7d7498] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                disabled={isPrinting || isSavingPdf}
+                className="w-full px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-[#7d7498] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Zatvori
               </button>

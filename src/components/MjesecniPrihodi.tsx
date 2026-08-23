@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
-  Calendar,
   CreditCard,
+  Info,
   Landmark,
   Loader2,
+  Printer,
+  Receipt,
   RefreshCcw,
   Tags,
   TrendingUp,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { MjesecniPrihodiTemplate } from "../print/templates/MjesecniPrihodiTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
+const STOPA_PDV = 0.17;
 
 // Red vraćen sa erp.sp_mjesecni_prihodi(datumOd, datumDo).
 interface PrihodRed {
@@ -123,14 +128,29 @@ function StatTile({
   vrijednost,
   naziv,
   boja,
+  podnaslov,
+  izracunato,
 }: {
   icon: React.ReactNode;
   vrijednost: string;
   naziv: string;
   boja: string;
+  // Dodatna linija ispod naziva (npr. "17% = X KM") — za polja koja su izvedena
+  // iz drugih vrijednosti u hederu, ne dolaze direktno iz baze.
+  podnaslov?: string;
+  // Vizuelno izdvaja polje isprekidanim okvirom u boji polja — označava da je
+  // vrijednost izračunata (npr. Osnovica = VP - Rabat), a ne sirov zbir kolone.
+  izracunato?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm px-4 py-3 flex-1 min-w-[170px]">
+    <div
+      className={`flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[170px] ${
+        izracunato
+          ? "border-2 border-dashed"
+          : "border border-gray-100 dark:border-[#2d2648]"
+      }`}
+      style={izracunato ? { borderColor: boja } : undefined}
+    >
       <div
         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ background: `${boja}1f` }}
@@ -144,6 +164,11 @@ function StatTile({
         <div className="text-xs text-gray-400 dark:text-[#5f5878] truncate">
           {naziv}
         </div>
+        {podnaslov && (
+          <div className="text-[10px] font-semibold truncate" style={{ color: boja }}>
+            {podnaslov}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -157,9 +182,9 @@ function PodnasloviCelije({ separator }: { separator?: boolean }) {
   return (
     <>
       <th className={podnaslovClass}>Ukupno</th>
-      <th className={podnaslovClass}>PDV</th>
+      <th className={podnaslovClass}>VP</th>
       <th className={podnaslovClass}>Rabat</th>
-      <th className={`${podnaslovClass} ${separator ? razdvajac : ""}`}>VPC</th>
+      <th className={`${podnaslovClass} ${separator ? razdvajac : ""}`}>PDV</th>
     </>
   );
 }
@@ -179,7 +204,7 @@ function CelijeRed({
         {formatIznos(v.ukupno)}
       </td>
       <td className="px-3 py-2.5 text-right text-gray-600 dark:text-[#c5bfd8]">
-        {formatIznos(v.pdv)}
+        {formatIznos(v.vpc)}
       </td>
       <td className="px-3 py-2.5 text-right text-gray-600 dark:text-[#c5bfd8]">
         {formatIznos(v.rabat)}
@@ -187,18 +212,28 @@ function CelijeRed({
       <td
         className={`px-3 py-2.5 text-right text-gray-600 dark:text-[#c5bfd8] ${separator ? razdvajac : ""}`}
       >
-        {formatIznos(v.vpc)}
+        {formatIznos(v.pdv)}
       </td>
     </>
   );
 }
 
+interface IzvozInfo {
+  broj_racuna: number;
+  osnovica: number;
+  ukupno: number;
+}
+
 export function MjesecniPrihodi() {
+  const { openPrint } = usePrint();
   const [datumOd, setDatumOd] = useState(prviDanMjeseca());
   const [datumDo, setDatumDo] = useState(danas());
   const [redovi, setRedovi] = useState<PrihodRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
+  // Izvozne fakture (0% PDV) — informativno, da operater vidi zašto Osnovica
+  // x 17% ne odgovara stvarnom PDV-u kad ima izvoza u periodu.
+  const [izvoz, setIzvoz] = useState<IzvozInfo | null>(null);
   const datumOdRef = useRef<HTMLInputElement>(null);
   const datumDoRef = useRef<HTMLInputElement>(null);
 
@@ -229,32 +264,40 @@ export function MjesecniPrihodi() {
         setGreska(err instanceof Error ? err.message : "Nepoznata greška"),
       )
       .finally(() => setLoading(false));
+
+    // Best-effort — ako ovaj poziv ne uspije, rekapitulacija i dalje radi,
+    // samo se ne prikazuje informativni red o izvozu.
+    setIzvoz(null);
+    fetch(
+      `${API_URL}/api/mjesecni-prihodi/izvoz?datumOd=${datumOd}&datumDo=${datumDo}`,
+      { credentials: "include" },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.success) setIzvoz(json.data);
+      })
+      .catch(() => {});
   };
 
   useEffect(ucitaj, []);
 
-  const ukupnoPrihod = useMemo(
-    () =>
-      redovi
-        .filter((r) => !jeStorno(r.storno))
-        .reduce((s, r) => s + Number(r.ukupno || 0), 0),
+  // Neto vrijednosti za heder — erp.mjesecni_prihodi_pregled već vraća storno
+  // redove sa negativnim iznosima (ukupno/pdv/rabat/veleprodajna_vrednost), pa
+  // je običan zbir preko svih redova dovoljan da storno ispravno umanji promet.
+  const netZaKolonu = (kolona: keyof PrihodRed) =>
+    redovi.reduce((s, r) => s + Number(r[kolona] || 0), 0);
+  const ukupnoNeto = useMemo(() => netZaKolonu("ukupno"), [redovi]);
+  const vpNeto = useMemo(
+    () => netZaKolonu("veleprodajna_vrednost"),
     [redovi],
   );
-  const ukupnoStorno = useMemo(
-    () =>
-      redovi
-        .filter((r) => jeStorno(r.storno))
-        .reduce((s, r) => s + Number(r.ukupno || 0), 0),
-    [redovi],
+  const rabatNeto = useMemo(() => netZaKolonu("rabat"), [redovi]);
+  const osnovicaNeto = useMemo(() => vpNeto - rabatNeto, [vpNeto, rabatNeto]);
+  const osnovicaPdv17 = useMemo(
+    () => osnovicaNeto * STOPA_PDV,
+    [osnovicaNeto],
   );
-  const ukupnoPdv = useMemo(
-    () => redovi.reduce((s, r) => s + Number(r.pdv || 0), 0),
-    [redovi],
-  );
-  const ukupnoRabat = useMemo(
-    () => redovi.reduce((s, r) => s + Number(r.rabat || 0), 0),
-    [redovi],
-  );
+  const pdvNeto = useMemo(() => netZaKolonu("pdv"), [redovi]);
 
   const grupe = useMemo((): GrupaPlacanja[] => {
     const map = new Map<string, GrupaPlacanja>();
@@ -302,6 +345,30 @@ export function MjesecniPrihodi() {
             Prihodi po načinu plaćanja i kategoriji za izabrani period
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() =>
+            openPrint({
+              title: `Mjesečni prihodi ${formatDatumDMY(datumOd) ?? ""} - ${formatDatumDMY(datumDo) ?? ""}`,
+              orientation: "portrait",
+              format: "A4",
+              component: (
+                <MjesecniPrihodiTemplate
+                  redovi={redovi}
+                  datumOd={datumOd}
+                  datumDo={datumDo}
+                  izvoz={izvoz}
+                />
+              ),
+            })
+          }
+          disabled={loading || redovi.length === 0}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+          style={{ background: PRIMARY }}
+        >
+          <Printer size={15} />
+          Štampaj
+        </button>
       </div>
 
       {/* Filteri */}
@@ -367,28 +434,54 @@ export function MjesecniPrihodi() {
         <div className="flex flex-wrap gap-3">
           <StatTile
             icon={<TrendingUp size={16} />}
-            vrijednost={formatIznos(ukupnoPrihod)}
-            naziv="Ukupno prihoda"
+            vrijednost={formatIznos(ukupnoNeto)}
+            naziv="Ukupno"
             boja={ACCENT}
           />
           <StatTile
-            icon={<Tags size={16} />}
-            vrijednost={formatIznos(ukupnoPdv)}
-            naziv="PDV ukupno"
+            icon={<Landmark size={16} />}
+            vrijednost={formatIznos(vpNeto)}
+            naziv="Veleprodajna vrednost"
             boja={PRIMARY}
           />
           <StatTile
             icon={<CreditCard size={16} />}
-            vrijednost={formatIznos(ukupnoRabat)}
-            naziv="Rabat ukupno"
+            vrijednost={formatIznos(rabatNeto)}
+            naziv="Rabat"
             boja={PRIMARY}
           />
           <StatTile
-            icon={<Calendar size={16} />}
-            vrijednost={formatIznos(ukupnoStorno)}
-            naziv="Stornirano"
-            boja={ukupnoStorno > 0 ? "#f59e0b" : "#9ca3af"}
+            icon={<Receipt size={16} />}
+            vrijednost={formatIznos(osnovicaNeto)}
+            naziv="Osnovica"
+            podnaslov={`17% = ${formatIznos(osnovicaPdv17)}`}
+            boja={PRIMARY}
+            izracunato
           />
+          <StatTile
+            icon={<Tags size={16} />}
+            vrijednost={formatIznos(pdvNeto)}
+            naziv="PDV"
+            boja={PRIMARY}
+          />
+        </div>
+      )}
+
+      {/* Napomena o izvoznim fakturama — one ulaze u Osnovicu ali imaju 0%
+          PDV, pa "Osnovica x 17%" inače djeluje kao da PDV fali. */}
+      {!loading && !greska && izvoz && izvoz.broj_racuna > 0 && (
+        <div
+          className="flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs"
+          style={{ background: "#f59e0b1f", color: "#92620a" }}
+        >
+          <Info size={16} className="flex-shrink-0 mt-0.5" />
+          <span>
+            U periodu ima <strong>{izvoz.broj_racuna}</strong> izvozn
+            {izvoz.broj_racuna === 1 ? "a" : "ih"} računa (0% PDV) u iznosu od{" "}
+            <strong>{formatIznos(izvoz.osnovica)}</strong> — ušli su u
+            Veleprodajnu vrednost i Osnovicu, ali ne i u PDV, zato Osnovica ×
+            17% ne odgovara stvarnom PDV-u za ovaj period.
+          </span>
         </div>
       )}
 
@@ -452,8 +545,8 @@ export function MjesecniPrihodi() {
                     <div className="text-xs text-gray-400 dark:text-[#5f5878]">
                       {g.stavke.length}{" "}
                       {g.stavke.length === 1 ? "stavka" : "stavki"}
-                      {g.storno > 0
-                        ? ` · stornirano ${formatIznos(g.storno)}`
+                      {g.storno !== 0
+                        ? ` · stornirano ${formatIznos(Math.abs(g.storno))}`
                         : ""}
                     </div>
                   </div>

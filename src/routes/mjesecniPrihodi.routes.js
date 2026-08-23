@@ -4,5 +4,6 @@ import * as MjesecniPrihodiController from "../controllers/mjesecniPrihodi.contr
 const router = Router();
 
 router.get("/", MjesecniPrihodiController.getMjesecniPrihodi);
+router.get("/izvoz", MjesecniPrihodiController.getMjesecniPrihodiIzvoz);
 
 export default router;
