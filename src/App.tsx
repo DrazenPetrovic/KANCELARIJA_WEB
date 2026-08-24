@@ -4,6 +4,7 @@ import { Dashboard } from "./components/Dashboard";
 import { verifyAuth, signOut } from "./utils/auth";
 import { PrintProvider } from "./context/PrintContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { BlagajnaProvider } from "./context/BlagajnaContext";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -52,11 +53,13 @@ function App() {
     <ThemeProvider>
       <PrintProvider username={username}>
         {isAuthenticated ? (
-          <Dashboard
-            username={username}
-            vrstaRadnika={vrstaRadnika}
-            onLogout={handleLogout}
-          />
+          <BlagajnaProvider>
+            <Dashboard
+              username={username}
+              vrstaRadnika={vrstaRadnika}
+              onLogout={handleLogout}
+            />
+          </BlagajnaProvider>
         ) : (
           <LoginPanel onLoginSuccess={handleLoginSuccess} />
         )}

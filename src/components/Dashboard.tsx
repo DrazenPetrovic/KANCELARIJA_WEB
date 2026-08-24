@@ -20,6 +20,8 @@ import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { BlagajnaPregled } from "./BlagajnaPregled";
+import { BlagajnaStatus } from "./BlagajnaStatus";
+import { useBlagajna } from "../context/BlagajnaContext";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
 import { useTheme } from "../context/ThemeContext";
@@ -53,6 +55,7 @@ import {
   FolderArchive,
   Landmark,
   Layers,
+  Lock,
   LogOut,
   MapPin,
   Moon,
@@ -135,6 +138,8 @@ type MenuSection =
   | "narudzbe-zavrsene-lokalno"
   | "finansije-izvodi-pregled"
   | "finansije-blagajna-pregled"
+  | "finansije-blagajna-status"
+  | "finansije-blagajna-unos"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -162,6 +167,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "narudzbe-zavrsene-lokalno": "Završene lokalne narudžbe",
   "finansije-izvodi-pregled": "Pregled izvoda",
   "finansije-blagajna-pregled": "Pregled blagajne",
+  "finansije-blagajna-status": "Status blagajne",
+  "finansije-blagajna-unos": "Unos uplata/isplata",
   "klise-unos": "Unos kliše",
   "klise-naplata": "Unos naplate klišea",
   "klise-dobavljac": "Unos podataka od dobavljača",
@@ -181,6 +188,7 @@ export function Dashboard({
   onLogout,
 }: DashboardProps) {
   const { theme, toggleTheme } = useTheme();
+  const { otvorena: blagajnaOtvorena } = useBlagajna();
   const {
     printers,
     loadingPrinters,
@@ -1510,6 +1518,77 @@ export function Dashboard({
                               />
                               Pregled blagajne
                             </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange(
+                                  "finansije-blagajna-status",
+                                )
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "finansije-blagajna-status"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "finansije-blagajna-status"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Lock
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "finansije-blagajna-status"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Status blagajne
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (!blagajnaOtvorena) return;
+                                handleSectionChange("finansije-blagajna-unos");
+                              }}
+                              disabled={!blagajnaOtvorena}
+                              title={
+                                !blagajnaOtvorena
+                                  ? "Blagajna je zatvorena — prvo je otvorite u Statusu blagajne"
+                                  : undefined
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                !blagajnaOtvorena
+                                  ? "text-gray-300 dark:text-[#4a4260] cursor-not-allowed"
+                                  : activeSection === "finansije-blagajna-unos"
+                                    ? "font-bold"
+                                    : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                blagajnaOtvorena &&
+                                activeSection === "finansije-blagajna-unos"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Wallet
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color: !blagajnaOtvorena
+                                    ? "#d1d5db"
+                                    : activeSection ===
+                                        "finansije-blagajna-unos"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Unos uplata/isplata
+                            </button>
                           </div>
                         )}
                       </div>
@@ -2145,6 +2224,34 @@ export function Dashboard({
 
           {activeSection === "finansije-blagajna-pregled" && (
             <BlagajnaPregled />
+          )}
+
+          {activeSection === "finansije-blagajna-status" && (
+            <BlagajnaStatus />
+          )}
+
+          {activeSection === "finansije-blagajna-unos" && (
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                  <Wallet size={20} style={{ color: PRIMARY }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                  Unos uplata/isplata
+                </h2>
+              </div>
+              {blagajnaOtvorena ? (
+                <p className="text-gray-500 dark:text-[#7d7498]">
+                  Forma za unos uplata i isplata na trenutno otvorenu blagajnu
+                  dolazi u sljedećem koraku.
+                </p>
+              ) : (
+                <p className="text-gray-500 dark:text-[#7d7498]">
+                  Blagajna je u međuvremenu zatvorena — otvorite je ponovo u
+                  Statusu blagajne da nastavite.
+                </p>
+              )}
+            </div>
           )}
 
           {activeSection === "narudzbe-zavrsene-lokalno" && (
