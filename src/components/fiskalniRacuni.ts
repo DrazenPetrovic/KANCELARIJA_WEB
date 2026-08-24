@@ -27,15 +27,6 @@ const ESIR_CONFIG: Record<EsirUredjaj, EsirConfig> = {
   },
 };
 
-// Bezbjednosni element se otključava PIN-om samo za JEDNU narednu komandu —
-// nakon svakog /api/invoices poziva se sam ponovo zaključa. Zato se PIN mora
-// poslati neposredno prije svake komande koja izdaje/fiskalizuje račun, ne
-// samo jednom pri pokretanju aplikacije (vidi otkljucajPrijeKomande ispod).
-const ESIR_PIN: Record<EsirUredjaj, string> = {
-  gotovinski: import.meta.env.VITE_ESIR_PIN_GOTOVINSKI || "",
-  ziralni: import.meta.env.VITE_ESIR_PIN_ZIRALNI || "",
-};
-
 async function esirFetch(uredjaj: EsirUredjaj, path: string, init: RequestInit = {}): Promise<Response> {
   const { baseUrl, apiKey } = ESIR_CONFIG[uredjaj];
   const headers = new Headers(init.headers);
@@ -163,30 +154,6 @@ export async function unesiPinEsira(uredjaj: EsirUredjaj, pin: string): Promise<
     kod,
     poruka: PIN_STATUS_PORUKE[kod as PinStatusKod] ?? `Nepoznat status kod (${kod})`,
   };
-}
-
-// Šalje PIN neposredno prije komande koja izdaje/fiskalizuje račun (vidi
-// napomenu uz ESIR_PIN) — SAMO za gotovinski uređaj, koji se sam zaključa
-// poslije svake prethodne komande (pa bez ovoga /api/invoices redovno pada na
-// "zaključan element"). Žiralni uređaj se ne ponaša tako — ostaje otključan
-// od jednokratnog PIN-a poslatog pri pokretanju (Dashboard.tsx), pa se ovdje
-// preskače da se ne šalje nepotreban dodatni PIN. Ne baca grešku ako PIN nije
-// podešen ili otključavanje ne uspije — komanda se ipak pokušava, pa uređaj
-// sam vrati jasnu grešku ako element ostane zaključan.
-async function otkljucajPrijeKomande(uredjaj: EsirUredjaj): Promise<void> {
-  if (uredjaj !== "gotovinski") return;
-  const pin = ESIR_PIN[uredjaj];
-  if (!pin) return;
-  try {
-    const rezultat = await unesiPinEsira(uredjaj, pin);
-    if (!rezultat.uspjesno) {
-      console.warn(
-        `ESIR (${uredjaj}) — otključavanje PIN-om prije komande nije uspjelo: ${rezultat.poruka}`,
-      );
-    }
-  } catch (error) {
-    console.warn(`ESIR (${uredjaj}) — greška pri slanju PIN-a prije komande:`, error);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -408,8 +375,6 @@ export async function izdajFiskalniRacun(
   opcijeStampe: EsirOpcijeStampe = {},
   requestId?: string,
 ): Promise<EsirFiskalizacijaRezultat> {
-  await otkljucajPrijeKomande(uredjaj);
-
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
     headers: { RequestId: requestId || generisiRequestId() },
@@ -453,8 +418,6 @@ export async function posaljiEsirDebugZahtjev(
   opcijeStampe: EsirOpcijeStampe = {},
   requestId?: string,
 ): Promise<EsirSirovOdgovor> {
-  await otkljucajPrijeKomande(uredjaj);
-
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
     headers: { RequestId: requestId || generisiRequestId() },
