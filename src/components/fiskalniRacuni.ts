@@ -136,7 +136,44 @@ export interface UnosPinRezultat {
   poruka: string;
 }
 
-export async function unesiPinEsira(uredjaj: EsirUredjaj, pin: string): Promise<UnosPinRezultat> {
+// Bezbjednosni element fizičkog uređaja ima ograničen broj pokušaja unosa PIN-a
+// prije trajnog zaključavanja (PUK) — zato aplikacija mora prestati da SAMA
+// (automatski) šalje PIN nakon MAX_NEUSPJESNIH_POKUSAJA_PINA uzastopnih
+// neuspjeha, i odbiti dalje komande dok se PIN ne unese ručno (vidi
+// jeEsirZakljucanZbogPina / opcije.rucniUnos).
+const MAX_NEUSPJESNIH_POKUSAJA_PINA = 3;
+
+const neuspjesniPokusajiPina: Record<EsirUredjaj, number> = {
+  gotovinski: 0,
+  ziralni: 0,
+};
+
+export function jeEsirZakljucanZbogPina(uredjaj: EsirUredjaj): boolean {
+  return neuspjesniPokusajiPina[uredjaj] >= MAX_NEUSPJESNIH_POKUSAJA_PINA;
+}
+
+export function preostaliPokusajiPina(uredjaj: EsirUredjaj): number {
+  return Math.max(
+    0,
+    MAX_NEUSPJESNIH_POKUSAJA_PINA - neuspjesniPokusajiPina[uredjaj],
+  );
+}
+
+export async function unesiPinEsira(
+  uredjaj: EsirUredjaj,
+  pin: string,
+  opcije: { rucniUnos?: boolean } = {},
+): Promise<UnosPinRezultat> {
+  // Ručni unos (operater lično kuca PIN u aplikaciji) je jedini način da se
+  // brojač neuspjelih pokušaja resetuje — dok se ne unese ručno, dalji
+  // automatski pokušaji se odbijaju bez slanja ka uređaju.
+  if (jeEsirZakljucanZbogPina(uredjaj) && !opcije.rucniUnos) {
+    return {
+      uspjesno: false,
+      kod: "LOCKED",
+      poruka: `Zaustavljeno nakon ${MAX_NEUSPJESNIH_POKUSAJA_PINA} neuspješna pokušaja — unesite PIN ručno.`,
+    };
+  }
   // Dokumentacija najavljuje text/plain, ali primjer zahtjeva šalje sirov tekst (bez navodnika) uz Content-Type: application/json — pratimo primjer.
   const res = await esirFetch(uredjaj, "/api/pin", {
     method: "POST",
@@ -149,11 +186,18 @@ export async function unesiPinEsira(uredjaj: EsirUredjaj, pin: string): Promise<
   } catch {
     kod = String(res.status);
   }
-  return {
+  const rezultat: UnosPinRezultat = {
     uspjesno: kod === "0100",
     kod,
     poruka: PIN_STATUS_PORUKE[kod as PinStatusKod] ?? `Nepoznat status kod (${kod})`,
   };
+  // Brojač prati samo pokušaje koji su stvarno stigli do uređaja (odgovor
+  // primljen) — mrežna greška prije toga ne troši pravi pokušaj na uređaju
+  // pa se ovdje ni ne broji (fetch bi bacio grešku prije ove linije).
+  neuspjesniPokusajiPina[uredjaj] = rezultat.uspjesno
+    ? 0
+    : neuspjesniPokusajiPina[uredjaj] + 1;
+  return rezultat;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +419,11 @@ export async function izdajFiskalniRacun(
   opcijeStampe: EsirOpcijeStampe = {},
   requestId?: string,
 ): Promise<EsirFiskalizacijaRezultat> {
+  if (jeEsirZakljucanZbogPina(uredjaj)) {
+    throw new Error(
+      `ESIR (${uredjaj}) je zaključan nakon ${MAX_NEUSPJESNIH_POKUSAJA_PINA} neuspješna pokušaja unosa PIN-a — unesite PIN ručno prije nastavka.`,
+    );
+  }
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
     headers: { RequestId: requestId || generisiRequestId() },
@@ -418,6 +467,11 @@ export async function posaljiEsirDebugZahtjev(
   opcijeStampe: EsirOpcijeStampe = {},
   requestId?: string,
 ): Promise<EsirSirovOdgovor> {
+  if (jeEsirZakljucanZbogPina(uredjaj)) {
+    throw new Error(
+      `ESIR (${uredjaj}) je zaključan nakon ${MAX_NEUSPJESNIH_POKUSAJA_PINA} neuspješna pokušaja unosa PIN-a — unesite PIN ručno prije nastavka.`,
+    );
+  }
   const res = await esirFetch(uredjaj, "/api/invoices", {
     method: "POST",
     headers: { RequestId: requestId || generisiRequestId() },

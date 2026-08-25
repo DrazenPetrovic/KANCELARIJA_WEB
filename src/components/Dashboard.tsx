@@ -33,6 +33,7 @@ import {
 import {
   proveriDostupnostEsira,
   unesiPinEsira,
+  jeEsirZakljucanZbogPina,
   type EsirUredjaj,
 } from "./fiskalniRacuni";
 import {
@@ -91,16 +92,22 @@ function StatusIndikator({
   dodatak,
   tekst,
   boja,
+  onClick,
 }: {
   label: string;
   status: ServisStatus;
   dodatak?: string;
   tekst?: string;
   boja?: string;
+  onClick?: () => void;
 }) {
   const bojaKonacna = boja ?? statusBoja(status);
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="flex items-center gap-1.5">
+    <Tag
+      className={`flex items-center gap-1.5 ${onClick ? "cursor-pointer hover:opacity-80" : ""}`}
+      onClick={onClick}
+    >
       <span
         className={`inline-block w-2 h-2 rounded-full ${status === "online" && !boja ? "animate-blink" : ""}`}
         style={{ background: bojaKonacna }}
@@ -109,7 +116,7 @@ function StatusIndikator({
         {label}: {tekst ?? statusTekst(status)}
         {dodatak ? ` (v${dodatak})` : ""}
       </p>
-    </div>
+    </Tag>
   );
 }
 
@@ -212,6 +219,12 @@ export function Dashboard({
     ok: boolean;
     poruka?: string;
   }>({ ok: false });
+  const [rucniPinUnos, setRucniPinUnos] = useState<{
+    uredjaj: EsirUredjaj;
+    vrijednost: string;
+    greska?: string;
+    ucitavanje: boolean;
+  } | null>(null);
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
@@ -422,6 +435,32 @@ export function Dashboard({
     };
   }, []);
 
+  const posaljiRucniPin = async () => {
+    if (!rucniPinUnos || !rucniPinUnos.vrijednost.trim()) return;
+    const { uredjaj, vrijednost } = rucniPinUnos;
+    setRucniPinUnos((s) => (s ? { ...s, ucitavanje: true, greska: undefined } : s));
+    try {
+      const rezultat = await unesiPinEsira(uredjaj, vrijednost.trim(), {
+        rucniUnos: true,
+      });
+      if (rezultat.uspjesno) {
+        pinUnesenRef.current[uredjaj] = true;
+        const setPinStanje =
+          uredjaj === "gotovinski" ? setEsirGotovinskiPin : setEsirZiralniPin;
+        setPinStanje({ ok: true });
+        setRucniPinUnos(null);
+      } else {
+        setRucniPinUnos((s) =>
+          s ? { ...s, ucitavanje: false, greska: rezultat.poruka } : s,
+        );
+      }
+    } catch {
+      setRucniPinUnos((s) =>
+        s ? { ...s, ucitavanje: false, greska: "Greška pri unosu PIN-a" } : s,
+      );
+    }
+  };
+
   useEffect(() => {
     if (!showPrinterSavedModal) return;
     const timeoutId = setTimeout(() => setShowPrinterSavedModal(false), 2500);
@@ -577,7 +616,19 @@ export function Dashboard({
                 }
                 boja={
                   esirGotovinskiStatus === "online" && !esirGotovinskiPin.ok
-                    ? "#f59e0b"
+                    ? jeEsirZakljucanZbogPina("gotovinski")
+                      ? "#ef4444"
+                      : "#f59e0b"
+                    : undefined
+                }
+                onClick={
+                  esirGotovinskiStatus === "online" && !esirGotovinskiPin.ok
+                    ? () =>
+                        setRucniPinUnos({
+                          uredjaj: "gotovinski",
+                          vrijednost: "",
+                          ucitavanje: false,
+                        })
                     : undefined
                 }
               />
@@ -591,7 +642,19 @@ export function Dashboard({
                 }
                 boja={
                   esirZiralniStatus === "online" && !esirZiralniPin.ok
-                    ? "#f59e0b"
+                    ? jeEsirZakljucanZbogPina("ziralni")
+                      ? "#ef4444"
+                      : "#f59e0b"
+                    : undefined
+                }
+                onClick={
+                  esirZiralniStatus === "online" && !esirZiralniPin.ok
+                    ? () =>
+                        setRucniPinUnos({
+                          uredjaj: "ziralni",
+                          vrijednost: "",
+                          ucitavanje: false,
+                        })
                     : undefined
                 }
               />
@@ -2294,6 +2357,68 @@ export function Dashboard({
           {activeSection === "analitika-kif" && <Kif />}
         </main>
       </BazaContext.Provider>
+
+      {rucniPinUnos && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
+          onClick={() => setRucniPinUnos(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col items-center text-center p-8 gap-3"
+            style={{ width: 320 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ background: "#fdecea" }}
+            >
+              <Lock size={26} style={{ color: "#ef4444" }} />
+            </div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
+              Ručni unos PIN-a — ESIR{" "}
+              {rucniPinUnos.uredjaj === "gotovinski" ? "gotovinski" : "žiralni"}
+            </h3>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={rucniPinUnos.vrijednost}
+              onChange={(e) =>
+                setRucniPinUnos((s) =>
+                  s ? { ...s, vrijednost: e.target.value, greska: undefined } : s,
+                )
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void posaljiRucniPin();
+              }}
+              placeholder="PIN"
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-[#3a3154] bg-white dark:bg-[#1e1730] text-gray-800 dark:text-[#ede9f6] text-center text-lg tracking-widest focus:outline-none focus:ring-2"
+              style={{ boxShadow: "none" }}
+            />
+            {rucniPinUnos.greska && (
+              <p className="text-xs text-red-500">{rucniPinUnos.greska}</p>
+            )}
+            <div className="flex gap-2 w-full mt-2">
+              <button
+                onClick={() => setRucniPinUnos(null)}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c9c2df] bg-gray-100 dark:bg-[#1e1730] transition-all hover:brightness-95"
+              >
+                Otkaži
+              </button>
+              <button
+                onClick={() => void posaljiRucniPin()}
+                disabled={
+                  rucniPinUnos.ucitavanje || !rucniPinUnos.vrijednost.trim()
+                }
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                style={{ background: PRIMARY }}
+              >
+                {rucniPinUnos.ucitavanje ? "Slanje..." : "Potvrdi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPrinterSavedModal && (
         <div
