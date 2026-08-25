@@ -32,9 +32,11 @@ import {
 } from "../utils/printService";
 import {
   proveriDostupnostEsira,
+  jePotrebanPin,
   unesiPinEsira,
   jeEsirZakljucanZbogPina,
   type EsirUredjaj,
+  type EsirStatus,
 } from "./fiskalniRacuni";
 import {
   Banknote,
@@ -211,16 +213,24 @@ export function Dashboard({
     useState<ServisStatus>("checking");
   const [esirZiralniStatus, setEsirZiralniStatus] =
     useState<ServisStatus>("checking");
+  // Pretpostavlja se "ok" dok se ekran gotovinski/žiralni računi stvarno ne
+  // otvori i /api/status ne kaže drugačije (vidi javiStatusPina) — bez ovoga
+  // bi indikator trajno prikazivao upozorenje i prije nego što je uopšte
+  // provjereno da li je PIN zaista potreban.
   const [esirGotovinskiPin, setEsirGotovinskiPin] = useState<{
     ok: boolean;
     poruka?: string;
-  }>({ ok: false });
+  }>({ ok: true });
   const [esirZiralniPin, setEsirZiralniPin] = useState<{
     ok: boolean;
     poruka?: string;
-  }>({ ok: false });
+  }>({ ok: true });
   const [rucniPinUnos, setRucniPinUnos] = useState<{
     uredjaj: EsirUredjaj;
+    // "potvrda" — pita korisnika za dozvolu da program automatski pošalje PIN
+    // iz .env.production; "rucno" — korisnik sam kuca PIN (poslije odbijenog
+    // automatskog pokušaja, ili direktno klikom na status indikator).
+    faza: "potvrda" | "rucno";
     vrijednost: string;
     greska?: string;
     ucitavanje: boolean;
@@ -258,6 +268,13 @@ export function Dashboard({
   >(null);
 
   const pinUnesenRef = useRef<Record<EsirUredjaj, boolean>>({
+    gotovinski: false,
+    ziralni: false,
+  });
+  // Sprječava da se modal za ručni unos PIN-a automatski ponovo otvara na
+  // svakih 15s (interval provjere) dok korisnik ne uđe u modal — otvara se
+  // samo jednom, čim prvi automatski pokušaj ne uspije.
+  const pinModalAutoPrikazanRef = useRef<Record<EsirUredjaj, boolean>>({
     gotovinski: false,
     ziralni: false,
   });
@@ -371,60 +388,24 @@ export function Dashboard({
     };
   }, []);
 
+  // Ovaj efekat SAMO provjerava da li su uređaji na mreži (/api/attention) —
+  // ne dira PIN. Ako bi ovdje pozivao /api/status na svakih 15s, kasa bi se
+  // ispitivala za PIN cijelo vrijeme dok je program uključen (npr. cio
+  // vikend), iako niko ne izdaje račune i PIN u stvarnosti nije potreban.
+  // Stvarna potreba za PIN-om (gsc kod 1500) se provjerava tek kad se
+  // operater stvarno uđe na ekran gotovinski/žiralni računi — vidi
+  // javiStatusPina i provjeriKasu u racuniGotovinski.tsx / racuniZiralni.tsx.
   useEffect(() => {
     let mounted = true;
-
-    const osigurajPin = async (
-      uredjaj: EsirUredjaj,
-      pin: string | undefined,
-      setPinStanje: (s: { ok: boolean; poruka?: string }) => void,
-    ) => {
-      if (pinUnesenRef.current[uredjaj]) {
-        if (mounted) setPinStanje({ ok: true });
-        return;
-      }
-      if (!pin) {
-        if (mounted) setPinStanje({ ok: false, poruka: "PIN nije podešen" });
-        return;
-      }
-      try {
-        const rezultat = await unesiPinEsira(uredjaj, pin);
-        if (rezultat.uspjesno) pinUnesenRef.current[uredjaj] = true;
-        if (mounted)
-          setPinStanje({ ok: rezultat.uspjesno, poruka: rezultat.poruka });
-      } catch {
-        if (mounted)
-          setPinStanje({ ok: false, poruka: "Greška pri unosu PIN-a" });
-      }
-    };
 
     const checkEsirUredjaji = async () => {
       const [gotovinski, ziralni] = await Promise.all([
         proveriDostupnostEsira("gotovinski"),
         proveriDostupnostEsira("ziralni"),
       ]);
-      if (gotovinski) {
-        void osigurajPin(
-          "gotovinski",
-          import.meta.env.VITE_ESIR_PIN_GOTOVINSKI,
-          setEsirGotovinskiPin,
-        );
-      } else if (mounted) {
-        setEsirGotovinskiPin({ ok: false });
-      }
-      if (ziralni) {
-        void osigurajPin(
-          "ziralni",
-          import.meta.env.VITE_ESIR_PIN_ZIRALNI,
-          setEsirZiralniPin,
-        );
-      } else if (mounted) {
-        setEsirZiralniPin({ ok: false });
-      }
-      if (mounted) {
-        setEsirGotovinskiStatus(gotovinski ? "online" : "offline");
-        setEsirZiralniStatus(ziralni ? "online" : "offline");
-      }
+      if (!mounted) return;
+      setEsirGotovinskiStatus(gotovinski ? "online" : "offline");
+      setEsirZiralniStatus(ziralni ? "online" : "offline");
     };
 
     void checkEsirUredjaji();
@@ -434,6 +415,83 @@ export function Dashboard({
       clearInterval(intervalId);
     };
   }, []);
+
+  // Poziva se iz racuniGotovinski.tsx / racuniZiralni.tsx čim operater uđe na
+  // taj ekran i uređaj vrati /api/status — jedino tu se stvarno provjerava
+  // da li je PIN potreban (gsc kod 1500) i po potrebi traži odobrenje.
+  const javiStatusPina = (uredjaj: EsirUredjaj, status: EsirStatus) => {
+    const setPinStanje =
+      uredjaj === "gotovinski" ? setEsirGotovinskiPin : setEsirZiralniPin;
+
+    if (!jePotrebanPin(status)) {
+      pinUnesenRef.current[uredjaj] = true;
+      pinModalAutoPrikazanRef.current[uredjaj] = false;
+      setPinStanje({ ok: true });
+      return;
+    }
+
+    pinUnesenRef.current[uredjaj] = false;
+    setPinStanje({
+      ok: false,
+      poruka: jeEsirZakljucanZbogPina(uredjaj)
+        ? "Zaključan — potreban ručni unos"
+        : "PIN nije unesen",
+    });
+    if (!pinModalAutoPrikazanRef.current[uredjaj]) {
+      pinModalAutoPrikazanRef.current[uredjaj] = true;
+      setRucniPinUnos({ uredjaj, faza: "potvrda", vrijednost: "", ucitavanje: false });
+    }
+  };
+
+  // Korisnik je dozvolio da program pošalje PIN iz .env.production (faza "potvrda").
+  const posaljiAutoPin = async () => {
+    if (!rucniPinUnos || rucniPinUnos.faza !== "potvrda") return;
+    const { uredjaj } = rucniPinUnos;
+    const pin =
+      uredjaj === "gotovinski"
+        ? import.meta.env.VITE_ESIR_PIN_GOTOVINSKI
+        : import.meta.env.VITE_ESIR_PIN_ZIRALNI;
+    if (!pin) {
+      setRucniPinUnos((s) =>
+        s ? { ...s, faza: "rucno", greska: "PIN nije podešen u konfiguraciji." } : s,
+      );
+      return;
+    }
+    setRucniPinUnos((s) => (s ? { ...s, ucitavanje: true, greska: undefined } : s));
+    try {
+      const rezultat = await unesiPinEsira(uredjaj, pin);
+      if (rezultat.uspjesno) {
+        pinUnesenRef.current[uredjaj] = true;
+        pinModalAutoPrikazanRef.current[uredjaj] = false;
+        const setPinStanje =
+          uredjaj === "gotovinski" ? setEsirGotovinskiPin : setEsirZiralniPin;
+        setPinStanje({ ok: true });
+        setRucniPinUnos(null);
+      } else {
+        setRucniPinUnos((s) =>
+          s
+            ? {
+                ...s,
+                faza: "rucno",
+                ucitavanje: false,
+                greska: `Automatski unos nije uspio: ${rezultat.poruka}. Dalje automatsko slanje je onemogućeno — unesite PIN ručno.`,
+              }
+            : s,
+        );
+      }
+    } catch {
+      setRucniPinUnos((s) =>
+        s
+          ? {
+              ...s,
+              faza: "rucno",
+              ucitavanje: false,
+              greska: "Greška pri automatskom unosu PIN-a — unesite PIN ručno.",
+            }
+          : s,
+      );
+    }
+  };
 
   const posaljiRucniPin = async () => {
     if (!rucniPinUnos || !rucniPinUnos.vrijednost.trim()) return;
@@ -445,6 +503,7 @@ export function Dashboard({
       });
       if (rezultat.uspjesno) {
         pinUnesenRef.current[uredjaj] = true;
+        pinModalAutoPrikazanRef.current[uredjaj] = false;
         const setPinStanje =
           uredjaj === "gotovinski" ? setEsirGotovinskiPin : setEsirZiralniPin;
         setPinStanje({ ok: true });
@@ -626,6 +685,7 @@ export function Dashboard({
                     ? () =>
                         setRucniPinUnos({
                           uredjaj: "gotovinski",
+                          faza: "rucno",
                           vrijednost: "",
                           ucitavanje: false,
                         })
@@ -652,6 +712,7 @@ export function Dashboard({
                     ? () =>
                         setRucniPinUnos({
                           uredjaj: "ziralni",
+                          faza: "rucno",
                           vrijednost: "",
                           ucitavanje: false,
                         })
@@ -2329,9 +2390,17 @@ export function Dashboard({
 
           {activeSection === "klise-pregled" && <KlisePregled />}
 
-          {activeSection === "racuni-gotovinski" && <GotovinskiRacuni />}
+          {activeSection === "racuni-gotovinski" && (
+            <GotovinskiRacuni
+              javiStatusPina={(status) => javiStatusPina("gotovinski", status)}
+            />
+          )}
 
-          {activeSection === "racuni-virmanski" && <ZiralniRacuni />}
+          {activeSection === "racuni-virmanski" && (
+            <ZiralniRacuni
+              javiStatusPina={(status) => javiStatusPina("ziralni", status)}
+            />
+          )}
 
           {activeSection === "racuni-izvjestaj-teren" && <IzvjestajTeren />}
 
@@ -2359,64 +2428,114 @@ export function Dashboard({
       </BazaContext.Provider>
 
       {rucniPinUnos && (
+        // Namjerno bez pozadinskog overlay-a preko cijelog ekrana — ovo je
+        // plutajući panel, ne blokira ostatak aplikacije dok je prikazan.
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
-          onClick={() => setRucniPinUnos(null)}
+          className="fixed top-20 right-4 z-[9999] w-80 bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#3a3154] p-5 flex flex-col gap-3"
         >
-          <div
-            className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl flex flex-col items-center text-center p-8 gap-3"
-            style={{ width: 320 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{ background: "#fdecea" }}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{
+                  background:
+                    rucniPinUnos.faza === "potvrda" ? "#fff7e6" : "#fdecea",
+                }}
+              >
+                <Lock
+                  size={18}
+                  style={{
+                    color:
+                      rucniPinUnos.faza === "potvrda" ? "#f59e0b" : "#ef4444",
+                  }}
+                />
+              </div>
+              <h3 className="text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
+                PIN — ESIR{" "}
+                {rucniPinUnos.uredjaj === "gotovinski" ? "gotovinski" : "žiralni"}
+              </h3>
+            </div>
+            <button
+              onClick={() => setRucniPinUnos(null)}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-white text-sm leading-none px-1"
+              title="Zatvori"
             >
-              <Lock size={26} style={{ color: "#ef4444" }} />
-            </div>
-            <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
-              Ručni unos PIN-a — ESIR{" "}
-              {rucniPinUnos.uredjaj === "gotovinski" ? "gotovinski" : "žiralni"}
-            </h3>
-            <input
-              type="password"
-              inputMode="numeric"
-              autoFocus
-              value={rucniPinUnos.vrijednost}
-              onChange={(e) =>
-                setRucniPinUnos((s) =>
-                  s ? { ...s, vrijednost: e.target.value, greska: undefined } : s,
-                )
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void posaljiRucniPin();
-              }}
-              placeholder="PIN"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-[#3a3154] bg-white dark:bg-[#1e1730] text-gray-800 dark:text-[#ede9f6] text-center text-lg tracking-widest focus:outline-none focus:ring-2"
-              style={{ boxShadow: "none" }}
-            />
-            {rucniPinUnos.greska && (
-              <p className="text-xs text-red-500">{rucniPinUnos.greska}</p>
-            )}
-            <div className="flex gap-2 w-full mt-2">
-              <button
-                onClick={() => setRucniPinUnos(null)}
-                className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c9c2df] bg-gray-100 dark:bg-[#1e1730] transition-all hover:brightness-95"
-              >
-                Otkaži
-              </button>
-              <button
-                onClick={() => void posaljiRucniPin()}
-                disabled={
-                  rucniPinUnos.ucitavanje || !rucniPinUnos.vrijednost.trim()
-                }
-                className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
-                style={{ background: PRIMARY }}
-              >
-                {rucniPinUnos.ucitavanje ? "Slanje..." : "Potvrdi"}
-              </button>
-            </div>
+              ✕
+            </button>
           </div>
+
+          {rucniPinUnos.faza === "potvrda" ? (
+            <>
+              <p className="text-xs text-gray-500 dark:text-[#a89fc4]">
+                Potreban je PIN za otključavanje kase. Program može automatski
+                poslati PIN iz konfiguracije (.env.production) — da li
+                dozvoljavate?
+              </p>
+              {rucniPinUnos.greska && (
+                <p className="text-xs text-red-500">{rucniPinUnos.greska}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRucniPinUnos(null)}
+                  className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-[#c9c2df] bg-gray-100 dark:bg-[#1e1730] transition-all hover:brightness-95"
+                >
+                  Kasnije
+                </button>
+                <button
+                  onClick={() => void posaljiAutoPin()}
+                  disabled={rucniPinUnos.ucitavanje}
+                  className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: PRIMARY }}
+                >
+                  {rucniPinUnos.ucitavanje
+                    ? "Slanje..."
+                    : "Pošalji PIN automatski"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {rucniPinUnos.greska && (
+                <p className="text-xs text-red-500">{rucniPinUnos.greska}</p>
+              )}
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={rucniPinUnos.vrijednost}
+                onChange={(e) =>
+                  setRucniPinUnos((s) =>
+                    s
+                      ? { ...s, vrijednost: e.target.value, greska: undefined }
+                      : s,
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void posaljiRucniPin();
+                }}
+                placeholder="Unesite PIN ručno"
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-[#3a3154] bg-white dark:bg-[#1e1730] text-gray-800 dark:text-[#ede9f6] text-center text-lg tracking-widest focus:outline-none focus:ring-2"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRucniPinUnos(null)}
+                  className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-[#c9c2df] bg-gray-100 dark:bg-[#1e1730] transition-all hover:brightness-95"
+                >
+                  Zatvori
+                </button>
+                <button
+                  onClick={() => void posaljiRucniPin()}
+                  disabled={
+                    rucniPinUnos.ucitavanje || !rucniPinUnos.vrijednost.trim()
+                  }
+                  className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: PRIMARY }}
+                >
+                  {rucniPinUnos.ucitavanje ? "Slanje..." : "Potvrdi"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

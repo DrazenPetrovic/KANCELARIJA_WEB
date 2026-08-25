@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import {
   preuzmiStatusEsira,
+  type EsirStatus,
   izdajFiskalniRacun,
   izdvojiFiskalnePodatke,
   ESIR_OZNAKA_SA_PDV,
@@ -305,7 +306,11 @@ interface RacunZaUnos {
   items: StavkaZaUnos[];
 }
 
-export function ZiralniRacuni() {
+interface ZiralniRacuniProps {
+  javiStatusPina?: (status: EsirStatus) => void;
+}
+
+export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const { openPrint, printDirectly, selectedPrinter } = usePrint();
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -607,8 +612,9 @@ export function ZiralniRacuni() {
     const provjeriKasu = async () => {
       setStatusKase("provjera");
       try {
-        await preuzmiStatusEsira("ziralni");
+        const status = await preuzmiStatusEsira("ziralni");
         if (!cancelled) setStatusKase("dostupna");
+        javiStatusPina?.(status);
       } catch {
         if (!cancelled) setStatusKase("nedostupna");
       }

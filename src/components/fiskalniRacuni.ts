@@ -116,6 +116,15 @@ export async function preuzmiStatusEsira(uredjaj: EsirUredjaj): Promise<EsirStat
   return res.json();
 }
 
+// Kod "1500" u polju gsc znači da bezbjednosni element čeka unos PIN-a —
+// ovo je dokumentovan način provjere potrebe za PIN-om (umjesto nagađanja iz
+// lokalnog stanja aplikacije, koje ne zna kad se uređaj sam ponovo zaključa).
+export const GSC_KOD_POTREBAN_PIN = "1500";
+
+export function jePotrebanPin(status: EsirStatus): boolean {
+  return status.gsc?.includes(GSC_KOD_POTREBAN_PIN) ?? false;
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/pin — otključavanje bezbjednosnog elementa unosom PIN-a
 // ---------------------------------------------------------------------------

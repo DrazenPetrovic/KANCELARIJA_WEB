@@ -36,6 +36,7 @@ import {
   type EsirInvoiceRequest,
   type EsirOpcijeStampe,
   type EsirInvoiceResponse,
+  type EsirStatus,
 } from "./fiskalniRacuni";
 import { brojUSlovima } from "../utils/brojUSlovima";
 import { getCurrentUser } from "../utils/auth";
@@ -292,7 +293,14 @@ interface Partner {
   dodatna_lokacija?: DodatnaLokacija;
 }
 
-export function GotovinskiRacuni() {
+interface GotovinskiRacuniProps {
+  // Poziva se čim se ekran otvori, sa rezultatom /api/status — roditelj
+  // (Dashboard) odlučuje da li je na osnovu toga potreban PIN (vidi
+  // jePotrebanPin) i po potrebi prikazuje panel za odobrenje unosa PIN-a.
+  javiStatusPina?: (status: EsirStatus) => void;
+}
+
+export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {}) {
   const { openPrint, printDirectly, selectedPrinter } = usePrint();
   // Kad je uključeno, "Sačuvaj i štampaj" šalje A5 obrazac direktno na izabrani
   // štampač (bez otvaranja print modala da korisnik klikne štampaj).
@@ -453,8 +461,9 @@ export function GotovinskiRacuni() {
     const provjeriKasu = async () => {
       setStatusKase("provjera");
       try {
-        await preuzmiStatusEsira("gotovinski");
+        const status = await preuzmiStatusEsira("gotovinski");
         if (!cancelled) setStatusKase("dostupna");
+        javiStatusPina?.(status);
       } catch {
         if (!cancelled) setStatusKase("nedostupna");
       }
