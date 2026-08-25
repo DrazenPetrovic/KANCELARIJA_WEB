@@ -148,6 +148,15 @@ const neuspjesniPokusajiPina: Record<EsirUredjaj, number> = {
   ziralni: 0,
 };
 
+// Zadnji PIN koji je stvarno poslat uređaju (ne i onaj odbijen zbog
+// zaključavanja) — čuva se samo da bi se u poruci o zaključavanju vidjelo
+// koju vrijednost API zapravo šalje (npr. za otkrivanje da je bundle
+// zastario pa šalje stari PIN iz .env-a korišćenog pri buildu).
+const posljednjiPokusaniPin: Record<EsirUredjaj, string> = {
+  gotovinski: "",
+  ziralni: "",
+};
+
 export function jeEsirZakljucanZbogPina(uredjaj: EsirUredjaj): boolean {
   return neuspjesniPokusajiPina[uredjaj] >= MAX_NEUSPJESNIH_POKUSAJA_PINA;
 }
@@ -171,9 +180,10 @@ export async function unesiPinEsira(
     return {
       uspjesno: false,
       kod: "LOCKED",
-      poruka: `Zaustavljeno nakon ${MAX_NEUSPJESNIH_POKUSAJA_PINA} neuspješna pokušaja — unesite PIN ručno.`,
+      poruka: `Zaustavljeno nakon ${MAX_NEUSPJESNIH_POKUSAJA_PINA} neuspješna pokušaja (poslati PIN: "${posljednjiPokusaniPin[uredjaj]}") — unesite PIN ručno.`,
     };
   }
+  posljednjiPokusaniPin[uredjaj] = pin;
   // Dokumentacija najavljuje text/plain, ali primjer zahtjeva šalje sirov tekst (bez navodnika) uz Content-Type: application/json — pratimo primjer.
   const res = await esirFetch(uredjaj, "/api/pin", {
     method: "POST",
