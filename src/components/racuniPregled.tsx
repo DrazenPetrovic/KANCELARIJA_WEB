@@ -50,6 +50,29 @@ interface RacunPodgrupa {
 
 // Normalizacija naziva kolone za poređenje — mala slova, bez donjih crta/razmaka —
 // jer tačan zapis (velika/mala slova, "_" ili razmak) iz procedure nije unaprijed poznat.
+// Debug pomoć: preuzimanje JSON odgovora sa API poziva kao fajl u browseru —
+// naziv fajla: yyyy-MM-dd_HH_mm_ss_<šifra tabele>.json.
+const preuzmiJsonKaoFajl = (naziv: string, podaci: unknown) => {
+  const blob = new Blob([JSON.stringify(podaci, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${naziv}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const formatDatumZaNazivFajla = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}_${String(d.getHours()).padStart(2, "0")}_${String(
+    d.getMinutes(),
+  ).padStart(2, "0")}_${String(d.getSeconds()).padStart(2, "0")}`;
+
 const normalizujKljuc = (k: string) => k.toLowerCase().replace(/[_\s]/g, "");
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -1145,6 +1168,16 @@ export function RacuniPregled() {
         );
         verifikacioniQr = fiskalniRacun.verificationQRCode ?? null;
         datumVremeFiskalnog = fiskalniRacun.sdcDateTime ?? datumVremeFiskalnog;
+
+        // Debug dump — samo za štampu gotovinskog (A5) računa: JSON odgovor od
+        // ESIR-a (GET /api/invoices/:invoiceNumber) kao fajl, da se provjere
+        // tačna imena/vrijednosti polja (npr. PFR broj/datum).
+        if (vrsta === 1 || vrsta === 3) {
+          preuzmiJsonKaoFajl(
+            `${formatDatumZaNazivFajla(new Date())}_${sifraTabele}_fiskalni-racun`,
+            fiskalniRacun,
+          );
+        }
       } catch (greska) {
         console.error(
           "Preuzimanje QR koda od ESIR-a nije uspjelo:",
@@ -1164,6 +1197,32 @@ export function RacuniPregled() {
       // se dobija oduzimanjem, jer ukupno == vrednost + pdv (isti invarijant kao
       // kod unosa).
       const brojPolje = (s: RacunRed, k: string) => Number(s[k] ?? 0) || 0;
+
+      // Trenutni dug partnera (erp.partneri_trenutni_dug_pregled) — za "Trenutna
+      // dugovanja partnera iznose" na štampi. Best-effort, ne blokira štampu.
+      let trenutniDugPartnera: number | null = null;
+      if (red.sifra_partnera) {
+        try {
+          const resDug = await fetch(
+            `${API_URL}/api/racuni/partner-trenutni-dug?sifraPartnera=${red.sifra_partnera}`,
+            { credentials: "include" },
+          );
+          const jsonDug = await resDug.json().catch(() => null);
+          if (resDug.ok && jsonDug?.success && jsonDug.data) {
+            const dugBroj = Number(
+              (jsonDug.data as { trenutni_dug?: number | string })
+                .trenutni_dug,
+            );
+            trenutniDugPartnera = isNaN(dugBroj) ? null : dugBroj;
+          }
+        } catch (dugError) {
+          console.error(
+            "Preuzimanje trenutnog duga partnera nije uspjelo:",
+            dugError,
+          );
+        }
+      }
+
       openPrint({
         title: `Račun ${brojRacuna}`,
         format: "A4",
@@ -1186,6 +1245,7 @@ export function RacuniPregled() {
               br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
               datum_vreme_fiskalnog: datumVremeFiskalnog,
               verifikacioni_qr: verifikacioniQr,
+              dug_partnera: trenutniDugPartnera,
             }}
             stavke={stavkeZaStampu.map((s) => {
               const ukupno = brojPolje(s, "prodajna_vrednost");
@@ -1234,6 +1294,7 @@ export function RacuniPregled() {
             rabat_km: (red.rabat_km as number | string | null) ?? null,
             slovima: (red.slovima as string | null) ?? null,
             br_fiskalnog: (red.br_fiskalnog as string | number | null) ?? null,
+            datum_vreme_fiskalnog: datumVremeFiskalnog,
             verifikacioni_qr: verifikacioniQr,
             sifra_tabele: sifraTabele,
           }}

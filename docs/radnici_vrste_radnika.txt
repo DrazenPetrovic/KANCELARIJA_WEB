@@ -1,0 +1,8 @@
+1 Vlasnik 
+2 Komercijala 
+3 Kancelarija 
+4 Proizvodnja kesa 
+5 Proizvodnja kutija 
+6 Magacin 
+7 Vozac 
+10 Spoljni_saradnik

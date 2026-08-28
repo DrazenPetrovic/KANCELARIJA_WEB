@@ -39,6 +39,20 @@ export const getRacuniProizvodaRadniNalog = async () => {
   });
 };
 
+// Trenutni dug partnera — erp.partneri_trenutni_dug_pregled(sifra_partnera),
+// vraca jedan red sa kolonom "trenutni_dug" (DECIMAL(15,2)); koristi se za
+// "Trenutna dugovanja partnera iznose" na štampi žiralnog računa.
+export const getPartnerTrenutniDug = async (sifraPartnera) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.partneri_trenutni_dug_pregled(?)",
+      [sifraPartnera],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return rezultatSet[0] ?? null;
+  });
+};
+
 export const getPregledRacuna = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute("CALL erp.sp_racuni_gl_pregled()");

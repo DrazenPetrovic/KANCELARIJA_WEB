@@ -7,6 +7,10 @@ router.get("/istorija", RacuniController.getIstorijaRacuna);
 router.get("/stavke", RacuniController.getRacunPoIstorija);
 router.get("/podgrupe", RacuniController.getRacuniPodgrupe);
 router.get(
+  "/partner-trenutni-dug",
+  RacuniController.getPartnerTrenutniDug,
+);
+router.get(
   "/proizvodi-radni-nalog",
   RacuniController.getRacuniProizvodaRadniNalog,
 );

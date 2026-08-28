@@ -47,6 +47,25 @@ export const getRacunPoIstorija = async (req, res) => {
   }
 };
 
+export const getPartnerTrenutniDug = async (req, res) => {
+  try {
+    const sifraPartnera = req.query.sifraPartnera || req.params.sifraPartnera;
+    if (!sifraPartnera) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Sifra partnera je obavezna" });
+    }
+    const data = await RacuniService.getPartnerTrenutniDug(sifraPartnera);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Trenutni dug partnera error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju trenutnog duga partnera",
+    });
+  }
+};
+
 export const getRacuniProizvodaRadniNalog = async (req, res) => {
   try {
     const data = await RacuniService.getRacuniProizvodaRadniNalog();

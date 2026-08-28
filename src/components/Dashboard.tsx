@@ -14,8 +14,11 @@ import { KnjiznaVirmanski } from "./racuniKnjiznaVirmanski.tsx";
 import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
+import { RadniciUnos } from "./RadniciUnos";
+import { RadniciPregled } from "./RadniciPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
+import { KarticaPartnera } from "./KarticaPartnera";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { IzvodiPregled } from "./IzvodiPregled";
@@ -71,6 +74,7 @@ import {
   Tags,
   TrendingUp,
   Truck,
+  UserCog,
   UserPlus,
   Users,
   Wallet,
@@ -135,12 +139,15 @@ type MenuSection =
   | "file-arhiva-2023"
   | "file-arhiva-2022"
   | "file-arhiva-2021"
+  | "radnici-unos"
+  | "radnici-pregled"
   | "partneri-unos"
   | "partneri-pregled"
   | "artikli-pregled"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
+  | "kartica-partnera"
   | "narudzbe-pregled"
   | "narudzbe-teren"
   | "narudzbe-lokalno"
@@ -164,12 +171,15 @@ type MenuSection =
 
 const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "file-opcije": "Opcije",
+  "radnici-unos": "Radnici – unos",
+  "radnici-pregled": "Radnici – pregled",
   "partneri-unos": "Partneri – unos",
   "partneri-pregled": "Partneri – pregled",
   "artikli-pregled": "Artikli – pregled",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
+  "kartica-partnera": "Kartica partnera",
   "narudzbe-pregled": "Pregled narudžbi",
   "narudzbe-teren": "Unos narudžbe teren",
   "narudzbe-lokalno": "Unos narudžbe lokalno",
@@ -239,6 +249,7 @@ export function Dashboard({
   const [activeSection, setActiveSection] = useState<MenuSection>(null);
   const [openMenu, setOpenMenu] = useState<
     | "file"
+    | "radnici"
     | "partneri"
     | "artikli"
     | "pregledi"
@@ -256,6 +267,7 @@ export function Dashboard({
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
     | "file"
+    | "radnici"
     | "partneri"
     | "artikli"
     | "pregledi"
@@ -280,6 +292,7 @@ export function Dashboard({
   });
 
   const fileBtnRef = useRef<HTMLButtonElement>(null);
+  const radniciBtnRef = useRef<HTMLButtonElement>(null);
   const partneriBtnRef = useRef<HTMLButtonElement>(null);
   const artikliBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
@@ -289,6 +302,7 @@ export function Dashboard({
   const racuniBtnRef = useRef<HTMLButtonElement>(null);
   const analitikaBtnRef = useRef<HTMLButtonElement>(null);
   const fileDropRef = useRef<HTMLDivElement>(null);
+  const radniciDropRef = useRef<HTMLDivElement>(null);
   const partneriDropRef = useRef<HTMLDivElement>(null);
   const artikliDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
@@ -315,6 +329,9 @@ export function Dashboard({
       const t = e.target as Node;
       const inFile =
         fileBtnRef.current?.contains(t) || fileDropRef.current?.contains(t);
+      const inRadnici =
+        radniciBtnRef.current?.contains(t) ||
+        radniciDropRef.current?.contains(t);
       const inPartneri =
         partneriBtnRef.current?.contains(t) ||
         partneriDropRef.current?.contains(t);
@@ -340,6 +357,7 @@ export function Dashboard({
         analitikaDropRef.current?.contains(t);
       if (
         !inFile &&
+        !inRadnici &&
         !inPartneri &&
         !inArtikli &&
         !inPregledi &&
@@ -529,6 +547,7 @@ export function Dashboard({
   const toggleMenu = (
     menu:
       | "file"
+      | "radnici"
       | "partneri"
       | "artikli"
       | "pregledi"
@@ -541,6 +560,8 @@ export function Dashboard({
     const ref =
       menu === "file"
         ? fileBtnRef
+        : menu === "radnici"
+          ? radniciBtnRef
         : menu === "partneri"
           ? partneriBtnRef
           : menu === "artikli"
@@ -581,6 +602,7 @@ export function Dashboard({
   const navBtnStyle = (
     menu:
       | "file"
+      | "radnici"
       | "partneri"
       | "artikli"
       | "pregledi"
@@ -916,6 +938,134 @@ export function Dashboard({
                   )}
               </div>
 
+              {/* RADNICI */}
+              <div>
+                <button
+                  ref={radniciBtnRef}
+                  onClick={() => toggleMenu("radnici")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "radnici",
+                    !!(
+                      openMenu === "radnici" ||
+                      activeSection?.startsWith("radnici-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("radnici")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <UserCog size={13} style={{ color: "#111" }} />
+                  </span>
+                  Radnici
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "radnici" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "radnici" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={radniciDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-52 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <UserCog size={12} />
+                        Radnici
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() => handleSectionChange("radnici-unos")}
+                          className={dropdownItemClass(
+                            activeSection === "radnici-unos",
+                          )}
+                          style={
+                            activeSection === "radnici-unos"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "radnici-unos"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "radnici-unos"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <UserPlus
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "radnici-unos"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos radnika
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("radnici-pregled")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "radnici-pregled",
+                          )}
+                          style={
+                            activeSection === "radnici-pregled"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "radnici-pregled"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "radnici-pregled"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Eye
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "radnici-pregled"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Pregled radnika
+                        </button>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+
               {/* PARTNERI */}
               <div>
                 <button
@@ -1145,7 +1295,9 @@ export function Dashboard({
                     !!(
                       openMenu === "pregledi" ||
                       activeSection === "pregledi-racuna" ||
-                      activeSection === "pregled-kalkulacija"
+                      activeSection === "pregled-kalkulacija" ||
+                      activeSection === "ugovorene-cijene" ||
+                      activeSection === "kartica-partnera"
                     ),
                   )}
                   onMouseEnter={() => setHoveredBtn("pregledi")}
@@ -1294,6 +1446,44 @@ export function Dashboard({
                             />
                           </span>
                           Ugovorene cijene
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("kartica-partnera")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "kartica-partnera",
+                          )}
+                          style={
+                            activeSection === "kartica-partnera"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "kartica-partnera"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "kartica-partnera"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <CreditCard
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "kartica-partnera"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Kartica partnera
                         </button>
                       </div>
                     </div>,
@@ -2310,6 +2500,10 @@ export function Dashboard({
             </div>
           )}
 
+          {activeSection === "radnici-unos" && <RadniciUnos />}
+
+          {activeSection === "radnici-pregled" && <RadniciPregled />}
+
           {activeSection === "partneri-unos" && (
             <PartneriUnos username={username} />
           )}
@@ -2321,6 +2515,8 @@ export function Dashboard({
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 
           {activeSection === "ugovorene-cijene" && <UgovoreneCijenePregled />}
+
+          {activeSection === "kartica-partnera" && <KarticaPartnera />}
 
           {activeSection === "pregled-kalkulacija" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">

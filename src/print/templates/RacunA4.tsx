@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 
 // Štampač je mrežni monochrome (crno-bijeli) — boje se pretvaraju u blijedi
@@ -40,6 +40,9 @@ export interface RacunA4Zaglavlje {
   // Base64 GIF slika QR koda (ESIR invoiceResponse.verificationQRCode) — samo
   // za fiskalizovane račune.
   verifikacioni_qr?: string | null;
+  // Trenutni dug partnera (erp.partneri_trenutni_dug_pregled) — prikazan uz
+  // "Trenutna dugovanja partnera iznose" u dnu računa.
+  dug_partnera?: number | string | null;
 }
 
 export interface RacunA4Stavka {
@@ -100,6 +103,12 @@ function brojN(v: number | string | null | undefined) {
 
 export function RacunA4({ racun, stavke }: Props) {
   const barkodRef = useRef<HTMLCanvasElement>(null);
+  // Dimenzije nacrtanog barkoda (prije rotacije) — potrebne da omotač oko
+  // canvasa rezerviše zamijenjen (širina/visina) prostor za uspravan barkod.
+  const [barkodDim, setBarkodDim] = useState<{
+    w: number;
+    h: number;
+  } | null>(null);
 
   useEffect(() => {
     const vrijednost =
@@ -112,12 +121,44 @@ export function RacunA4({ racun, stavke }: Props) {
     JsBarcode(barkodRef.current, vrijednost, {
       format: "CODE128",
       width: 1.6,
-      height: 34,
+      height: 40,
       displayValue: true,
       fontSize: 10,
       margin: 0,
     });
+    setBarkodDim({
+      w: barkodRef.current.width,
+      h: barkodRef.current.height,
+    });
   }, [racun.sifra_tabele]);
+
+  // SALDO cifra — font-size (ne CSS transform, da se ne deformiše) izračunat
+  // tako da tekst maksimalno ispuni raspoloživu širinu okvira, bez obzira na
+  // broj cifara.
+  const saldoWrapRef = useRef<HTMLDivElement>(null);
+  const [saldoFontSize, setSaldoFontSize] = useState(16);
+
+  useEffect(() => {
+    if (
+      racun.dug_partnera === undefined ||
+      racun.dug_partnera === null ||
+      !saldoWrapRef.current
+    )
+      return;
+    const dostupnaSirina = saldoWrapRef.current.clientWidth;
+    if (!dostupnaSirina) return;
+    const tekst = `${broj(racun.dug_partnera)} KM`;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const referentnaVelicina = 100;
+    ctx.font = `800 ${referentnaVelicina}px Arial`;
+    const sirinaPriReferenci = ctx.measureText(tekst).width;
+    if (!sirinaPriReferenci) return;
+    const izracunato =
+      (dostupnaSirina / sirinaPriReferenci) * referentnaVelicina;
+    setSaldoFontSize(Math.max(14, Math.min(42, izracunato)));
+  }, [racun.dug_partnera]);
 
   // Rekapitulacija — sve u KM, sabrano preko svih stavki.
   const rVrednost = stavke.reduce(
@@ -170,21 +211,11 @@ export function RacunA4({ racun, stavke }: Props) {
       />
 
       <div style={{ padding: "8mm 9px", boxSizing: "border-box" }}>
-        {/* ── Lijevo: partner/datumi + linija + račun-otpremnica/barkod + linija |
-            Desno: fiskalni podaci (raste nezavisno, ne gura lijevu kolonu) ── */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        {/* ── Osnovni podaci (partner + PJ lijevo, datumi desno) ── */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-start",
-            gap: 24,
-            marginBottom: 10,
-          }}
-        >
-          {/* Lijevo — partner (+ poslovna jedinica) */}
-          <div style={{ flex: "0 1 auto", maxWidth: "60%" }}>
+        {/* ── Header: lijevo 50% (partner + račun/otpremnica) | vertikalna
+            linija | desno 50% (datumi + PFR podaci + QR) ── */}
+        <div style={{ display: "flex", alignItems: "stretch", marginBottom: 12 }}>
+          {/* Lijevo 50% — partner (+ poslovna jedinica) + račun/otpremnica */}
+          <div style={{ width: "50%", boxSizing: "border-box", paddingRight: 16 }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: PRIMARY }}>
               {racun.naziv_partnera}
             </div>
@@ -234,131 +265,82 @@ export function RacunA4({ racun, stavke }: Props) {
                 )}
               </div>
             )}
+
+            <div style={{ fontSize: 18, fontWeight: 800, color: PRIMARY, marginTop: 14 }}>
+              Račun/Otpremnica: {racun.broj_racuna}
+            </div>
           </div>
 
-          {/* Desno — datumi */}
+          {/* Vertikalna linija */}
+          <div style={{ width: 0, borderLeft: `2px solid ${PRIMARY}`, margin: "0 16px" }} />
+
+          {/* Desno 50% — datumi + PFR broj/datum (lijevo) i QR kod (desno) */}
           <div
             style={{
-              flex: "0 0 auto",
-              fontSize: 11,
-              color: "#444",
-              border: "1px solid #999",
-              borderRadius: 4,
-              padding: "6px 10px",
+              width: "50%",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 10,
             }}
           >
-            <div style={{ marginBottom: 3 }}>
-              <span style={{ fontWeight: 700, color: PRIMARY }}>
-                Datum izdavanja:{" "}
-              </span>
-              {formatDatum(racun.datum_izdavanja)}
+            <div style={{ fontSize: 11, color: "#444" }}>
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Datum izdavanja:{" "}
+                </span>
+                {formatDatum(racun.datum_izdavanja)}
+              </div>
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Mjesto izdavanja:{" "}
+                </span>
+                {MJESTO_IZDAVANJA}
+              </div>
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Valuta računa:{" "}
+                </span>
+                {formatDatum(racun.valuta)}
+              </div>
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Datum isporuke:{" "}
+                </span>
+                {formatDatum(racun.datum_isporuke)}
+              </div>
+              {racun.br_fiskalnog !== undefined &&
+                racun.br_fiskalnog !== null &&
+                racun.br_fiskalnog !== "" && (
+                  <div style={{ marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700, color: PRIMARY }}>
+                      PFR broj:{" "}
+                    </span>
+                    {racun.br_fiskalnog}
+                  </div>
+                )}
+              {formatDatumVrijeme(racun.datum_vreme_fiskalnog) && (
+                <div style={{ marginBottom: 3 }}>
+                  <span style={{ fontWeight: 700, color: PRIMARY }}>
+                    PFR datum:{" "}
+                  </span>
+                  {formatDatumVrijeme(racun.datum_vreme_fiskalnog)}
+                </div>
+              )}
             </div>
-            <div style={{ marginBottom: 3 }}>
-              <span style={{ fontWeight: 700, color: PRIMARY }}>
-                Mjesto izdavanja:{" "}
-              </span>
-              {MJESTO_IZDAVANJA}
-            </div>
-            <div style={{ marginBottom: 3 }}>
-              <span style={{ fontWeight: 700, color: PRIMARY }}>
-                Valuta računa:{" "}
-              </span>
-              {formatDatum(racun.valuta)}
-            </div>
-            <div>
-              <span style={{ fontWeight: 700, color: PRIMARY }}>
-                Datum isporuke:{" "}
-              </span>
-              {formatDatum(racun.datum_isporuke)}
-            </div>
-          </div>
 
-        </div>
-
-        <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 10 }} />
-
-        {/* ── Broj računa/otpremnice + barkod (šifra tabele) ── */}
-        {/* justify-content: flex-start (ne space-between) — barkod ide odmah
-            poslije broja računa, ne gurnut na sami desni rub stranice, jer ga
-            mrežni štampač inače odsijeca sa desne strane. */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-start",
-            gap: 10,
-            marginBottom: 10,
-          }}
-        >
-          <div style={{ fontSize: 18, fontWeight: 800, color: PRIMARY }}>
-            Račun/Otpremnica: {racun.broj_racuna}
-          </div>
-          {racun.sifra_tabele !== undefined &&
-            racun.sifra_tabele !== null &&
-            racun.sifra_tabele !== "" && (
-              <canvas
-                ref={barkodRef}
-                style={{ flexShrink: 0, marginLeft: 20 }}
+            {racun.verifikacioni_qr && (
+              <img
+                src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                alt="QR kod za verifikaciju"
+                style={{ width: 140, height: 140, flexShrink: 0 }}
               />
             )}
+          </div>
         </div>
 
         <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 12 }} />
-        </div>
-
-        {/* Desno — fiskalni podaci (Br. fiskalnog + datum + QR); nezavisna
-            kolona koja raste u visinu bez uticaja na liniju/račun-otpremnicu
-            u lijevoj koloni. */}
-        {racun.br_fiskalnog !== undefined &&
-          racun.br_fiskalnog !== null &&
-          racun.br_fiskalnog !== "" && (
-            <div style={{ flex: "0 0 auto", marginTop: "-0.3cm" }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  color: PRIMARY,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  textAlign: "center",
-                  lineHeight: 1,
-                  marginBottom: 2,
-                }}
-              >
-                Fiskalni račun
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 1,
-                  fontSize: 11,
-                  color: "#444",
-                  border: "1px solid #999",
-                  borderRadius: 4,
-                  padding: "2px 10px 5px",
-                }}
-              >
-                <div style={{ fontSize: 10, color: "#444", textAlign: "center", lineHeight: 1 }}>
-                  {racun.br_fiskalnog}
-                </div>
-                {formatDatumVrijeme(racun.datum_vreme_fiskalnog) && (
-                  <div style={{ fontSize: 8, color: "#666", textAlign: "center" }}>
-                    {formatDatumVrijeme(racun.datum_vreme_fiskalnog)}
-                  </div>
-                )}
-                {racun.verifikacioni_qr && (
-                  <img
-                    src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
-                    alt="QR kod za verifikaciju"
-                    style={{ width: 140, height: 140, flexShrink: 0 }}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* ── Tabela stavki ── */}
         <div style={{ marginBottom: 16 }}>
@@ -461,7 +443,7 @@ export function RacunA4({ racun, stavke }: Props) {
         </div>
 
         {/* ── Dno: slovima/napomena/fiskalni podaci (lijevo) + rekapitulacija (desno) ── */}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
             {racun.slovima && (
               <div style={{ fontSize: 11, color: "#444", fontStyle: "italic" }}>
@@ -481,38 +463,132 @@ export function RacunA4({ racun, stavke }: Props) {
               </div>
             )}
 
-            {racun.napomena && (
+            <div style={{ display: "flex", gap: 5, alignItems: "stretch" }}>
               <div
                 style={{
-                  background: `${ACCENT}0d`,
-                  border: `1px solid ${ACCENT}40`,
+                  flex: 6,
+                  boxSizing: "border-box",
+                  background: "#ffffff",
+                  border: "1px solid #999",
                   borderRadius: 6,
-                  padding: "9px 12px",
+                  paddingTop: 2,
+                  paddingLeft: 5,
+                  paddingRight: 12,
+                  paddingBottom: 9,
+                  minHeight: 90,
                 }}
               >
-                <span
+                <div
                   style={{
                     fontSize: 10,
                     fontWeight: 700,
                     color: ACCENT,
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
+                    textAlign: "left",
                   }}
                 >
-                  Napomena:{" "}
-                </span>
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: "#222",
-                    fontWeight: 600,
-                    whiteSpace: "pre-line",
-                  }}
-                >
-                  {racun.napomena}
-                </span>
+                  Napomena:
+                </div>
+                {racun.napomena && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#222",
+                      fontWeight: 600,
+                      whiteSpace: "pre-line",
+                      marginTop: 4,
+                    }}
+                  >
+                    {racun.napomena}
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* SALDO na dan — cifra dinamički skalirana (font-size, ne
+                  transform) da maksimalno ispuni širinu okvira bez deformacije. */}
+              <div
+                style={{
+                  flex: 4,
+                  boxSizing: "border-box",
+                  background: "#ffffff",
+                  border: "1px solid #999",
+                  borderRadius: 6,
+                  paddingTop: 2,
+                  paddingLeft: 5,
+                  paddingRight: 12,
+                  paddingBottom: 9,
+                  minHeight: 90,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: ACCENT,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    textAlign: "left",
+                  }}
+                >
+                  SALDO NA DAN {formatDatum(new Date().toISOString())}:
+                </div>
+                {racun.dug_partnera !== undefined &&
+                  racun.dug_partnera !== null && (
+                    <div ref={saldoWrapRef} style={{ marginTop: 4 }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          color: "#000",
+                          fontWeight: 800,
+                          fontSize: saldoFontSize,
+                          lineHeight: 1,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {broj(racun.dug_partnera)} KM
+                      </span>
+                    </div>
+                  )}
+              </div>
+
+              {/* Barkod (šifra tabele) — vraćen iz zaglavlja, sada u dnu pored napomene,
+                  okrenut uspravno (rotate -90°) tako da tekst (koji je kod
+                  horizontalnog barkoda ispod) završi uz desnu ivicu, odn. uz
+                  lijevu ivicu rekapitulacije. */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {racun.sifra_tabele !== undefined &&
+                  racun.sifra_tabele !== null &&
+                  racun.sifra_tabele !== "" && (
+                    <div
+                      style={{
+                        width: barkodDim ? barkodDim.h : undefined,
+                        height: barkodDim ? barkodDim.w : undefined,
+                        position: "relative",
+                      }}
+                    >
+                      <canvas
+                        ref={barkodRef}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          transformOrigin: "top left",
+                          transform: "rotate(-90deg) translateX(-100%)",
+                        }}
+                      />
+                    </div>
+                  )}
+              </div>
+            </div>
           </div>
 
           <div style={{ width: "62mm", flexShrink: 0 }}>
@@ -524,14 +600,17 @@ export function RacunA4({ racun, stavke }: Props) {
                   { label: "Rabat 2", value: rRab2 },
                   { label: "Osnova", value: rOsnova },
                   { label: "PDV (17%)", value: rPdv },
-                ].map(({ label, value }) => (
-                  <tr key={label}>
-                    <td style={{ padding: "2px 0", color: "#666" }}>{label}</td>
-                    <td style={{ padding: "2px 0", textAlign: "right", color: "#333" }}>
-                      {broj(value)} KM
-                    </td>
-                  </tr>
-                ))}
+                ].map(({ label, value }, i, arr) => {
+                  const padding = i === arr.length - 1 ? "2px 0 4px" : "2px 0";
+                  return (
+                    <tr key={label}>
+                      <td style={{ padding, color: "#666" }}>{label}</td>
+                      <td style={{ padding, textAlign: "right", color: "#333" }}>
+                        {broj(value)} KM
+                      </td>
+                    </tr>
+                  );
+                })}
                 <tr style={{ borderTop: `2px solid ${PRIMARY}` }}>
                   <td
                     style={{

@@ -7,6 +7,10 @@ import JsBarcode from "jsbarcode";
 const PRIMARY = "#000000";
 const ACCENT = "#595959";
 
+// Sjedište firme — fiksno, ide u "Mjesto izdavanja" na svakom gotovinskom računu
+// (ista vrijednost kao na žiralnom, vidi RacunA4.tsx).
+const MJESTO_IZDAVANJA = "Ložionička bb, 78000 Banja Luka";
+
 export interface RacunA5Zaglavlje {
   broj_racuna: string;
   datum_racuna: string;
@@ -21,6 +25,8 @@ export interface RacunA5Zaglavlje {
   rabat_km?: number | string | null;
   slovima?: string | null;
   br_fiskalnog?: string | number | null;
+  // Datum i vrijeme fiskalizacije (ESIR invoiceResponse.sdcDateTime).
+  datum_vreme_fiskalnog?: string | null;
   // Base64 GIF slika QR koda (ESIR invoiceResponse.verificationQRCode) — samo
   // za fiskalizovane račune.
   verifikacioni_qr?: string | null;
@@ -50,6 +56,19 @@ function formatDatum(dt: string) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
+}
+
+function formatDatumVrijeme(dt: string | undefined | null) {
+  if (!dt) return null;
+  const d = new Date(dt);
+  if (isNaN(d.getTime())) return dt;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${dd}.${mm}.${yyyy}. ${hh}:${min}:${ss}`;
 }
 
 function broj(v: number | string | null | undefined) {
@@ -111,116 +130,88 @@ export function RacunA5({ racun, stavke }: Props) {
           boxSizing: "border-box",
         }}
       >
-        {/* ── Lijevo: broj računa/datum/barkod + podaci o partneru |
-            Desno: fiskalni podaci (QR maksimalne veličine, raste nezavisno,
-            od kraja memoranduma do početka tabele stavki) — ista logika kao A4. ── */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        {/* ── Zaglavlje dokumenta (broj računa, datum, barkod) ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-start",
-            gap: 10,
-            borderBottom: `2px solid ${PRIMARY}`,
-            paddingBottom: 8,
-            marginBottom: 12,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: PRIMARY,
-                letterSpacing: "normal",
-              }}
-            >
+        {/* ── Header: lijevo 50% (partner + broj računa) | vertikalna linija |
+            desno 50% (datum + PFR broj + QR) — ista šema kao na A4/žiralnom. ── */}
+        <div style={{ display: "flex", alignItems: "stretch", marginBottom: 12 }}>
+          {/* Lijevo 30% — partner + broj računa */}
+          <div style={{ width: "30%", boxSizing: "border-box", paddingRight: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: PRIMARY }}>
+              {racun.naziv_partnera}
+            </div>
+            <div style={{ fontSize: 9, color: "#444", marginTop: 2 }}>
+              Šifra partnera: {racun.sifra_partnera}
+            </div>
+            {(racun.adresa_partnera || racun.naziv_grada) && (
+              <div style={{ fontSize: 9, color: "#444", marginTop: 1 }}>
+                {[racun.adresa_partnera, racun.naziv_grada]
+                  .filter(Boolean)
+                  .join(", ")}
+              </div>
+            )}
+
+            <div style={{ fontSize: 16, fontWeight: 800, color: PRIMARY, marginTop: 12 }}>
               {racun.broj_racuna}
             </div>
-            <div style={{ fontSize: 9, color: "#666", marginTop: 3 }}>
-              Datum izdavanja: {formatDatum(racun.datum_racuna)}
-            </div>
           </div>
-          {racun.sifra_tabele !== undefined &&
-            racun.sifra_tabele !== null &&
-            racun.sifra_tabele !== "" && (
-              <canvas ref={barkodRef} style={{ flexShrink: 0 }} />
-            )}
-        </div>
 
-        {/* ── Podaci o partneru ── */}
-        <div
-          style={{
-            marginBottom: 16,
-            background: `${PRIMARY}0a`,
-            border: `1px solid ${PRIMARY}30`,
-            borderRadius: 6,
-            padding: "8px 10px",
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a1a" }}>
-            {racun.naziv_partnera}
-          </div>
-          <div style={{ fontSize: 8, color: "#666", marginTop: 2 }}>
-            Šifra partnera: {racun.sifra_partnera}
-          </div>
-          {(racun.adresa_partnera || racun.naziv_grada) && (
-            <div style={{ fontSize: 8, color: "#666", marginTop: 1 }}>
-              {[racun.adresa_partnera, racun.naziv_grada]
-                .filter(Boolean)
-                .join(", ")}
-            </div>
-          )}
-        </div>
-        </div>
+          {/* Vertikalna linija */}
+          <div style={{ width: 0, borderLeft: `2px solid ${PRIMARY}`, margin: "0 12px" }} />
 
-        {/* ── Desno — fiskalni podaci (Br. fiskalnog + QR maksimalne veličine) ── */}
-        {racun.br_fiskalnog !== undefined &&
-          racun.br_fiskalnog !== null &&
-          racun.br_fiskalnog !== "" && (
-            <div style={{ flex: "0 0 auto", marginTop: "-0.8cm" }}>
-              <div
-                style={{
-                  fontSize: 8,
-                  fontWeight: 800,
-                  color: PRIMARY,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  textAlign: "center",
-                  marginBottom: 3,
-                }}
-              >
-                Fiskalni račun
+          {/* Desno 70% — datum + PFR broj (lijevo) i QR kod (desno) */}
+          <div
+            style={{
+              width: "70%",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 9, color: "#444" }}>
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Datum izdavanja:{" "}
+                </span>
+                {formatDatum(racun.datum_racuna)}
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 1,
-                  fontSize: 9,
-                  color: "#444",
-                  border: "1px solid #999",
-                  borderRadius: 4,
-                  padding: "2px 10px 5px",
-                }}
-              >
-                <div style={{ fontSize: 8, color: "#444", textAlign: "center", lineHeight: 1 }}>
-                  {racun.br_fiskalnog}
-                </div>
-                {racun.verifikacioni_qr && (
-                  <img
-                    src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
-                    alt="QR kod za verifikaciju"
-                    style={{ width: 140, height: 140, flexShrink: 0 }}
-                  />
+              <div style={{ marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, color: PRIMARY }}>
+                  Mjesto izdavanja:{" "}
+                </span>
+                {MJESTO_IZDAVANJA}
+              </div>
+              {racun.br_fiskalnog !== undefined &&
+                racun.br_fiskalnog !== null &&
+                racun.br_fiskalnog !== "" && (
+                  <div style={{ marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700, color: PRIMARY }}>
+                      PFR broj:{" "}
+                    </span>
+                    {racun.br_fiskalnog}
+                  </div>
                 )}
-              </div>
+              {formatDatumVrijeme(racun.datum_vreme_fiskalnog) && (
+                <div style={{ marginBottom: 3 }}>
+                  <span style={{ fontWeight: 700, color: PRIMARY }}>
+                    PFR datum:{" "}
+                  </span>
+                  {formatDatumVrijeme(racun.datum_vreme_fiskalnog)}
+                </div>
+              )}
             </div>
-          )}
+
+            {racun.verifikacioni_qr && (
+              <img
+                src={`data:image/gif;base64,${racun.verifikacioni_qr}`}
+                alt="QR kod za verifikaciju"
+                style={{ width: 140, height: 140, flexShrink: 0 }}
+              />
+            )}
+          </div>
         </div>
+
+        <div style={{ borderTop: `2px solid ${PRIMARY}`, marginBottom: 12 }} />
 
       {/* ── Tabela stavki ── */}
       <div style={{ marginBottom: 14 }}>
@@ -309,18 +300,19 @@ export function RacunA5({ racun, stavke }: Props) {
         </table>
       </div>
 
-      {/* ── Napomena ── */}
-      {racun.napomena && (
+      {/* ── Napomena (okvir uvijek prikazan) + barkod (šifra tabele, pozicioniran desno) ── */}
+      <div style={{ display: "flex", gap: 5, alignItems: "stretch", marginBottom: 14 }}>
         <div
           style={{
-            background: `${ACCENT}0d`,
-            border: `1px solid ${ACCENT}40`,
+            flex: 1,
+            boxSizing: "border-box",
+            background: "#ffffff",
+            border: "1px solid #999",
             borderRadius: 6,
             padding: "7px 10px",
-            marginBottom: 14,
           }}
         >
-          <span
+          <div
             style={{
               fontSize: 8,
               fontWeight: 700,
@@ -329,13 +321,38 @@ export function RacunA5({ racun, stavke }: Props) {
               letterSpacing: "0.08em",
             }}
           >
-            Napomena:{" "}
-          </span>
-          <span style={{ fontSize: 9, color: "#444", fontStyle: "italic" }}>
-            {racun.napomena}
-          </span>
+            Napomena:
+          </div>
+          {racun.napomena && (
+            <div
+              style={{
+                fontSize: 9,
+                color: "#444",
+                fontStyle: "italic",
+                marginTop: 3,
+              }}
+            >
+              {racun.napomena}
+            </div>
+          )}
         </div>
-      )}
+
+        {racun.sifra_tabele !== undefined &&
+          racun.sifra_tabele !== null &&
+          racun.sifra_tabele !== "" && (
+            <div
+              style={{
+                flexShrink: 0,
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <canvas ref={barkodRef} />
+            </div>
+          )}
+      </div>
       </div>
     </div>
   );

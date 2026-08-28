@@ -4,5 +4,8 @@ import * as RadniciController from "../controllers/radnici.controller.js";
 const router = Router();
 
 router.get("/", RadniciController.getPregledRadnika);
+router.get("/pregled-sve", RadniciController.getRadniciPregledSve);
+router.post("/azuriraj", RadniciController.azurirajRadnika);
+router.post("/unos", RadniciController.dodajRadnika);
 
 export default router;

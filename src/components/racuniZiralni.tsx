@@ -426,9 +426,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   // "tražena cijena" (prijedlog komercijaliste) razlikuje od cijene koja je
   // stvarno stavljena na račun (dogovorena ili kataloški VPC). Samo informativno,
   // operater sam odlučuje da li će ručno promijeniti cijenu.
-  const [trazeneCijenePoruka, setTrazeneCijenePoruka] = useState<
-    string | null
-  >(null);
+  const [trazeneCijenePoruka, setTrazeneCijenePoruka] = useState<string | null>(
+    null,
+  );
   // Koraci čuvanja računa — prikazuju se kao status-bar preko liste stavki dok
   // traje handleSacuvajRacun, da operater vidi u kojoj je fazi (0 = neaktivno).
   const [korakCuvanja, setKorakCuvanja] = useState(0);
@@ -1352,6 +1352,32 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
       setKorakCuvanja(2); // Dobijanje šifre tabele
 
+      // Trenutni dug partnera (erp.partneri_trenutni_dug_pregled) — za "Trenutna
+      // dugovanja partnera iznose" na štampi. Best-effort, ne blokira čuvanje
+      // računa ako ne uspije.
+      let trenutniDugPartnera: number | null = null;
+      if (odabraniPartner?.sifra_partnera) {
+        try {
+          const resDug = await fetch(
+            `${API_URL}/api/racuni/partner-trenutni-dug?sifraPartnera=${odabraniPartner.sifra_partnera}`,
+            { credentials: "include" },
+          );
+          const jsonDug = await resDug.json().catch(() => null);
+          if (resDug.ok && jsonDug?.success && jsonDug.data) {
+            const dugBroj = Number(
+              (jsonDug.data as { trenutni_dug?: number | string })
+                .trenutni_dug,
+            );
+            trenutniDugPartnera = isNaN(dugBroj) ? null : dugBroj;
+          }
+        } catch (dugError) {
+          console.error(
+            "Preuzimanje trenutnog duga partnera nije uspjelo:",
+            dugError,
+          );
+        }
+      }
+
       // Ako je račun napunjen uvozom narudžbe, prije ESIR-a ažuriraj "stampano"
       // (0 -> 1) za sve stavke te narudžbe — best-effort, ne blokira dalje korake.
       if (sifreTabeleZaStampano.length > 0) {
@@ -1536,6 +1562,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
               datum_vreme_fiskalnog: esirInvoiceResponse?.sdcDateTime ?? null,
               verifikacioni_qr: esirInvoiceResponse?.verificationQRCode ?? null,
+              dug_partnera: trenutniDugPartnera,
             }}
             stavke={stavkeZaPrint.map((s) => ({
               sifra_proizvoda: s.sifra_proizvoda,
@@ -1821,9 +1848,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     // jedinice.
     const napomeneSaTerena = Array.from(
       new Set(
-        k.proizvodi
-          .map((p) => p.napomena.trim())
-          .filter((n) => n.length > 0),
+        k.proizvodi.map((p) => p.napomena.trim()).filter((n) => n.length > 0),
       ),
     );
     setNapomenaUvezeneNarudzbe(
@@ -1894,7 +1919,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         dogovorenaVpcRaw < vpcKatalog &&
         dogovorenaVpcRaw >= nabavnaCijena;
 
-      const vpc1 = dogovorenaVpcValidna ? (dogovorenaVpcRaw as number) : vpcKatalog;
+      const vpc1 = dogovorenaVpcValidna
+        ? (dogovorenaVpcRaw as number)
+        : vpcKatalog;
       const rab1 = dogovorenaVpcValidna
         ? Math.round(
             ((vpcKatalog - (dogovorenaVpcRaw as number)) / vpcKatalog) *

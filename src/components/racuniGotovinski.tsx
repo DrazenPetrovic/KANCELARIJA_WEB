@@ -1720,6 +1720,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
               napomena: podaci.header.napomena || null,
               ukupno: podaci.header.ukupno,
               br_fiskalnog: esirInvoiceResponse?.invoiceNumber ?? null,
+              datum_vreme_fiskalnog: esirInvoiceResponse?.sdcDateTime ?? null,
               verifikacioni_qr: esirInvoiceResponse?.verificationQRCode ?? null,
               sifra_tabele: json.sifra_tabele ?? null,
             }}
