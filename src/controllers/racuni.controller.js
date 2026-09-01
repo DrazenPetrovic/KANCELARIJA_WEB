@@ -79,6 +79,29 @@ export const getRacuniProizvodaRadniNalog = async (req, res) => {
   }
 };
 
+export const getRacunPojedinacni = async (req, res) => {
+  try {
+    const sifraTabele = req.query.sifraTabele || req.params.sifraTabele;
+    if (!sifraTabele) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Sifra tabele je obavezna" });
+    }
+    const data = await RacuniService.getRacunPojedinacni(sifraTabele);
+    if (!data) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Račun nije pronađen" });
+    }
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled pojedinačnog računa error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju računa" });
+  }
+};
+
 export const getRacuniPodgrupe = async (req, res) => {
   try {
     const data = await RacuniService.getRacuniPodgrupe();

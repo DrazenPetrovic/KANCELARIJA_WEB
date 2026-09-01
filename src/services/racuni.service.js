@@ -20,6 +20,19 @@ export const getRacunPoIstorija = async (sifraTabele) => {
   });
 };
 
+// Detalji jednog računa (za pregled u modalu — npr. klik na stavku u kartici
+// partnera). Vidi erp.racuni_gl_pregled_pojedinacnog.
+export const getRacunPojedinacni = async (sifraTabele) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.racuni_gl_pregled_pojedinacnog(?)",
+      [sifraTabele],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return rezultatSet[0] ?? null;
+  });
+};
+
 export const getRacuniPodgrupe = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute("CALL erp.sp_racuni_podgrupe()");

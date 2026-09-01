@@ -7,5 +7,7 @@ router.get(
   "/pregled-sa-uplatama",
   IzvodiController.getIzvodiPreglediSaUplatama,
 );
+router.get("/uplata-pojedinacna", IzvodiController.getUplataPojedinacna);
+router.get("/kuf-pojedinacni", IzvodiController.getKufPojedinacni);
 
 export default router;

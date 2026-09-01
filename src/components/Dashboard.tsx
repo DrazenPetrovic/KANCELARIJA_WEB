@@ -262,6 +262,7 @@ export function Dashboard({
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
+  const [karticeExpanded, setKarticeExpanded] = useState(false);
   const [izvodiExpanded, setIzvodiExpanded] = useState(false);
   const [blagajnaExpanded, setBlagajnaExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
@@ -584,6 +585,7 @@ export function Dashboard({
     setOpenMenu((prev) => (prev === menu ? null : menu));
     if (menu !== "file") setArchiveExpanded(false);
     if (menu !== "proizvodnja") setKliseExpanded(false);
+    if (menu !== "pregledi") setKarticeExpanded(false);
     if (menu !== "finansije") {
       setIzvodiExpanded(false);
       setBlagajnaExpanded(false);
@@ -1448,43 +1450,58 @@ export function Dashboard({
                           Ugovorene cijene
                         </button>
 
+                        {/* Kartice toggle */}
                         <button
-                          onClick={() =>
-                            handleSectionChange("kartica-partnera")
-                          }
-                          className={dropdownItemClass(
-                            activeSection === "kartica-partnera",
-                          )}
-                          style={
-                            activeSection === "kartica-partnera"
-                              ? { background: PRIMARY }
-                              : {}
-                          }
+                          onClick={() => setKarticeExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
                         >
-                          <span
-                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
-                              activeSection === "kartica-partnera"
-                                ? ""
-                                : "bg-[#ede8f5] dark:bg-[#312a50]"
-                            }`}
-                            style={
-                              activeSection === "kartica-partnera"
-                                ? { background: "rgba(255,255,255,0.2)" }
-                                : {}
-                            }
-                          >
-                            <CreditCard
-                              size={13}
-                              style={{
-                                color:
-                                  activeSection === "kartica-partnera"
-                                    ? "#fff"
-                                    : PRIMARY,
-                              }}
-                            />
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <CreditCard size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Kartice
                           </span>
-                          Kartica partnera
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${karticeExpanded ? "rotate-90" : ""}`}
+                          />
                         </button>
+
+                        {karticeExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            <button
+                              onClick={() =>
+                                handleSectionChange("kartica-partnera")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "kartica-partnera"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "kartica-partnera"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <span
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection === "kartica-partnera"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              >
+                                <Users size={13} />
+                              </span>
+                              Kartica partnera
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>,
                     document.body,

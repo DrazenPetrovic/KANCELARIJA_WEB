@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -98,13 +98,6 @@ const formatBroj = (v: number | string | undefined) => {
   return n.toLocaleString("bs-BA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// Virtualizacija tabele — isti pristup kao u PartneriPregled.tsx: kod velikog
-// broja artikala se u DOM-u drži samo vidljivi opseg redova (+ overscan).
-const ROW_HEIGHT_PX = 44;
-const OVERSCAN_REDOVA = 15;
-const PRAG_VIRTUALIZACIJE = 150;
-const BROJ_KOLONA = 9;
-
 export function ArtikliPregled() {
   const { theme } = useTheme();
   const [data, setData] = useState<Artikal[]>([]);
@@ -203,44 +196,6 @@ export function ArtikliPregled() {
     return theme === "dark" ? boja.dark : boja.light;
   };
 
-  const jeVirtualizovano = filtrirani.length > PRAG_VIRTUALIZACIJE;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [visinaKontejnera, setVisinaKontejnera] = useState(600);
-
-  useEffect(() => {
-    if (!jeVirtualizovano) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    setVisinaKontejnera(el.clientHeight);
-    setScrollTop(el.scrollTop);
-    const naScroll = () => setScrollTop(el.scrollTop);
-    const naResize = () => setVisinaKontejnera(el.clientHeight);
-    el.addEventListener("scroll", naScroll, { passive: true });
-    window.addEventListener("resize", naResize);
-    return () => {
-      el.removeEventListener("scroll", naScroll);
-      window.removeEventListener("resize", naResize);
-    };
-  }, [jeVirtualizovano]);
-
-  let startIndex = 0;
-  let endIndex = filtrirani.length;
-  if (jeVirtualizovano) {
-    const prviVidljivi = Math.floor(scrollTop / ROW_HEIGHT_PX);
-    const brojVidljivih = Math.ceil(visinaKontejnera / ROW_HEIGHT_PX);
-    startIndex = Math.max(0, prviVidljivi - OVERSCAN_REDOVA);
-    endIndex = Math.min(
-      filtrirani.length,
-      prviVidljivi + brojVidljivih + OVERSCAN_REDOVA,
-    );
-  }
-  const vidljiviArtikli = jeVirtualizovano
-    ? filtrirani.slice(startIndex, endIndex)
-    : filtrirani;
-  const visinaPrijeRedova = startIndex * ROW_HEIGHT_PX;
-  const visinaPoslijeRedova = (filtrirani.length - endIndex) * ROW_HEIGHT_PX;
-
   return (
     <div className="space-y-4">
       {/* Naslov */}
@@ -319,13 +274,8 @@ export function ArtikliPregled() {
 
         {!loading && !error && filtrirani.length > 0 && (
           <div
-            ref={jeVirtualizovano ? scrollRef : undefined}
-            className="overflow-x-auto"
-            style={
-              jeVirtualizovano
-                ? { maxHeight: "70vh", overflowY: "auto" }
-                : undefined
-            }
+            className="overflow-auto"
+            style={{ maxHeight: "70vh" }}
           >
             <table className="w-full table-fixed">
               <colgroup>
@@ -340,7 +290,7 @@ export function ArtikliPregled() {
                 <col style={{ width: 90 }} />
               </colgroup>
               <thead>
-                <tr className={jeVirtualizovano ? "sticky top-0 z-10" : undefined}>
+                <tr className="sticky top-0 z-10">
                   <TH
                     onClick={() => handleSort("sifra")}
                     sortDir={sortPolje === "sifra" ? sortSmjer : null}
@@ -368,15 +318,7 @@ export function ArtikliPregled() {
                 </tr>
               </thead>
               <tbody>
-                {jeVirtualizovano && visinaPrijeRedova > 0 && (
-                  <tr aria-hidden="true">
-                    <td
-                      colSpan={BROJ_KOLONA}
-                      style={{ height: visinaPrijeRedova, padding: 0, border: "none" }}
-                    />
-                  </tr>
-                )}
-                {vidljiviArtikli.map((a) => (
+                {filtrirani.map((a) => (
                   <tr
                     key={a.sifra_proizvoda}
                     className="transition-colors"
@@ -422,14 +364,6 @@ export function ArtikliPregled() {
                     <TD center>{formatBroj(a.mpc)}</TD>
                   </tr>
                 ))}
-                {jeVirtualizovano && visinaPoslijeRedova > 0 && (
-                  <tr aria-hidden="true">
-                    <td
-                      colSpan={BROJ_KOLONA}
-                      style={{ height: visinaPoslijeRedova, padding: 0, border: "none" }}
-                    />
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
