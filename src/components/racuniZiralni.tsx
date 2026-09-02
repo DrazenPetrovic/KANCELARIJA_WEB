@@ -76,6 +76,32 @@ const inputClass =
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const pad2 = (n: number) => String(n).padStart(2, "0");
+
+// Prepoznaje poruke koje erp.sp_racuni_unos vraća kad na stanju nema dovoljno
+// robe za neku stavku, npr. "Nema dovoljno robe na stanju. Proizvod: 394,
+// stanje: 6.000, trazeno: 8.000, nedostaje: 2.000" — može ih biti više u istoj
+// poruci ako procedura provjerava sve stavke odjednom.
+const REGEX_NEDOVOLJNO_STANJE =
+  /proizvod:\s*(\d+)\s*,\s*stanje:\s*([\d.,]+)\s*,\s*tra[zž]eno:\s*([\d.,]+)\s*,\s*nedostaje:\s*([\d.,]+)/gi;
+
+interface StavkaNedovoljnoStanje {
+  sifra_proizvoda: string;
+  naziv_proizvoda: string;
+  jm: string;
+  stanje: number;
+  trazeno: number;
+  nedostaje: number;
+}
+
+const izvuciNedovoljnoStanje = (
+  poruka: string,
+): Omit<StavkaNedovoljnoStanje, "naziv_proizvoda" | "jm">[] =>
+  Array.from(poruka.matchAll(REGEX_NEDOVOLJNO_STANJE)).map((m) => ({
+    sifra_proizvoda: m[1],
+    stanje: parseFloat(m[2].replace(",", ".")),
+    trazeno: parseFloat(m[3].replace(",", ".")),
+    nedostaje: parseFloat(m[4].replace(",", ".")),
+  }));
 const formatDatumIso = (d: Date) =>
   `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const formatVremeIso = (d: Date) =>
@@ -406,6 +432,12 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [stampajDirektno, setStampajDirektno] = useState(false);
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
+  // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema
+  // dovoljno robe na stanju — prikazuje se kao poseban modal (umjesto generičke
+  // greške), sa nazivom/JM proizvoda uparenim iz artikli/stavke.
+  const [greskaNedovoljnogStanja, setGreskaNedovoljnogStanja] = useState<
+    StavkaNedovoljnoStanje[] | null
+  >(null);
   // Upozorenje kad je fiskalizacija uspjela ali uređaj javlja sporedan problem
   // (npr. printer nije odštampao paragon) — nije greška, samo obavještenje.
   const [spremanjeUpozorenje, setSpremanjeUpozorenje] = useState<string | null>(
@@ -878,6 +910,24 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     const kol = parseFloat(kolicina.replace(",", "."));
     if (!kol || kol <= 0) return;
 
+    // Ne dozvoljava unos veće količine od stvarnog stanja na zalihama — ni pri
+    // dodavanju nove stavke, ni pri sabiranju sa već unesenom količinom istog
+    // artikla, ni pri izmjeni postojeće stavke.
+    const stanjeNaZalihama = Number(artikalZaUnos.kolicina_proizvoda) || 0;
+    const postojecaStavka = stavke.find(
+      (s) => s.sifra_proizvoda === artikalZaUnos.sifra_proizvoda,
+    );
+    const ukupnaKolicinaZaProvjeru =
+      postojecaStavka && urejivanjeSifra !== artikalZaUnos.sifra_proizvoda
+        ? postojecaStavka.kolicina + kol
+        : kol;
+    if (ukupnaKolicinaZaProvjeru > stanjeNaZalihama) {
+      alert(
+        `Nema dovoljno na stanju. Na stanju je ${stanjeNaZalihama} ${artikalZaUnos.jm}, a pokušavate unijeti ukupno ${ukupnaKolicinaZaProvjeru} ${artikalZaUnos.jm}.`,
+      );
+      return;
+    }
+
     const vpc =
       typeof artikalZaUnos.vpc === "number"
         ? artikalZaUnos.vpc
@@ -954,6 +1004,18 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
   const handleUkloniStavku = (sifra: string) => {
     setStavke((prev) => prev.filter((s) => s.sifra_proizvoda !== sifra));
+  };
+
+  // Poziva se iz modala za nedovoljno stanje — uklanja stavku sa računa i iz
+  // liste u modalu; kad lista ostane prazna, modal se sam zatvara.
+  const handleUkloniStavkuIzGreskeStanja = (sifra: string) => {
+    handleUkloniStavku(sifra);
+    setGreskaNedovoljnogStanja((prev) => {
+      const preostalo = (prev ?? []).filter(
+        (r) => r.sifra_proizvoda !== sifra,
+      );
+      return preostalo.length > 0 ? preostalo : null;
+    });
   };
 
   // Briše izabranog partnera, sve stavke, teren, napomenu i eventualne poruke
@@ -1293,6 +1355,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     setSpremanjeUpozorenje(null);
     setPosljednjiBrojFiskalnog(null);
     setDogovorenaCijenaGreska(null);
+    setGreskaNedovoljnogStanja(null);
     setKorakCuvanja(1); // Unos podataka za račun
     try {
       const podaci = pripremiRacunZaUnos();
@@ -1332,7 +1395,29 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           json?.error ||
           rawOdgovor ||
           `Greška pri čuvanju računa (HTTP ${res.status})`;
-        setSpremanjeGreska(poruka);
+        const nedovoljnoStanja = izvuciNedovoljnoStanje(poruka);
+        if (nedovoljnoStanja.length > 0) {
+          setGreskaNedovoljnogStanja(
+            nedovoljnoStanja.map((r) => {
+              const stavka = stavke.find(
+                (s) => s.sifra_proizvoda === r.sifra_proizvoda,
+              );
+              const artikal = artikli.find(
+                (a) => String(a.sifra_proizvoda) === r.sifra_proizvoda,
+              );
+              return {
+                ...r,
+                naziv_proizvoda:
+                  stavka?.naziv_proizvoda ??
+                  artikal?.naziv_proizvoda ??
+                  `Šifra ${r.sifra_proizvoda}`,
+                jm: stavka?.jm ?? artikal?.jm ?? "",
+              };
+            }),
+          );
+        } else {
+          setSpremanjeGreska(poruka);
+        }
         return;
       }
 
@@ -1614,6 +1699,24 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         }
       }
 
+      // Račun je uspješno sačuvan — lokalno umanji stanje prodatih artikala,
+      // da se prikazana raspoloživa količina odmah smanji (bez ovoga bi
+      // ostajala "stara" sve do sljedećeg punog reloada kataloga).
+      const prodateKolicine = new Map(
+        stavke.map((s) => [s.sifra_proizvoda, s.kolicina]),
+      );
+      setArtikli((prev) =>
+        prev.map((a) => {
+          const prodato = prodateKolicine.get(a.sifra_proizvoda);
+          if (!prodato) return a;
+          const trenutnoStanje = Number(a.kolicina_proizvoda) || 0;
+          return {
+            ...a,
+            kolicina_proizvoda: round2(trenutnoStanje - prodato),
+          };
+        }),
+      );
+
       // Vraća i partnera na prazno — spriječava da ime prethodnog kupca ostane
       // prikazano na vrhu forme za sljedeći račun.
       setStavke([]);
@@ -1877,6 +1980,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     if (odabraniPartner?.sifra_partnera !== k.sifra_kupca) return;
 
     const preskoceniProizvodi: string[] = [];
+    const ogranicenaKolicina: string[] = [];
     const upozorenjaTrazenaCijena: string[] = [];
     const noveStavke: StavkaRacuna[] = [];
     k.proizvodi.forEach((p) => {
@@ -1892,6 +1996,16 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       if (!artikal || Number(artikal.kolicina_proizvoda) <= 0) {
         preskoceniProizvodi.push(p.naziv_proizvoda);
         return;
+      }
+      // Sa terena zna doći više nego što stvarno ima na stanju (npr. dvostruki
+      // unos, izmjena stanja u međuvremenu) — količina se ograničava na stvarno
+      // raspoloživo stanje, operater se posebno obavještava o ograničenju.
+      const stanjeNaZalihama = Number(artikal.kolicina_proizvoda) || 0;
+      const kolicinaZaUnos = Math.min(p.kolicina, stanjeNaZalihama);
+      if (kolicinaZaUnos < p.kolicina) {
+        ogranicenaKolicina.push(
+          `${p.naziv_proizvoda}: sa terena ${p.kolicina} ${artikal.jm}, na stanju samo ${stanjeNaZalihama} ${artikal.jm} — uneseno ${kolicinaZaUnos} ${artikal.jm}`,
+        );
       }
       const vpcKatalog =
         typeof artikal.vpc === "number"
@@ -1954,7 +2068,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         }
       }
 
-      const vrednost = Math.round(p.kolicina * vpc1 * 100) / 100;
+      const vrednost = Math.round(kolicinaZaUnos * vpc1 * 100) / 100;
       const pdv = obracunavaSePdv
         ? Math.round(vrednost * STOPA_PDV * 100) / 100
         : 0;
@@ -1962,7 +2076,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         sifra_proizvoda: artikal.sifra_proizvoda,
         naziv_proizvoda: artikal.naziv_proizvoda,
         jm: artikal.jm,
-        kolicina: p.kolicina,
+        kolicina: kolicinaZaUnos,
         vpc: vpcKatalog,
         vpc1,
         rab1,
@@ -1985,6 +2099,11 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     if (preskoceniProizvodi.length > 0) {
       alert(
         `Preskočeni proizvodi (nema ih u katalogu ili nema stanja):\n${preskoceniProizvodi.join("\n")}`,
+      );
+    }
+    if (ogranicenaKolicina.length > 0) {
+      alert(
+        `Količina sa terena je smanjena zbog nedovoljnog stanja na zalihama:\n${ogranicenaKolicina.join("\n")}`,
       );
     }
     setTrazeneCijenePoruka(
@@ -3829,9 +3948,17 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       value={kolicina}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const decimale = val.split(".")[1];
-                        if (decimale && decimale.length > 3) return;
-                        setKolicina(val);
+                        const [cioDio, decimalniDio] = val.split(".");
+                        // Skraćuje (ne odbija) unos preko 3 decimale — odbijanje
+                        // ne bi vratilo DOM input na prethodnu vrijednost jer se
+                        // state ne bi promijenio, pa bi korisnik i dalje vidio
+                        // (i mogao poslati) broj sa više decimala nego što
+                        // stanje zapravo pamti.
+                        setKolicina(
+                          decimalniDio !== undefined
+                            ? `${cioDio}.${decimalniDio.slice(0, 3)}`
+                            : val,
+                        );
                       }}
                       onKeyDown={(e) =>
                         e.key === "Enter" && handlePotvrdiStavku()
@@ -4570,6 +4697,107 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   style={{ background: PRIMARY }}
                 >
                   Da
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Nema dovoljno robe na stanju — erp.sp_racuni_unos je odbio unos */}
+      {greskaNedovoljnogStanja &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget)
+                setGreskaNedovoljnogStanja(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[560px] max-w-[90vw] overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3"
+                style={{ background: "#dc2626" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  Nema dovoljno robe na stanju
+                </span>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-700 dark:text-[#c5bfd8] mb-4">
+                  Račun nije sačuvan jer za sljedeće proizvode nema dovoljno
+                  robe na stanju. Izbaci ih sa računa ili smanji količinu, pa
+                  pokušaj ponovo.
+                </p>
+                <div className="rounded-xl border border-gray-200 dark:border-[#3a3158] overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-[#1e1a2d] text-gray-500 dark:text-[#8b83a3] text-xs uppercase">
+                        <th className="text-left px-3 py-2 font-semibold">
+                          Proizvod
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold">
+                          Na stanju
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold">
+                          Traženo
+                        </th>
+                        <th className="text-right px-3 py-2 font-semibold">
+                          Nedostaje
+                        </th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {greskaNedovoljnogStanja.map((r) => (
+                        <tr
+                          key={r.sifra_proizvoda}
+                          className="border-t border-gray-100 dark:border-[#2d2648]"
+                        >
+                          <td className="text-left px-3 py-2 text-gray-800 dark:text-[#ede9f6]">
+                            <div className="font-medium">
+                              {r.naziv_proizvoda}
+                            </div>
+                            <div className="text-xs text-gray-400 dark:text-[#6f6789]">
+                              Šifra {r.sifra_proizvoda}
+                            </div>
+                          </td>
+                          <td className="text-right px-3 py-2 text-gray-700 dark:text-[#c5bfd8]">
+                            {r.stanje.toFixed(3)} {r.jm}
+                          </td>
+                          <td className="text-right px-3 py-2 text-gray-700 dark:text-[#c5bfd8]">
+                            {r.trazeno.toFixed(3)} {r.jm}
+                          </td>
+                          <td className="text-right px-3 py-2 font-semibold text-red-600">
+                            {r.nedostaje.toFixed(3)} {r.jm}
+                          </td>
+                          <td className="text-right px-3 py-2">
+                            <button
+                              onClick={() =>
+                                handleUkloniStavkuIzGreskeStanja(
+                                  r.sifra_proizvoda,
+                                )
+                              }
+                              className="text-xs font-semibold text-red-600 hover:underline whitespace-nowrap"
+                            >
+                              Ukloni
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="flex gap-3 px-6 pb-5">
+                <button
+                  onClick={() => setGreskaNedovoljnogStanja(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  U redu
                 </button>
               </div>
             </div>

@@ -62,7 +62,8 @@
       "Bash(node --check src/routes/kalkulacije.routes.js)",
       "Bash(curl -s \"http://localhost:3999/api/kalkulacije/pojedinacna?sifraKalkulacije=6\" -w \"\\\\nHTTP %{http_code}\\\\n\")",
       "Bash(powershell -Command \"Stop-Process -Id 32132 -Force -ErrorAction SilentlyContinue\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3999/api/kalkulacije/pojedinacna?sifraKalkulacije=6\" --max-time 3)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3999/api/kalkulacije/pojedinacna?sifraKalkulacije=6\" --max-time 3)",
+      "Bash(git diff *)"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"

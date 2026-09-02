@@ -705,6 +705,19 @@ export function RacunA4({ racun, stavke }: Props) {
           </div>
         </div>
       </div>
+
+      {/* ── Footer (podnožje firme) ── */}
+      <img
+        src={`${import.meta.env.BASE_URL}foto/MEMORANDUM_1.jpg`}
+        alt="Footer"
+        style={{
+          display: "block",
+          width: "calc(100% - 18px)",
+          marginTop: "10px",
+          marginLeft: "9px",
+          marginRight: "9px",
+        }}
+      />
     </div>
   );
 }
