@@ -155,6 +155,30 @@ function formatDatum(v: string) {
   return `${dd}.${mm}.${yyyy}.`;
 }
 
+// Boje po vrsti uplate (šifarnik 0-12, vidi VRSTA_UPLATE u BlagajnaPregled.tsx)
+// — fiksan redoslijed kategorijalnih boja, svaka šifra svoju boju radi lakšeg
+// vizuelnog razlikovanja u kartici partnera.
+const VRSTA_UPLATE_BOJE: Record<number, string> = {
+  0: "#e34948", // Dugovanja kupcu
+  1: "#1baf7a", // Uplate kupaca
+  2: "#eb6834", // Uplata dobavljačima (kalk)
+  3: "#eda100", // Uplata (KUF)
+  4: "#e87ba4", // Dugovanja (dobavljaču)
+  5: "#4a3aa7", // Davanje pozajmice
+  6: "#2a78d6", // Vraćanje date pozajmice
+  7: "#008300", // Primanje pozajmice
+  8: "#e34948", // Vraćanje primljene pozajmice
+  9: "#eb6834", // Povrat pretplate dobavljaču
+  10: "#1baf7a", // Prijem pretplate (povrat od kupca)
+  11: "#4a3aa7", // Prijem pretplate dobavljača
+  12: "#eda100", // Povrat pretplate kupcu
+};
+
+function bojaVrsteUplate(v: number | null): string {
+  if (v === null) return "#9ca3af";
+  return VRSTA_UPLATE_BOJE[v] ?? "#9ca3af";
+}
+
 function StatTile({
   icon,
   vrijednost,
@@ -383,10 +407,13 @@ export function KarticaPartnera() {
         </div>
       </div>
 
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+      {/* Lijevi stub (30%) — izbor partnera */}
+      <div className="w-full lg:w-[30%] flex-shrink-0">
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[260px]">
+        <div className="flex flex-col items-stretch gap-3">
+          <div className="flex-1 min-w-0">
             <label className="block text-xs font-semibold text-gray-500 dark:text-[#a99fc2] mb-1">
               Partner
             </label>
@@ -468,13 +495,71 @@ export function KarticaPartnera() {
             type="button"
             onClick={ucitajKarticu}
             disabled={!odabraniPartner || loading}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
             style={{ background: PRIMARY }}
           >
             <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
             Prikaži
           </button>
         </div>
+      </div>
+      </div>
+
+      {/* Desni stub (70%) — prekidač kupac/dobavljač */}
+      <div className="w-full lg:w-[70%] flex-1 min-w-0">
+      {odabraniPartner && !loading && !greska && imaKupca && imaDobavljaca && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 flex justify-center">
+          <div className="flex items-start gap-4">
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAktivnaVrsta("kupac")}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                style={
+                  aktivnaVrsta === "kupac"
+                    ? { background: PRIMARY, color: "white" }
+                    : { color: PRIMARY }
+                }
+              >
+                <Users size={14} />
+                Kupac
+              </button>
+              <div className="text-center">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                  Trenutno stanje
+                </div>
+                <div className="text-sm font-bold" style={{ color: PRIMARY }}>
+                  {formatIznos(kartica?.kupac?.saldo ?? null)}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAktivnaVrsta("dobavljac")}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                style={
+                  aktivnaVrsta === "dobavljac"
+                    ? { background: PRIMARY, color: "white" }
+                    : { color: PRIMARY }
+                }
+              >
+                <Truck size={14} />
+                Dobavljač
+              </button>
+              <div className="text-center">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                  Trenutno stanje
+                </div>
+                <div className="text-sm font-bold" style={{ color: PRIMARY }}>
+                  {formatIznos(kartica?.dobavljac?.saldo ?? null)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
       </div>
 
       {!odabraniPartner && (
@@ -523,40 +608,6 @@ export function KarticaPartnera() {
 
           {(imaKupca || imaDobavljaca) && (
             <>
-              {/* Prekidač kupac/dobavljač */}
-              {imaKupca && imaDobavljaca && (
-                <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 flex justify-center">
-                  <div className="flex items-center rounded-xl border border-gray-200 dark:border-[#3a3158] overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setAktivnaVrsta("kupac")}
-                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors"
-                      style={
-                        aktivnaVrsta === "kupac"
-                          ? { background: PRIMARY, color: "white" }
-                          : { color: PRIMARY }
-                      }
-                    >
-                      <Users size={14} />
-                      Kupac
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAktivnaVrsta("dobavljac")}
-                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors border-l border-gray-200 dark:border-[#3a3158]"
-                      style={
-                        aktivnaVrsta === "dobavljac"
-                          ? { background: PRIMARY, color: "white" }
-                          : { color: PRIMARY }
-                      }
-                    >
-                      <Truck size={14} />
-                      Dobavljač
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Statistika */}
               {aktivnaKartica && (
                 <div className="flex flex-wrap gap-3">
@@ -679,7 +730,10 @@ export function KarticaPartnera() {
                             <td className="px-4 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.vrsta_prometa_opis}
                               {s.vrsta_uplate_opis && (
-                                <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+                                <div
+                                  className="text-xs font-medium"
+                                  style={{ color: bojaVrsteUplate(s.vrsta_uplate) }}
+                                >
                                   {s.vrsta_uplate_opis}
                                 </div>
                               )}
