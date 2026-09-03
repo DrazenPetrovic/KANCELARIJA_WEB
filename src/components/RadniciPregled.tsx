@@ -19,18 +19,22 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
 interface Radnik {
-  sifra_radnika: number;
-  Naziv_radnika: string;
-  Lozinka: string | null;
-  Oznaka: string | null;
+  radnik_id: number;
+  sifra_radnika: number | null;
+  naziv_radnika: string;
+  lozinka: string | null;
+  oznaka: string | null;
   vrsta_radnika: number;
-  prvi_prag: string | number | null;
-  drugi_prag: string | number | null;
-  zaposlenik: number;
+  status_radnika: number;
+  aktivan: number;
+  datum_unosa: string | null;
+  datum_izmjene: string | null;
 }
 
-// Vidi docs/radnici_vrste_radnika.txt — šifarnik vrsta_radnika iz erp.radnici_pregled.
+// Šifarnik vrsta_radnika (erp.radnici) — vidi docs/radnici_vrste_radnika.txt,
+// uz dodatu vrijednost 0 = Ostalo (default kolone u novoj tabeli).
 const VRSTA_RADNIKA_LABELS: Record<number, string> = {
+  0: "Ostalo",
   1: "Vlasnik",
   2: "Komercijala",
   3: "Kancelarija",
@@ -41,17 +45,17 @@ const VRSTA_RADNIKA_LABELS: Record<number, string> = {
   10: "Spoljni saradnik",
 };
 
-// zaposlenik: 1 = zaposlen, 0 = nije zaposlen, -1 = osnivač (specijalna oznaka),
-// 2 = spoljni saradnik koji trenutno sarađuje, 3 = spoljni saradnik koji više ne sarađuje.
-const ZAPOSLENIK_META: Record<
+// status_radnika (erp.radnici): 0 nije zaposlen, 1 zaposlen, 2 zaposleni
+// spoljni saradnik, 3 spoljni saradnik koji više ne sarađuje, 4 osnivač.
+const STATUS_RADNIKA_META: Record<
   number,
   { label: string; color: string; icon: React.ReactNode }
 > = {
   1: { label: "Zaposlen", color: ACCENT, icon: <CheckCircle2 size={13} /> },
   0: { label: "Nije zaposlen", color: "#ef4444", icon: <XCircle size={13} /> },
-  [-1]: { label: "Osnivač", color: "#f59e0b", icon: <Crown size={13} /> },
+  4: { label: "Osnivač", color: "#f59e0b", icon: <Crown size={13} /> },
   2: {
-    label: "Spoljni saradnik",
+    label: "Zaposleni spoljni saradnik",
     color: PRIMARY,
     icon: <Handshake size={13} />,
   },
@@ -62,12 +66,12 @@ const ZAPOSLENIK_META: Record<
   },
 };
 
-const ZAPOSLENIK_OPTIONS = [
+const STATUS_RADNIKA_OPTIONS = [
   { value: "svi", label: "Svi statusi" },
   { value: "1", label: "Zaposleni" },
   { value: "0", label: "Nezaposleni" },
-  { value: "-1", label: "Osnivači" },
-  { value: "2", label: "Spoljni saradnici" },
+  { value: "4", label: "Osnivači" },
+  { value: "2", label: "Zaposleni spoljni saradnici" },
   { value: "3", label: "Bivši saradnici" },
 ];
 
@@ -75,9 +79,25 @@ const VRSTA_RADNIKA_OPTIONS = Object.entries(VRSTA_RADNIKA_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
 
-const ZAPOSLENIK_EDIT_OPTIONS = ZAPOSLENIK_OPTIONS.filter(
+const STATUS_RADNIKA_EDIT_OPTIONS = STATUS_RADNIKA_OPTIONS.filter(
   (o) => o.value !== "svi",
 );
+
+// aktivan se izvodi iz status_radnika pri izmjeni — isto pravilo kao u Unosu.
+const AKTIVNI_STATUS_RADNIKA = new Set([1, 2, 4]);
+
+const formatDatum = (v: string | null) => {
+  if (!v) return "–";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleString("sr-Latn-BA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 const TH = ({
   children,
@@ -124,7 +144,7 @@ export function RadniciPregled() {
   const [formLozinka, setFormLozinka] = useState("");
   const [formOznaka, setFormOznaka] = useState("");
   const [formVrsta, setFormVrsta] = useState("");
-  const [formZaposlenik, setFormZaposlenik] = useState("");
+  const [formStatus, setFormStatus] = useState("");
   const [spasavanje, setSpasavanje] = useState(false);
   const [spasavanjeGreska, setSpasavanjeGreska] = useState<string | null>(
     null,
@@ -132,11 +152,11 @@ export function RadniciPregled() {
 
   const otvoriIzmjenu = (r: Radnik) => {
     setUrediRadnika(r);
-    setFormNaziv(r.Naziv_radnika ?? "");
-    setFormLozinka(r.Lozinka ?? "");
-    setFormOznaka(r.Oznaka ?? "");
+    setFormNaziv(r.naziv_radnika ?? "");
+    setFormLozinka(r.lozinka ?? "");
+    setFormOznaka(r.oznaka ?? "");
     setFormVrsta(String(r.vrsta_radnika));
-    setFormZaposlenik(String(r.zaposlenik));
+    setFormStatus(String(r.status_radnika));
   };
 
   const zatvoriIzmjenu = () => {
@@ -146,13 +166,16 @@ export function RadniciPregled() {
 
   const sacuvajIzmjenu = async () => {
     if (!urediRadnika) return;
+    const statusRadnika = Number(formStatus);
     const izmjene = {
+      radnik_id: urediRadnika.radnik_id,
       sifra_radnika: urediRadnika.sifra_radnika,
-      Naziv_radnika: formNaziv,
-      Lozinka: formLozinka,
-      Oznaka: formOznaka,
+      naziv_radnika: formNaziv,
+      lozinka: formLozinka,
+      oznaka: formOznaka,
       vrsta_radnika: Number(formVrsta),
-      zaposlenik: Number(formZaposlenik),
+      status_radnika: statusRadnika,
+      aktivan: AKTIVNI_STATUS_RADNIKA.has(statusRadnika) ? 1 : 0,
     };
 
     setSpasavanje(true);
@@ -171,7 +194,7 @@ export function RadniciPregled() {
 
       setData((prev) =>
         prev.map((r) =>
-          r.sifra_radnika === izmjene.sifra_radnika ? { ...r, ...izmjene } : r,
+          r.radnik_id === izmjene.radnik_id ? { ...r, ...izmjene } : r,
         ),
       );
       zatvoriIzmjenu();
@@ -214,16 +237,16 @@ export function RadniciPregled() {
       const matchVrsta =
         vrstaFilter === "sve" || String(r.vrsta_radnika) === vrstaFilter;
       const matchStatus =
-        statusFilter === "svi" || String(r.zaposlenik) === statusFilter;
+        statusFilter === "svi" || String(r.status_radnika) === statusFilter;
 
       if (!matchVrsta || !matchStatus) return false;
       if (!pretraga.trim()) return true;
 
       const q = pretraga.toLowerCase();
       return (
-        r.Naziv_radnika?.toLowerCase().includes(q) ||
-        r.Oznaka?.toLowerCase().includes(q) ||
-        String(r.sifra_radnika).includes(q)
+        r.naziv_radnika?.toLowerCase().includes(q) ||
+        r.oznaka?.toLowerCase().includes(q) ||
+        String(r.sifra_radnika ?? "").includes(q)
       );
     });
   }, [data, pretraga, vrstaFilter, statusFilter]);
@@ -284,7 +307,7 @@ export function RadniciPregled() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
           >
-            {ZAPOSLENIK_OPTIONS.map((o) => (
+            {STATUS_RADNIKA_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -325,23 +348,24 @@ export function RadniciPregled() {
                   <TH>Naziv</TH>
                   <TH>Oznaka</TH>
                   <TH>Vrsta radnika</TH>
-                  <TH center>Prag 1</TH>
-                  <TH center>Prag 2</TH>
                   <TH center>Status</TH>
+                  <TH center>Aktivan</TH>
                   <TH center>Lozinka</TH>
+                  <TH>Datum unosa</TH>
+                  <TH>Datum izmjene</TH>
                 </tr>
               </thead>
               <tbody>
                 {filtrirani.map((r) => {
-                  const status = ZAPOSLENIK_META[r.zaposlenik] ?? {
-                    label: `Nepoznato (${r.zaposlenik})`,
+                  const status = STATUS_RADNIKA_META[r.status_radnika] ?? {
+                    label: `Nepoznato (${r.status_radnika})`,
                     color: "#9ca3af",
                     icon: null,
                   };
-                  const otkriveno = otkrivenaLozinka === r.sifra_radnika;
+                  const otkriveno = otkrivenaLozinka === r.radnik_id;
                   return (
                     <tr
-                      key={r.sifra_radnika}
+                      key={r.radnik_id}
                       className="hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40 transition-colors"
                     >
                       <TD>
@@ -349,12 +373,12 @@ export function RadniciPregled() {
                           className="font-mono font-semibold text-xs"
                           style={{ color: PRIMARY }}
                         >
-                          {r.sifra_radnika}
+                          {r.sifra_radnika ?? "–"}
                         </span>
                       </TD>
                       <TD>
                         <span className="inline-flex items-center gap-2">
-                          <span className="font-medium">{r.Naziv_radnika}</span>
+                          <span className="font-medium">{r.naziv_radnika}</span>
                           <button
                             type="button"
                             onClick={() => otvoriIzmjenu(r)}
@@ -366,13 +390,11 @@ export function RadniciPregled() {
                           </button>
                         </span>
                       </TD>
-                      <TD>{r.Oznaka || "–"}</TD>
+                      <TD>{r.oznaka || "–"}</TD>
                       <TD>
                         {VRSTA_RADNIKA_LABELS[r.vrsta_radnika] ??
                           `Vrsta ${r.vrsta_radnika}`}
                       </TD>
-                      <TD center>{r.prvi_prag ?? "–"}</TD>
-                      <TD center>{r.drugi_prag ?? "–"}</TD>
                       <TD center>
                         <span
                           className="inline-flex items-center gap-1 text-xs font-semibold"
@@ -383,11 +405,27 @@ export function RadniciPregled() {
                         </span>
                       </TD>
                       <TD center>
+                        {r.aktivan === 1 ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-xs font-semibold"
+                            style={{ color: ACCENT }}
+                          >
+                            <CheckCircle2 size={13} />
+                            Da
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400 dark:text-[#5f5878]">
+                            <XCircle size={13} />
+                            Ne
+                          </span>
+                        )}
+                      </TD>
+                      <TD center>
                         <button
                           type="button"
                           onClick={() =>
                             setOtkrivenaLozinka((prev) =>
-                              prev === r.sifra_radnika ? null : r.sifra_radnika,
+                              prev === r.radnik_id ? null : r.radnik_id,
                             )
                           }
                           title={otkriveno ? "Sakrij lozinku" : "Prikaži lozinku"}
@@ -395,7 +433,7 @@ export function RadniciPregled() {
                         >
                           {otkriveno ? (
                             <>
-                              {r.Lozinka || "–"}
+                              {r.lozinka || "–"}
                               <EyeOff size={13} />
                             </>
                           ) : (
@@ -406,6 +444,8 @@ export function RadniciPregled() {
                           )}
                         </button>
                       </TD>
+                      <TD>{formatDatum(r.datum_unosa)}</TD>
+                      <TD>{formatDatum(r.datum_izmjene)}</TD>
                     </tr>
                   );
                 })}
@@ -436,7 +476,11 @@ export function RadniciPregled() {
                   Izmjena radnika
                 </h3>
                 <p className="text-xs text-white/70">
-                  {urediRadnika.Naziv_radnika} (#{urediRadnika.sifra_radnika})
+                  {urediRadnika.naziv_radnika} (#{urediRadnika.radnik_id}
+                  {urediRadnika.sifra_radnika != null
+                    ? `, šifra ${urediRadnika.sifra_radnika}`
+                    : ""}
+                  )
                 </p>
               </div>
               <button
@@ -509,11 +553,11 @@ export function RadniciPregled() {
                   Status
                 </label>
                 <select
-                  value={formZaposlenik}
-                  onChange={(e) => setFormZaposlenik(e.target.value)}
+                  value={formStatus}
+                  onChange={(e) => setFormStatus(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
                 >
-                  {ZAPOSLENIK_EDIT_OPTIONS.map((o) => (
+                  {STATUS_RADNIKA_EDIT_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

@@ -12,3 +12,16 @@ export const getKif = async (_req, res) => {
     });
   }
 };
+
+export const getKuf = async (_req, res) => {
+  try {
+    const data = await PreglediRazniService.getKuf();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled KUF error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju KUF-a",
+    });
+  }
+};

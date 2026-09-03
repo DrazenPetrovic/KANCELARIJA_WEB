@@ -11,13 +11,16 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
 interface PostojeciRadnik {
-  sifra_radnika: number;
-  Naziv_radnika: string;
-  Oznaka: string | null;
+  radnik_id: number;
+  naziv_radnika: string;
+  oznaka: string | null;
 }
 
-// Vidi docs/radnici_vrste_radnika.txt — šifarnik vrsta_radnika iz erp.radnici_pregled.
+// Šifarnik vrsta_radnika u novoj bazi (erp.radnici_unos) — isto kao
+// docs/radnici_vrste_radnika.txt, uz dodatu vrijednost 0 = Ostalo (default
+// kolone u novoj tabeli).
 const VRSTA_RADNIKA_OPTIONS = [
+  { value: "0", label: "Ostalo" },
   { value: "1", label: "Vlasnik" },
   { value: "2", label: "Komercijala" },
   { value: "3", label: "Kancelarija" },
@@ -28,13 +31,19 @@ const VRSTA_RADNIKA_OPTIONS = [
   { value: "10", label: "Spoljni saradnik" },
 ];
 
-const ZAPOSLENIK_OPTIONS = [
+// Šifarnik status_radnika u novoj bazi (erp.radnici_unos) — različit od
+// starog "zaposlenik" (1/0/-1/2/3) iz erp.radnici_unos_staro.
+const STATUS_RADNIKA_OPTIONS = [
   { value: "1", label: "Zaposlen" },
   { value: "0", label: "Nije zaposlen" },
-  { value: "-1", label: "Osnivač" },
-  { value: "2", label: "Spoljni saradnik" },
-  { value: "3", label: "Bivši saradnik" },
+  { value: "4", label: "Osnivač" },
+  { value: "2", label: "Zaposleni spoljni saradnik" },
+  { value: "3", label: "Spoljni saradnik koji više ne sarađuje" },
 ];
+
+// aktivan (nova baza) se izvodi iz status_radnika — 1 za statuse koji znače
+// da radnik trenutno radi/sarađuje, 0 za neaktivne.
+const AKTIVNI_STATUS_RADNIKA = new Set([1, 2, 4]);
 
 // Vrijednosti koje se koriste kao placeholder za "nema kartice" kod postojećih
 // radnika — ne treba ih tretirati kao zauzetu oznaku pri provjeri duplikata.
@@ -65,9 +74,7 @@ const praznaForma = () => ({
   lozinka: "",
   oznaka: "",
   vrstaRadnika: "",
-  prviPrag: "",
-  drugiPrag: "",
-  zaposlenik: "1",
+  statusRadnika: "1",
 });
 
 export function RadniciUnos() {
@@ -96,7 +103,7 @@ export function RadniciUnos() {
     if (!q) return null;
     return (
       postojeciRadnici.find(
-        (r) => r.Naziv_radnika?.trim().toLowerCase() === q,
+        (r) => r.naziv_radnika?.trim().toLowerCase() === q,
       ) ?? null
     );
   }, [forma.naziv, postojeciRadnici]);
@@ -104,7 +111,7 @@ export function RadniciUnos() {
   const oznakaDuplikat = useMemo(() => {
     const q = forma.oznaka.trim();
     if (PRAZNE_OZNAKE.has(q)) return null;
-    return postojeciRadnici.find((r) => r.Oznaka?.trim() === q) ?? null;
+    return postojeciRadnici.find((r) => r.oznaka?.trim() === q) ?? null;
   }, [forma.oznaka, postojeciRadnici]);
 
   const setPolje = (polje: keyof ReturnType<typeof praznaForma>, v: string) =>
@@ -127,25 +134,25 @@ export function RadniciUnos() {
     }
     if (nazivDuplikat) {
       setGreska(
-        `Radnik sa nazivom "${forma.naziv.trim()}" već postoji (šifra ${nazivDuplikat.sifra_radnika})`,
+        `Radnik sa nazivom "${forma.naziv.trim()}" već postoji (#${nazivDuplikat.radnik_id})`,
       );
       return;
     }
     if (oznakaDuplikat) {
       setGreska(
-        `Oznaka "${forma.oznaka.trim()}" je već dodijeljena radniku: ${oznakaDuplikat.Naziv_radnika}`,
+        `Oznaka "${forma.oznaka.trim()}" je već dodijeljena radniku: ${oznakaDuplikat.naziv_radnika}`,
       );
       return;
     }
 
+    const statusRadnika = Number(forma.statusRadnika);
     const payload = {
-      Naziv_radnika: forma.naziv.trim(),
-      Lozinka: forma.lozinka.trim(),
-      Oznaka: forma.oznaka.trim() || "-",
+      naziv_radnika: forma.naziv.trim(),
+      lozinka: forma.lozinka.trim(),
+      oznaka: forma.oznaka.trim() || "-",
       vrsta_radnika: Number(forma.vrstaRadnika),
-      prvi_prag: forma.prviPrag.trim() === "" ? 0 : Number(forma.prviPrag),
-      drugi_prag: forma.drugiPrag.trim() === "" ? 0 : Number(forma.drugiPrag),
-      zaposlenik: Number(forma.zaposlenik),
+      status_radnika: statusRadnika,
+      aktivan: AKTIVNI_STATUS_RADNIKA.has(statusRadnika) ? 1 : 0,
     };
 
     setCuvanje(true);
@@ -160,7 +167,7 @@ export function RadniciUnos() {
       if (!res.ok || !json.success) {
         throw new Error(json.error || "Greška pri unosu radnika");
       }
-      setUspjeh(`Radnik "${payload.Naziv_radnika}" je sačuvan.`);
+      setUspjeh(`Radnik "${payload.naziv_radnika}" je sačuvan.`);
       setForma(praznaForma());
       ucitajPostojeceRadnike();
     } catch (err) {
@@ -195,7 +202,7 @@ export function RadniciUnos() {
             {nazivDuplikat && (
               <p className="mt-1 flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
                 <AlertTriangle size={11} />
-                Već postoji (šifra {nazivDuplikat.sifra_radnika})
+                Već postoji (#{nazivDuplikat.radnik_id})
               </p>
             )}
           </Field>
@@ -220,7 +227,7 @@ export function RadniciUnos() {
             {oznakaDuplikat && (
               <p className="mt-1 flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
                 <AlertTriangle size={11} />
-                Već dodijeljena: {oznakaDuplikat.Naziv_radnika}
+                Već dodijeljena: {oznakaDuplikat.naziv_radnika}
               </p>
             )}
           </Field>
@@ -242,36 +249,16 @@ export function RadniciUnos() {
 
           <Field label="Status">
             <select
-              value={forma.zaposlenik}
-              onChange={(e) => setPolje("zaposlenik", e.target.value)}
+              value={forma.statusRadnika}
+              onChange={(e) => setPolje("statusRadnika", e.target.value)}
               className={inputClass}
             >
-              {ZAPOSLENIK_OPTIONS.map((o) => (
+              {STATUS_RADNIKA_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </select>
-          </Field>
-
-          <Field label="Prvi prag">
-            <input
-              type="number"
-              value={forma.prviPrag}
-              onChange={(e) => setPolje("prviPrag", e.target.value)}
-              placeholder="0"
-              className={inputClass}
-            />
-          </Field>
-
-          <Field label="Drugi prag">
-            <input
-              type="number"
-              value={forma.drugiPrag}
-              onChange={(e) => setPolje("drugiPrag", e.target.value)}
-              placeholder="0"
-              className={inputClass}
-            />
           </Field>
         </div>
       </div>

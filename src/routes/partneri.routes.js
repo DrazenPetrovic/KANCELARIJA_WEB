@@ -21,5 +21,6 @@ router.get("/lista-sve", PartneriController.getListaSve);
 router.get("/:id/poslovnice", PartneriController.getListaPoslovnice);
 router.get("/:id/telefoni", PartneriController.getListaTelefoni);
 router.post("/glavni", PartneriController.createPartnerGlavni);
+router.put("/:id", PartneriController.updatePartnerGlavni);
 
 export default router;

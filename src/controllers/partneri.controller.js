@@ -163,3 +163,21 @@ export const createPartnerGlavni = async (req, res) => {
     });
   }
 };
+
+export const updatePartnerGlavni = async (req, res) => {
+  try {
+    const partnerId = Number(req.params.id);
+    const data = await PartneriService.azurirajPartneriGlavno(
+      partnerId,
+      req.body,
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Izmjena partnera (glavni) error:", error);
+    return res.status(500).json({
+      success: false,
+      error:
+        error.sqlMessage || error.message || "Greška pri izmjeni partnera",
+    });
+  }
+};

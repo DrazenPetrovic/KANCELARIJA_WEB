@@ -21,6 +21,7 @@ import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
+import { Kuf } from "./Kuf";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { BlagajnaPregled } from "./BlagajnaPregled";
 import { BlagajnaStatus } from "./BlagajnaStatus";
@@ -167,6 +168,7 @@ type MenuSection =
   | "racuni-knjizna-virmanski"
   | "analitika-mjesecni-prihodi"
   | "analitika-kif"
+  | "analitika-kuf"
   | null;
 
 const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
@@ -198,7 +200,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "racuni-knjizna-gotovinski": "Knjižna gotovinski",
   "racuni-knjizna-virmanski": "Knjižna virmanski",
   "analitika-mjesecni-prihodi": "Mjesečni prihodi",
-  "analitika-kif": "KIF",
+  "analitika-kif": "Knjiga izlaznih faktura",
+  "analitika-kuf": "Knjiga ulaznih faktura",
 };
 
 export function Dashboard({
@@ -2393,7 +2396,39 @@ export function Dashboard({
                               }}
                             />
                           </span>
-                          KIF
+                          Knjiga izlaznih faktura
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("analitika-kuf")}
+                          className={dropdownItemClass(
+                            activeSection === "analitika-kuf",
+                          )}
+                          style={
+                            activeSection === "analitika-kuf"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${activeSection === "analitika-kuf" ? "" : "bg-[#ede8f5] dark:bg-[#312a50]"}`}
+                            style={
+                              activeSection === "analitika-kuf"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <BookMarked
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "analitika-kuf"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Knjiga ulaznih faktura
                         </button>
                       </div>
                     </div>,
@@ -2637,6 +2672,8 @@ export function Dashboard({
           )}
 
           {activeSection === "analitika-kif" && <Kif />}
+
+          {activeSection === "analitika-kuf" && <Kuf />}
         </main>
       </BazaContext.Provider>
 

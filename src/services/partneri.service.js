@@ -100,7 +100,7 @@ export const getPartneriZaLokalnuDostavu = async () => {
   });
 };
 
-// Mapiranje JSON-a za unos u staru (LEGACY) bazu — vidi erp.sp_partneri_unos_stara_baza.
+// Mapiranje JSON-a za unos u staru (LEGACY) bazu — vidi erp.partneri_unos_stara_baza.
 // maticni_broj, sifra_ranije, koristiti_u_azuriranju i sinhronizovano su konstante
 // za svaki nov unos (nema odgovarajućeg polja u formi za unos partnera).
 const izgradiJsonStaraBaza = (partner) => ({
@@ -119,11 +119,11 @@ const izgradiJsonStaraBaza = (partner) => ({
   sinhronizovano: 0,
 });
 
-// Sinhronizacija novog partnera u staru (LEGACY) bazu. Vidi erp.sp_partneri_unos_stara_baza.
+// Sinhronizacija novog partnera u staru (LEGACY) bazu. Vidi erp.partneri_unos_stara_baza.
 const unesiPartneraUStaruBazu = async (connection, partner) => {
   const json = JSON.stringify(izgradiJsonStaraBaza(partner));
   const [rows] = await connection.query(
-    "CALL erp.sp_partneri_unos_stara_baza(?)",
+    "CALL erp.partneri_unos_stara_baza(?)",
     [json],
   );
   const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
@@ -141,7 +141,7 @@ export const setPartneriStaraBaza = async (partner) => {
 // Novi ERP unos partnera — jedan JSON poziv unosi partnera i, opciono, njegove
 // poslovnice/kontakte/telefone (sve u jednoj transakciji, sa rollback-om ako
 // bilo koji dio pukne). Šifra partnera se dodjeljuje automatski. Vidi
-// erp.sp_partner_unos.
+// erp.partneri_unos_podataka.
 //
 // Nakon uspješnog unosa u glavnu bazu, isti partner se (best-effort) sinhronizuje
 // i u staru (LEGACY) bazu — ako ta sinhronizacija padne, ne obara glavni unos
@@ -149,16 +149,17 @@ export const setPartneriStaraBaza = async (partner) => {
 export const setPartneriGlavno = async (partner) => {
   return withConnection(async (connection) => {
     const json = JSON.stringify(partner);
-    const [rows] = await connection.query("CALL erp.sp_partner_unos(?)", [
-      json,
-    ]);
+    const [rows] = await connection.query(
+      "CALL erp.partneri_unos_podataka(?)",
+      [json],
+    );
     const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
     const rezultat =
       Array.isArray(rezultatSet) && rezultatSet.length > 0
         ? rezultatSet[0]
         : { uspjesno: true };
 
-    // erp.sp_partner_unos vraća { status, poruka, partner_id } — status 0/false
+    // erp.partneri_unos_podataka vraća { status, poruka, partner_id } — status 0/false
     // znači da procedura nije upisala partnera (npr. duplikat, validacija, greška
     // u proceduri), ali ne baca SQL izuzetak, pa se to mora provjeriti ovdje.
     if (rezultat.status === 0 || rezultat.status === false) {
@@ -172,6 +173,67 @@ export const setPartneriGlavno = async (partner) => {
     } catch (error) {
       console.error(
         "Sinhronizacija partnera u staru (LEGACY) bazu nije uspjela:",
+        error,
+      );
+    }
+
+    return rezultat;
+  });
+};
+
+// Sinhronizacija izmjene partnera u staru (LEGACY) bazu — isto mapiranje
+// polja kao pri unosu (izgradiJsonStaraBaza), uz partner_id kao identifikator
+// za pronalaženje postojećeg zapisa u staroj bazi. Vidi
+// erp.partneri_izmjena_podataka_staro.
+const azurirajPartneraUStaruBazu = async (connection, partnerId, partner) => {
+  const json = JSON.stringify({
+    partner_id: partnerId,
+    ...izgradiJsonStaraBaza(partner),
+  });
+  const [rows] = await connection.query(
+    "CALL erp.partneri_izmjena_podataka_staro(?)",
+    [json],
+  );
+  const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  return Array.isArray(rezultatSet) && rezultatSet.length > 0
+    ? rezultatSet[0]
+    : { uspjesno: true };
+};
+
+// Izmjena postojećeg partnera — JSON poziv ažurira osnovne podatke partnera u
+// glavnoj (ERP) bazi. Vidi erp.partneri_izmjena_podataka.
+//
+// Nakon uspješne izmjene u glavnoj bazi, isti partner se (best-effort)
+// sinhronizuje i u staru (LEGACY) bazu — ako ta sinhronizacija padne, ne
+// obara glavnu izmjenu (partner je već ispravno ažuriran u ERP-u), greška se
+// samo loguje.
+export const azurirajPartneriGlavno = async (partnerId, partner) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({ ...partner, partner_id: partnerId });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_izmjena_podataka(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    const rezultat =
+      Array.isArray(rezultatSet) && rezultatSet.length > 0
+        ? rezultatSet[0]
+        : { uspjesno: true };
+
+    // erp.partneri_izmjena_podataka vraća { status, poruka } — status 0/false
+    // znači da procedura nije ažurirala partnera, ali ne baca SQL izuzetak,
+    // pa se to mora provjeriti ovdje.
+    if (rezultat.status === 0 || rezultat.status === false) {
+      throw new Error(
+        rezultat.poruka || "Procedura nije uspjela da ažurira partnera",
+      );
+    }
+
+    try {
+      await azurirajPartneraUStaruBazu(connection, partnerId, partner);
+    } catch (error) {
+      console.error(
+        "Sinhronizacija izmjene partnera u staru (LEGACY) bazu nije uspjela:",
         error,
       );
     }
@@ -207,11 +269,11 @@ export const getPartneriDogovoreneCijeneOsnovno = async () => {
 };
 
 // Komercijalisti (radnici koji mogu biti zaduženi za partnera) — za padajuću
-// listu pri unosu partnera. Vidi erp.sp_partneri_pregled_komercijalista.
+// listu pri unosu partnera. Vidi erp.partneri_pregled_komercijalista.
 export const getPartneriKomercijalisti = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_pregled_komercijalista()",
+      "CALL erp.partneri_pregled_komercijalista()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
@@ -232,20 +294,20 @@ export const getPartneriGradovi = async () => {
 };
 
 // Novi ERP pregled — kompletna lista partnera sa brojačima poslovnica/
-// kontakata/telefona i primarnim telefonom. Vidi erp.sp_partneri_lista_sve.
+// kontakata/telefona i primarnim telefonom. Vidi erp.partneri_lista_sve.
 export const getPartneriListaSve = async () => {
   return withConnection(async (connection) => {
-    const [rows] = await connection.execute("CALL erp.sp_partneri_lista_sve()");
+    const [rows] = await connection.execute("CALL erp.partneri_lista_sve()");
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
 
 // Poslovnice jednog partnera (za prikaz detalja u pregledu partnera).
-// Vidi erp.sp_partneri_lista_poslovnice.
+// Vidi erp.partneri_lista_poslovnice.
 export const getPartneriListaPoslovnice = async (partnerId) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_lista_poslovnice(?)",
+      "CALL erp.partneri_lista_poslovnice(?)",
       [partnerId],
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
@@ -253,11 +315,11 @@ export const getPartneriListaPoslovnice = async (partnerId) => {
 };
 
 // Telefoni jednog partnera (za prikaz detalja u pregledu partnera).
-// Vidi erp.sp_partneri_lista_telefoni.
+// Vidi erp.partneri_lista_telefoni.
 export const getPartneriListaTelefoni = async (partnerId) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_partneri_lista_telefoni(?)",
+      "CALL erp.partneri_lista_telefoni(?)",
       [partnerId],
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];

@@ -4,5 +4,6 @@ import * as PreglediRazniController from "../controllers/preglediRazni.controlle
 const router = Router();
 
 router.get("/kif", PreglediRazniController.getKif);
+router.get("/kuf", PreglediRazniController.getKuf);
 
 export default router;

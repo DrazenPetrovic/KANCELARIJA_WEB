@@ -43,7 +43,7 @@ function broj(v: number | string | null | undefined) {
   return isNaN(n) ? "0.00" : n.toFixed(2);
 }
 
-// Naziv radnika dolazi u formatu "Prezime Ime" (vidi sp_partneri_pregled_komercijalista) —
+// Naziv radnika dolazi u formatu "Prezime Ime" (vidi partneri_pregled_komercijalista) —
 // za štampu se skraćuje na "Prezime I." da stane u usku kolonu.
 function formatRadnik(naziv: string) {
   const dijelovi = naziv.trim().split(/\s+/);

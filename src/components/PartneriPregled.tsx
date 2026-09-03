@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Building2,
   CheckCircle2,
   IdCard,
   Loader2,
   MapPin,
+  Pencil,
   Phone,
   Search,
   Star,
@@ -33,6 +35,8 @@ interface Partner {
   limit_duga: number | null;
   rabat_procenat: number | null;
   aktivan: number;
+  pripada_radniku: number | null;
+  naziv_radnika: string;
   telefon: string | null;
   broj_poslovnica: number;
   broj_kontakata: number;
@@ -51,6 +55,24 @@ interface Poslovnica {
   glavna: number;
   napomena: string | null;
   aktivan: number;
+}
+
+interface Drzava {
+  sifra_drzave: number;
+  naziv_drzave: string;
+}
+
+interface GradOpcija {
+  sifra_grada: number;
+  naziv_grada: string;
+  entitet: string;
+  ptt: string;
+  sifra_drzave: number;
+}
+
+interface Komercijalista {
+  sifra_radnika: number;
+  naziv_radnika: string;
 }
 
 interface Telefon {
@@ -168,6 +190,60 @@ const STATUS_OPTIONS = [
   { value: "neaktivni", label: "Neaktivni" },
 ];
 
+const inputClass =
+  "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6]";
+const labelClass =
+  "block text-xs font-semibold text-gray-600 dark:text-[#a89fc2] mb-1";
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+interface IzmjenaForme {
+  naziv: string;
+  jib: string;
+  pib: string;
+  pdvObveznik: boolean;
+  tipPartnera: string;
+  adresa: string;
+  sifraDrzave: string;
+  sifraGrada: string;
+  postanskiBroj: string;
+  valutaPlacanja: string;
+  limitDuga: string;
+  rabatProcenat: string;
+  sifraKomercijaliste: string;
+  aktivan: boolean;
+}
+
+const praznaIzmjenaForme = (): IzmjenaForme => ({
+  naziv: "",
+  jib: "",
+  pib: "",
+  pdvObveznik: false,
+  tipPartnera: "kupac",
+  adresa: "",
+  sifraDrzave: "",
+  sifraGrada: "",
+  postanskiBroj: "",
+  valutaPlacanja: "",
+  limitDuga: "",
+  rabatProcenat: "",
+  sifraKomercijaliste: "",
+  aktivan: true,
+});
+
 // "Windowing" tabele partnera — kod velike baze partnera renderovanje SVIH
 // <tr> odjednom usporava DOM i React reconciliation. Isti pristup kao u
 // pregledu računa (racuniPregled.tsx): prati se scroll pozicija scroll-
@@ -179,7 +255,7 @@ const STATUS_OPTIONS = [
 const ROW_HEIGHT_PX = 56;
 const OVERSCAN_REDOVA = 15;
 const PRAG_VIRTUALIZACIJE = 150;
-const BROJ_KOLONA = 8;
+const BROJ_KOLONA = 10;
 
 export function PartneriPregled() {
   const [data, setData] = useState<Partner[]>([]);
@@ -200,6 +276,16 @@ export function PartneriPregled() {
   const [telefoniLoading, setTelefoniLoading] = useState(false);
   const [telefoniError, setTelefoniError] = useState<string | null>(null);
 
+  const [drzave, setDrzave] = useState<Drzava[]>([]);
+  const [gradovi, setGradovi] = useState<GradOpcija[]>([]);
+  const [komercijalisti, setKomercijalisti] = useState<Komercijalista[]>([]);
+
+  const [editPartner, setEditPartner] = useState<Partner | null>(null);
+  const [editForm, setEditForm] = useState<IzmjenaForme>(praznaIzmjenaForme());
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editUspjeh, setEditUspjeh] = useState(false);
+
   useEffect(() => {
     const ucitaj = async () => {
       try {
@@ -216,7 +302,167 @@ export function PartneriPregled() {
       }
     };
     void ucitaj();
+
+    Promise.all([
+      fetch(`${API_URL}/api/partneri/drzave`, { credentials: "include" }).then(
+        (r) => (r.ok ? r.json() : Promise.reject()),
+      ),
+      fetch(`${API_URL}/api/partneri/gradovi`, { credentials: "include" }).then(
+        (r) => (r.ok ? r.json() : Promise.reject()),
+      ),
+      fetch(`${API_URL}/api/partneri/komercijalisti`, {
+        credentials: "include",
+      }).then((r) => (r.ok ? r.json() : Promise.reject())),
+    ])
+      .then(([drzaveJson, gradoviJson, komercijalistiJson]) => {
+        setDrzave(drzaveJson.data ?? []);
+        setGradovi(gradoviJson.data ?? []);
+        setKomercijalisti(komercijalistiJson.data ?? []);
+      })
+      .catch(() => {
+        setDrzave([]);
+        setGradovi([]);
+        setKomercijalisti([]);
+      });
   }, []);
+
+  const otvoriIzmjenu = (partner: Partner) => {
+    const drzavaPodudaranje = drzave.find(
+      (d) => d.naziv_drzave === partner.drzava,
+    );
+    const gradPodudaranje = gradovi.find(
+      (g) =>
+        g.naziv_grada === partner.grad &&
+        (!drzavaPodudaranje || g.sifra_drzave === drzavaPodudaranje.sifra_drzave),
+    );
+
+    setEditPartner(partner);
+    setEditForm({
+      naziv: partner.naziv ?? "",
+      jib: partner.jib ?? "",
+      pib: partner.pib ?? "",
+      pdvObveznik: partner.pdv_obveznik === 1,
+      tipPartnera: partner.tip_partnera ?? "kupac",
+      adresa: partner.adresa ?? "",
+      sifraDrzave: drzavaPodudaranje ? String(drzavaPodudaranje.sifra_drzave) : "",
+      sifraGrada: gradPodudaranje ? String(gradPodudaranje.sifra_grada) : "",
+      postanskiBroj: partner.postanski_broj ?? "",
+      valutaPlacanja:
+        partner.valuta_placanja != null ? String(partner.valuta_placanja) : "",
+      limitDuga: partner.limit_duga != null ? String(partner.limit_duga) : "",
+      rabatProcenat:
+        partner.rabat_procenat != null ? String(partner.rabat_procenat) : "",
+      sifraKomercijaliste:
+        partner.pripada_radniku != null ? String(partner.pripada_radniku) : "",
+      aktivan: partner.aktivan === 1,
+    });
+    setEditError(null);
+  };
+
+  const zatvoriIzmjenu = () => {
+    setEditPartner(null);
+    setEditForm(praznaIzmjenaForme());
+    setEditError(null);
+  };
+
+  const sacuvajIzmjenu = async () => {
+    if (!editPartner) return;
+    setEditError(null);
+
+    if (!editForm.naziv.trim()) {
+      setEditError("Naziv partnera je obavezan");
+      return;
+    }
+
+    const nazivGrada = (sifra: string) =>
+      gradovi.find((g) => String(g.sifra_grada) === sifra)?.naziv_grada;
+    const nazivDrzave = (sifra: string) =>
+      drzave.find((d) => String(d.sifra_drzave) === sifra)?.naziv_drzave;
+    const nazivKomercijaliste = (sifra: string) =>
+      komercijalisti.find((k) => String(k.sifra_radnika) === sifra)
+        ?.naziv_radnika;
+
+    const payload = {
+      partner_id: editPartner.partner_id,
+      naziv: editForm.naziv.trim(),
+      // Nema posebnog polja za izmjenu — skraćeni naziv je uvijek identičan
+      // punom nazivu partnera (isto ponašanje kao u unosu partnera).
+      skraceni_naziv: editForm.naziv.trim(),
+      jib: editForm.jib.trim() || null,
+      pib: editForm.pib.trim() || null,
+      pdv_obveznik: editForm.pdvObveznik ? 1 : 0,
+      tip_partnera: editForm.tipPartnera,
+      adresa: editForm.adresa.trim() || null,
+      sifra_grada: editForm.sifraGrada ? Number(editForm.sifraGrada) : null,
+      grad: nazivGrada(editForm.sifraGrada) ?? null,
+      sifra_drzave: editForm.sifraDrzave ? Number(editForm.sifraDrzave) : null,
+      drzava: nazivDrzave(editForm.sifraDrzave) ?? null,
+      postanski_broj: editForm.postanskiBroj.trim() || null,
+      valuta_placanja: editForm.valutaPlacanja
+        ? Number(editForm.valutaPlacanja)
+        : null,
+      limit_duga: editForm.limitDuga ? Number(editForm.limitDuga) : null,
+      rabat_procenat: editForm.rabatProcenat
+        ? Number(editForm.rabatProcenat)
+        : null,
+      pripada_radniku: editForm.sifraKomercijaliste
+        ? Number(editForm.sifraKomercijaliste)
+        : null,
+      aktivan: editForm.aktivan ? 1 : 0,
+    };
+
+    setEditSaving(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/partneri/${editPartner.partner_id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri ažuriranju partnera");
+      }
+
+      setData((prev) =>
+        prev.map((p) =>
+          p.partner_id === editPartner.partner_id
+            ? {
+                ...p,
+                naziv: payload.naziv,
+                skraceni_naziv: payload.skraceni_naziv,
+                jib: payload.jib,
+                pib: payload.pib,
+                pdv_obveznik: payload.pdv_obveznik,
+                tip_partnera: payload.tip_partnera,
+                adresa: payload.adresa,
+                grad: payload.grad,
+                drzava: payload.drzava,
+                postanski_broj: payload.postanski_broj,
+                valuta_placanja: payload.valuta_placanja,
+                limit_duga: payload.limit_duga,
+                rabat_procenat: payload.rabat_procenat,
+                pripada_radniku: payload.pripada_radniku,
+                naziv_radnika:
+                  nazivKomercijaliste(editForm.sifraKomercijaliste) ??
+                  "Nije dodijeljen",
+                aktivan: payload.aktivan,
+              }
+            : p,
+        ),
+      );
+
+      setEditUspjeh(true);
+      zatvoriIzmjenu();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Nepoznata greška");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const otvoriPartnera = (partner: Partner) => {
     setSelectedPartner(partner);
@@ -435,9 +681,11 @@ export function PartneriPregled() {
                   <TH>JIB / PIB</TH>
                   <TH>Adresa</TH>
                   <TH>Telefon</TH>
+                  <TH>Radnik</TH>
                   <TH center>Valuta</TH>
                   <TH center>Poslovnice / Kontakti / Telefoni</TH>
                   <TH center>Status</TH>
+                  <TH center>Akcije</TH>
                 </tr>
               </thead>
               <tbody>
@@ -496,6 +744,7 @@ export function PartneriPregled() {
                         "–"
                       )}
                     </TD>
+                    <TD>{p.naziv_radnika}</TD>
                     <TD center>
                       {p.valuta_placanja != null ? `${p.valuta_placanja} d.` : "–"}
                     </TD>
@@ -533,6 +782,20 @@ export function PartneriPregled() {
                           Neaktivan
                         </span>
                       )}
+                    </TD>
+                    <TD center>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          otvoriIzmjenu(p);
+                        }}
+                        title="Izmijeni partnera"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                        style={{ color: PRIMARY }}
+                      >
+                        <Pencil size={14} />
+                      </button>
                     </TD>
                   </tr>
                 ))}
@@ -760,6 +1023,318 @@ export function PartneriPregled() {
                     ))}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL - IZMJENA PARTNERA */}
+      {editPartner && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !editSaving) zatvoriIzmjenu();
+          }}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2"
+            style={{ borderColor: PRIMARY }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between gap-4"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              <div className="flex items-center gap-2">
+                <Pencil size={16} className="text-white" />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Izmjena partnera
+                  </h3>
+                  <p className="text-xs text-white/70">
+                    Partner #{editPartner.partner_id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={zatvoriIzmjenu}
+                disabled={editSaving}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3">
+              {editError && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30">
+                  <AlertTriangle size={14} />
+                  {editError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <Field label="Naziv partnera *">
+                  <input
+                    type="text"
+                    value={editForm.naziv}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, naziv: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Tip partnera">
+                  <select
+                    value={editForm.tipPartnera}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        tipPartnera: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="kupac">Kupac</option>
+                    <option value="dobavljac">Dobavljač</option>
+                    <option value="oba">Oba</option>
+                  </select>
+                </Field>
+                <Field label="JIB">
+                  <input
+                    type="text"
+                    value={editForm.jib}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, jib: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="PIB">
+                  <input
+                    type="text"
+                    value={editForm.pib}
+                    onChange={(e) => {
+                      const vrijednost = e.target.value;
+                      setEditForm((f) => ({
+                        ...f,
+                        pib: vrijednost,
+                        pdvObveznik: /^\d{12}$/.test(vrijednost.trim()),
+                      }));
+                    }}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Adresa">
+                  <input
+                    type="text"
+                    value={editForm.adresa}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, adresa: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Država">
+                  <select
+                    value={editForm.sifraDrzave}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        sifraDrzave: e.target.value,
+                        sifraGrada: "",
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">-- Izaberi državu --</option>
+                    {drzave.map((d) => (
+                      <option key={d.sifra_drzave} value={d.sifra_drzave}>
+                        {d.naziv_drzave}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Grad">
+                  <select
+                    value={editForm.sifraGrada}
+                    onChange={(e) => {
+                      const izabrani = gradovi.find(
+                        (g) => String(g.sifra_grada) === e.target.value,
+                      );
+                      setEditForm((f) => ({
+                        ...f,
+                        sifraGrada: e.target.value,
+                        postanskiBroj: izabrani?.ptt ?? f.postanskiBroj,
+                      }));
+                    }}
+                    disabled={!editForm.sifraDrzave}
+                    className={inputClass}
+                  >
+                    <option value="">
+                      {!editForm.sifraDrzave
+                        ? "-- Prvo izaberi državu --"
+                        : "-- Izaberi grad --"}
+                    </option>
+                    {gradovi
+                      .filter(
+                        (g) => String(g.sifra_drzave) === editForm.sifraDrzave,
+                      )
+                      .map((g) => (
+                        <option key={g.sifra_grada} value={g.sifra_grada}>
+                          {g.naziv_grada}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Poštanski broj">
+                  <input
+                    type="text"
+                    value={editForm.postanskiBroj}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        postanskiBroj: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Valuta plaćanja (dana)">
+                  <input
+                    type="number"
+                    value={editForm.valutaPlacanja}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        valutaPlacanja: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Limit duga">
+                  <input
+                    type="number"
+                    value={editForm.limitDuga}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, limitDuga: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Rabat (%)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editForm.rabatProcenat}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        rabatProcenat: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Radnik (komercijalista)">
+                  <select
+                    value={editForm.sifraKomercijaliste}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        sifraKomercijaliste: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">-- Nije dodijeljen --</option>
+                    {komercijalisti.map((k) => (
+                      <option key={k.sifra_radnika} value={k.sifra_radnika}>
+                        {k.naziv_radnika}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Status">
+                  <select
+                    value={editForm.aktivan ? "1" : "0"}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        aktivan: e.target.value === "1",
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="1">Aktivan</option>
+                    <option value="0">Neaktivan</option>
+                  </select>
+                </Field>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8] pt-1">
+                <input
+                  type="checkbox"
+                  checked={editForm.pdvObveznik}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      pdvObveznik: e.target.checked,
+                    }))
+                  }
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: PRIMARY }}
+                />
+                PDV obveznik
+              </label>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-gray-100 dark:border-[#2d2648]">
+              <button
+                type="button"
+                onClick={zatvoriIzmjenu}
+                disabled={editSaving}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors disabled:opacity-50"
+              >
+                Otkaži
+              </button>
+              <button
+                type="button"
+                onClick={() => void sacuvajIzmjenu()}
+                disabled={editSaving}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                style={{ background: PRIMARY }}
+              >
+                {editSaving && <Loader2 size={14} className="animate-spin" />}
+                Sačuvaj izmjene
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL - USPJEŠNA IZMJENA */}
+      {editUspjeh && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-[#261f38] shadow-2xl border-2 border-gray-200 dark:border-[#2d2648] p-6">
+            <div className="flex justify-center mb-3">
+              <CheckCircle2 size={40} style={{ color: ACCENT }} />
+            </div>
+            <p className="text-base font-semibold text-gray-800 dark:text-[#ede9f6] text-center">
+              Podaci partnera su ažurirani.
+            </p>
+            <div className="mt-5 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setEditUspjeh(false)}
+                className="min-w-[90px] px-4 py-2 rounded-lg text-white font-semibold transition-all"
+                style={{ backgroundColor: ACCENT }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

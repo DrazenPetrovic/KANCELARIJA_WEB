@@ -63,7 +63,13 @@
       "Bash(curl -s \"http://localhost:3999/api/kalkulacije/pojedinacna?sifraKalkulacije=6\" -w \"\\\\nHTTP %{http_code}\\\\n\")",
       "Bash(powershell -Command \"Stop-Process -Id 32132 -Force -ErrorAction SilentlyContinue\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:3999/api/kalkulacije/pojedinacna?sifraKalkulacije=6\" --max-time 3)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3002 -State Listen | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Get-Process -Id $_ | Select-Object Id, ProcessName, Path, StartTime })",
+      "Bash(awk '{print $5}')",
+      "Bash(taskkill //PID 46544 //F)",
+      "Bash(node --check src/services/radnici.service.js)",
+      "Bash(node --check src/controllers/radnici.controller.js)",
+      "Bash(node --check src/routes/radnici.routes.js)"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"
