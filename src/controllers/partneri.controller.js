@@ -22,18 +22,26 @@ export const getPartneriRazni = async (req, res) => {
 
 export const createPartnerRazni = async (req, res) => {
   try {
-    const { nazivPartnera, pripadaRadniku, sifraGrada } = req.body;
+    const { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada } = req.body;
     if (!nazivPartnera || !pripadaRadniku || !sifraGrada) {
       return res.status(400).json({
         success: false,
         error: "Nedostaju obavezni podaci (nazivPartnera, pripadaRadniku, sifraGrada)",
       });
     }
-    const data = await PartneriService.dodajPartneraRaznog({ nazivPartnera, pripadaRadniku, sifraGrada });
+    const data = await PartneriService.dodajPartneraRaznog({
+      nazivPartnera,
+      pripadaRadniku,
+      sifraGrada,
+      nazivGrada,
+    });
     return res.json({ success: true, data });
   } catch (error) {
     console.error("Dodavanje raznog kupca error:", error);
-    return res.status(500).json({ success: false, error: "Greška pri dodavanju kupca" });
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri dodavanju kupca",
+    });
   }
 };
 

@@ -854,6 +854,9 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     setDodajRazniLoading(true);
     setDodajRazniGreska(null);
     try {
+      const nazivGrada = gradovi.find(
+        (g) => String(g.sifra_grada) === noviRazniSifraGrada,
+      )?.naziv_grada;
       const res = await fetch(`${API_URL}/api/partneri/razni`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -862,6 +865,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
           nazivPartnera: noviRazniNaziv.trim(),
           pripadaRadniku: Number(noviRazniSifraRadnika),
           sifraGrada: Number(noviRazniSifraGrada),
+          nazivGrada,
         }),
       });
       const json = await res.json();

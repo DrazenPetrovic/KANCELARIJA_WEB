@@ -10,7 +10,7 @@ export const getPartneri = async () => {
 export const getPartneriRazni = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_pregled_partnera_razni()",
+      "CALL erp.partneri_razni_partneri_pregled()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
@@ -20,34 +20,45 @@ export const dodajPartneraRaznog = async ({
   nazivPartnera,
   pripadaRadniku,
   sifraGrada,
+  nazivGrada,
 }) => {
   return withConnection(async (connection) => {
-    await connection.execute("CALL erp.sp_partneri_dodaj_raznog(?, ?, ?)", [
-      nazivPartnera,
-      pripadaRadniku,
-      sifraGrada,
-    ]);
+    const json = JSON.stringify({
+      naziv_partnera: nazivPartnera,
+      pripada_radniku: pripadaRadniku,
+      sifra_grada: sifraGrada,
+      naziv_grada: nazivGrada ?? null,
+    });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_razni_partneri_unos(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    const rezultat =
+      Array.isArray(rezultatSet) && rezultatSet.length > 0
+        ? rezultatSet[0]
+        : { broj_unesenih: 0 };
 
-    const [redovi] = await connection.execute(
-      "CALL erp.sp_pregled_partnera_razni()",
-    );
-    const listaRaznih =
-      Array.isArray(redovi) && redovi.length > 0 ? redovi[0] : [];
-    const noviKupac = listaRaznih.reduce(
-      (najveci, p) =>
-        !najveci || Number(p.sifra_partnera) > Number(najveci.sifra_partnera)
-          ? p
-          : najveci,
-      null,
-    );
+    if (!rezultat.broj_unesenih) {
+      throw new Error(rezultat.poruka || "Procedura nije unijela kupca");
+    }
 
-    return (
-      noviKupac ?? {
-        sifra_partnera: null,
-        naziv_partnera: nazivPartnera,
-        pripada_radniku: pripadaRadniku,
-      }
+    // Procedura vraća samo broj unesenih redova, ne i šifru novog kupca —
+    // erp.partneri_razni_partneri.sifra_partnera je auto_increment, pa se
+    // uzima preko LAST_INSERT_ID() na ISTOJ konekciji odmah nakon CALL-a
+    // (INSERT unutar procedure se izvršava u istoj sesiji).
+    const [idRows] = await connection.query(
+      "SELECT LAST_INSERT_ID() AS sifra_partnera",
     );
+    const sifraPartnera = idRows[0]?.sifra_partnera ?? null;
+
+    return {
+      sifra_partnera: sifraPartnera,
+      naziv_partnera: nazivPartnera,
+      pripada_radniku: pripadaRadniku,
+      sifra_grada: sifraGrada,
+      naziv_grada: nazivGrada ?? null,
+    };
   });
 };
 

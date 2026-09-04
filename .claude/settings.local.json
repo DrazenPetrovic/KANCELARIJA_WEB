@@ -78,7 +78,9 @@
       "Bash(node build-update.mjs)",
       "Bash(node verify-diff.mjs)",
       "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\(process.env.DB_HOST, process.env.DB_NAME\\)\")",
-      "Bash(echo \"EXIT_CODE=$?\")"
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(node \"C:/Users/Korisnik/AppData/Local/Temp/claude/d--WEB-KOMERCIJALA-KANCELARIJA-WEB/94db8315-a061-426f-9780-9e16656f267b/scratchpad/fix_proc.mjs\")",
+      "Bash(node _tmp_fix_proc.mjs)"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"
