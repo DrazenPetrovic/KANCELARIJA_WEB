@@ -300,24 +300,38 @@ interface Radnik {
 }
 
 interface Partner {
+  // = erp.partneri.partner_id (potvrđeno identično sa ziralni.partneri.sifra_partnera
+  // za svakog partnera), isto polje se šalje kao sifra_kupca u erp.sp_racuni_unos.
   sifra_partnera: number;
   naziv_partnera: string;
-  vrsta_partnera: number;
   jib: string;
   pib: string;
-  maticni_broj: string;
   adresa_partnera: string;
-  sifra_grada: number;
   naziv_grada: string;
   ptt: string;
-  entitet: string;
-  sifra_drzave: number;
   naziv_drzave: string;
   dogovorena_valuta: string;
-  koristiti_u_azuriranju: number;
   pripada_radniku: number;
   naziv_radnika: string;
   dodatna_lokacija?: DodatnaLokacija;
+}
+
+// Red vraćen sa erp.partneri_lista_sve() (GET /api/partneri/lista-sve) — vidi
+// mapiranje u fetchData ispod. grad/drzava su ovdje slobodan tekst (ne šifra),
+// za razliku od stare (legacy) erp.sp_pregled_partnera().
+interface PartnerListaSveRow {
+  partner_id: number;
+  naziv: string;
+  jib: string | null;
+  pib: string | null;
+  adresa: string | null;
+  grad: string | null;
+  postanski_broj: string | null;
+  drzava: string | null;
+  valuta_placanja: number | string | null;
+  pripada_radniku: number | null;
+  naziv_radnika: string | null;
+  aktivan: number;
 }
 
 interface GotovinskiRacuniProps {
@@ -460,14 +474,30 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     const fetchData = async () => {
       try {
         const [partneriRes, lokacijeRes] = await Promise.all([
-          fetch(`${API_URL}/api/partneri`, { credentials: "include" }),
+          fetch(`${API_URL}/api/partneri/lista-sve`, {
+            credentials: "include",
+          }),
           fetch(`${API_URL}/api/partneri/dodatne-lokacije`, {
             credentials: "include",
           }),
         ]);
         if (!partneriRes.ok) return;
         const partneriData = await partneriRes.json();
-        const lista: Partner[] = partneriData.data ?? [];
+        const lista: Partner[] = (
+          (partneriData.data ?? []) as PartnerListaSveRow[]
+        ).map((p) => ({
+          sifra_partnera: p.partner_id,
+          naziv_partnera: p.naziv,
+          jib: p.jib ?? "",
+          pib: p.pib ?? "",
+          adresa_partnera: p.adresa ?? "",
+          naziv_grada: p.grad ?? "",
+          ptt: p.postanski_broj ?? "",
+          naziv_drzave: p.drzava ?? "",
+          dogovorena_valuta: String(p.valuta_placanja ?? ""),
+          pripada_radniku: p.pripada_radniku ?? 0,
+          naziv_radnika: p.naziv_radnika ?? "",
+        }));
         if (lokacijeRes.ok) {
           const lokacijeData = await lokacijeRes.json();
           const lokacije: DodatnaLokacija[] = lokacijeData.data ?? [];
@@ -3640,9 +3670,6 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-28">
                         PIB
                       </th>
-                      <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-28">
-                        Mat. broj
-                      </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
                         Adresa
                       </th>
@@ -3651,9 +3678,6 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                       </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-14">
                         PTT
-                      </th>
-                      <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-16">
-                        Entitet
                       </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-24">
                         Država
@@ -3700,9 +3724,6 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] font-mono">
                           {p.pib || "—"}
                         </td>
-                        <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] font-mono">
-                          {p.maticni_broj || "—"}
-                        </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] max-w-[160px]">
                           <div className="truncate">
                             {p.adresa_partnera || "—"}
@@ -3713,9 +3734,6 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
                           {p.ptt || "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
-                          {p.entitet || "—"}
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
                           {p.naziv_drzave || "—"}

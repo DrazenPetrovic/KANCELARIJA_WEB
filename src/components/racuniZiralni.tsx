@@ -9,7 +9,6 @@ import {
   RotateCcw,
   ClipboardCheck,
   Download,
-  Eye,
   History,
   Loader2,
   Lock,
@@ -247,27 +246,69 @@ interface StavkaRacuna {
 }
 
 interface Partner {
+  // = erp.partneri.partner_id (potvrđeno identično sa ziralni.partneri.sifra_partnera
+  // za svakog partnera — vidi napomenu uz fetchData ispod), isto polje se šalje
+  // kao sifra_kupca u erp.sp_racuni_unos.
   sifra_partnera: number;
   naziv_partnera: string;
-  vrsta_partnera: number;
   jib: string;
   pib: string;
-  maticni_broj: string;
   adresa_partnera: string;
-  sifra_grada: number;
   naziv_grada: string;
   ptt: string;
-  entitet: string;
   sifra_drzave: number;
   naziv_drzave: string;
   dogovorena_valuta: string;
-  koristiti_u_azuriranju: number;
   pripada_radniku: number;
   naziv_radnika: string;
-  // Sve poslovne jedinice (izdvojene lokacije) partnera — partner može imati
-  // više njih (npr. hotel + restoran na istoj adresi partnera), pa operater
-  // bira koju od njih koristi na ovom računu. Vidi getPartneriDodatneLokacije.
+  // Broj aktivnih poslovnica (erp.partneri_poslovnice) — iz erp.partneri_lista_sve,
+  // koristi se da se izbjegne nepotreban fetch poslovnica kad partner nema nijednu.
+  broj_poslovnica: number;
+  // Poslovne jedinice (poslovnice) izabranog partnera — partner može imati više
+  // njih (npr. hotel + restoran na istoj adresi partnera), pa operater bira koju
+  // od njih koristi na ovom računu. Za razliku od ostalih polja, ovo se NE puni pri
+  // učitavanju cijele liste partnera nego tek kad se partner izabere (vidi
+  // primeniOdabirPartnera/dohvatiPoslovniceZaPartnera) — erp.partneri_lista_poslovnice
+  // prima partner_id kao parametar, pa nema smisla zvati je za svih ~2000 partnera.
   dodatne_lokacije?: DodatnaLokacija[];
+}
+
+// Red vraćen sa erp.partneri_lista_sve() (GET /api/partneri/lista-sve) — vidi
+// mapiranje u fetchData ispod. grad/drzava su ovdje slobodan tekst (ne šifra),
+// za razliku od stare (legacy) erp.sp_pregled_partnera().
+interface PartnerListaSveRow {
+  partner_id: number;
+  naziv: string;
+  jib: string | null;
+  pib: string | null;
+  adresa: string | null;
+  grad: string | null;
+  postanski_broj: string | null;
+  drzava: string | null;
+  valuta_placanja: number | string | null;
+  pripada_radniku: number | null;
+  naziv_radnika: string | null;
+  broj_poslovnica: number | string | null;
+  aktivan: number;
+}
+
+// Red vraćen sa erp.sp_partneri_drzave() (GET /api/partneri/drzave) — koristi se
+// da se partnerov naziv države (slobodan tekst) prevede u šifru radi auto-izbora
+// podgrupe računa (vidi primeniOdabirPartnera/SIFRA_DRZAVE_BIH).
+interface DrzavaApi {
+  sifra_drzave: number;
+  naziv_drzave: string;
+}
+
+// Red vraćen sa erp.partneri_lista_poslovnice(partner_id) (GET
+// /api/partneri/:id/poslovnice) — vidi dohvatiPoslovniceZaPartnera.
+interface PoslovnicaApi {
+  poslovnica_id: number;
+  partner_id: number;
+  naziv: string | null;
+  adresa: string | null;
+  grad: string | null;
+  jib: string | null;
 }
 
 // Posebna (dogovorena) cijena za par partner-proizvod — vidi
@@ -430,6 +471,10 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
   const [stavke, setStavke] = useState<StavkaRacuna[]>([]);
   const [stampajDirektno, setStampajDirektno] = useState(false);
+  // Da li ESIR uređaj treba sam odštampati fiskalni isječak (parametar "print"
+  // u zahtjevu ka ESIR-u) — ne utiče na A4/A5 štampu iz aplikacije, samo na
+  // uređaj. Podrazumijevano uključeno (dosadašnje ponašanje).
+  const [stampajFiskalniIsjecak, setStampajFiskalniIsjecak] = useState(true);
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
   // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema
@@ -490,31 +535,42 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [partneriRes, lokacijeRes] = await Promise.all([
-          fetch(`${API_URL}/api/partneri`, { credentials: "include" }),
-          fetch(`${API_URL}/api/partneri/dodatne-lokacije-pregled`, {
+        const [partneriRes, drzaveRes] = await Promise.all([
+          fetch(`${API_URL}/api/partneri/lista-sve`, {
             credentials: "include",
           }),
+          fetch(`${API_URL}/api/partneri/drzave`, { credentials: "include" }),
         ]);
         if (!partneriRes.ok) return;
         const partneriData = await partneriRes.json();
-        const lista: Partner[] = (partneriData.data ?? []).filter(
-          (p: Partner) => p.sifra_partnera !== 300,
-        );
-        if (lokacijeRes.ok) {
-          const lokacijeData = await lokacijeRes.json();
-          const lokacije: DodatnaLokacija[] = lokacijeData.data ?? [];
-          const lokacijeMap = new Map<number, DodatnaLokacija[]>();
-          lokacije.forEach((l) => {
-            const niz = lokacijeMap.get(l.sifra_partnera) ?? [];
-            niz.push(l);
-            lokacijeMap.set(l.sifra_partnera, niz);
-          });
-          lista.forEach((p) => {
-            const niz = lokacijeMap.get(p.sifra_partnera);
-            if (niz) p.dodatne_lokacije = niz;
+
+        // Partnerova država stiže kao slobodan tekst (npr. "BiH") — prevodi se u
+        // šifru preko ove liste, isti princip kao u PartneriPregled.tsx.
+        const sifraDrzaveMap = new Map<string, number>();
+        if (drzaveRes.ok) {
+          const drzaveData = await drzaveRes.json();
+          (drzaveData.data ?? []).forEach((d: DrzavaApi) => {
+            sifraDrzaveMap.set(d.naziv_drzave, d.sifra_drzave);
           });
         }
+
+        const lista: Partner[] = ((partneriData.data ?? []) as PartnerListaSveRow[])
+          .filter((p) => p.partner_id !== 300)
+          .map((p) => ({
+            sifra_partnera: p.partner_id,
+            naziv_partnera: p.naziv,
+            jib: p.jib ?? "",
+            pib: p.pib ?? "",
+            adresa_partnera: p.adresa ?? "",
+            naziv_grada: p.grad ?? "",
+            ptt: p.postanski_broj ?? "",
+            sifra_drzave: p.drzava ? (sifraDrzaveMap.get(p.drzava) ?? 0) : 0,
+            naziv_drzave: p.drzava ?? "",
+            dogovorena_valuta: String(p.valuta_placanja ?? ""),
+            pripada_radniku: p.pripada_radniku ?? 0,
+            naziv_radnika: p.naziv_radnika ?? "",
+            broj_poslovnica: Number(p.broj_poslovnica) || 0,
+          }));
         setPartneri(lista);
       } finally {
         setLoading(false);
@@ -790,6 +846,33 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     });
   }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju]);
 
+  // Poslovnice (poslovne jedinice) jednog partnera — erp.partneri_lista_poslovnice
+  // prima partner_id kao parametar, pa se zove tek kad je partner izabran (ne za
+  // svih ~2000 partnera unaprijed). Mapira na DodatnaLokacija oblik koji već
+  // koristi ostatak forme/print-a (naziv_lokacije/adresa_lokacije/JIB...).
+  const dohvatiPoslovniceZaPartnera = async (
+    partnerId: number,
+  ): Promise<DodatnaLokacija[]> => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/partneri/${partnerId}/poslovnice`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      const d = await res.json();
+      return ((d.data ?? []) as PoslovnicaApi[]).map((l) => ({
+        sifra: l.poslovnica_id,
+        sifra_partnera: l.partner_id,
+        naziv_lokacije: l.naziv ?? undefined,
+        adresa_lokacije: l.adresa ?? undefined,
+        naziv_grada: l.grad ?? undefined,
+        JIB: l.jib ?? undefined,
+      }));
+    } catch {
+      return [];
+    }
+  };
+
   // Postavlja izabranog partnera i rješava poslovnu jedinicu: nijedna → prazno,
   // tačno jedna → auto-izabrana, više njih → traži se izbor operatera kroz modal.
   // Uz to, kad još nema unesenih stavki, podgrupa računa se automatski usklađuje
@@ -802,17 +885,19 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   // komercijaliste (nepouzdan), pa se auto-izbor preskače i operater UVIJEK
   // eksplicitno bira poslovnu jedinicu čim partner ima bar jednu (kad nema
   // nijednu, nema šta ni birati, pa se modal ne otvara).
-  const primeniOdabirPartnera = (
+  const primeniOdabirPartnera = async (
     p: Partner,
     opcije?: { forsirajIzborLokacije?: boolean },
   ) => {
-    setOdabraniPartner(p);
+    const lokacije =
+      p.broj_poslovnica > 0 ? await dohvatiPoslovniceZaPartnera(p.sifra_partnera) : [];
+    const partnerSaLokacijama: Partner = { ...p, dodatne_lokacije: lokacije };
+    setOdabraniPartner(partnerSaLokacijama);
     if (!opcije?.forsirajIzborLokacije) {
       // Ručan izbor partnera (pretraga) — eventualna napomena od prethodno
       // uvezene narudžbe više nije relevantna za ovog partnera.
       setNapomenaUvezeneNarudzbe(null);
     }
-    const lokacije = p.dodatne_lokacije ?? [];
     if (opcije?.forsirajIzborLokacije && lokacije.length > 0) {
       setOdabranaPoslovnaJedinica(null);
       setPokazuiModalPoslovnaJedinica(true);
@@ -844,7 +929,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   };
 
   const handleOdabir = (p: Partner) => {
-    primeniOdabirPartnera(p);
+    void primeniOdabirPartnera(p);
     setPretraga("");
     setPokazuiDropdown(false);
   };
@@ -1307,7 +1392,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   });
 
   const esirOpcijeStampe: EsirOpcijeStampe = {
-    print: true,
+    print: stampajFiskalniIsjecak,
     renderReceiptImage: true,
     receiptLayout: "Slip",
     receiptImageFormat: "Png",
@@ -1944,7 +2029,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       );
       return;
     }
-    primeniOdabirPartnera(partner, { forsirajIzborLokacije: true });
+    void primeniOdabirPartnera(partner, { forsirajIzborLokacije: true });
     setPendingUvozNarudzbe(k);
     // Napomene komercijaliste sa terena (slobodan tekst, npr. naziv lokacije) —
     // spoje se u jedan tekst bez ponavljanja, za prikaz u modalu izbora poslovne
@@ -2915,23 +3000,20 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                     />
                     Direktno
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Privremeno (dok se ne poveže stvarno slanje) — samo ispisuje
-                      // tačan ESIR zahtjev u konzolu, da se provjeri tačan oblik.
-                      console.log("ESIR zahtjev (žiralni):", {
-                        invoiceRequest: pripremiEsirZahtjev(),
-                        ...esirOpcijeStampe,
-                      });
-                    }}
-                    disabled={stavke.length === 0}
-                    title="Prikaži tačan ESIR zahtjev (debug)"
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  <label
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-[#7d7498] select-none cursor-pointer"
+                    title="Kad je isključeno, ESIR uređaj neće sam odštampati fiskalni isječak (parametar 'print' u zahtjevu ka ESIR-u) — ne utiče na A4/A5 štampu iz aplikacije"
                   >
-                    <Eye size={13} />
-                    ESIR JSON
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={stampajFiskalniIsjecak}
+                      onChange={(e) =>
+                        setStampajFiskalniIsjecak(e.target.checked)
+                      }
+                      className="accent-purple-600"
+                    />
+                    Fiskalni isječak
+                  </label>
                   <span className="text-sm text-gray-400 dark:text-[#5f5878] font-semibold">
                     Broj stavki:{" "}
                     <span style={{ color: PRIMARY }}>{stavke.length}</span>
@@ -4092,9 +4174,6 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-28">
                         PIB
                       </th>
-                      <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-28">
-                        Mat. broj
-                      </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
                         Adresa
                       </th>
@@ -4103,9 +4182,6 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-14">
                         PTT
-                      </th>
-                      <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-16">
-                        Entitet
                       </th>
                       <th className="text-left px-3 py-2 font-semibold border-b border-gray-200 dark:border-[#2d2648] w-24">
                         Država
@@ -4126,7 +4202,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       <tr
                         key={p.sifra_partnera}
                         onClick={() => {
-                          primeniOdabirPartnera(p);
+                          void primeniOdabirPartnera(p);
                           setPokazuiModal(false);
                           setPretragaModal("");
                         }}
@@ -4148,9 +4224,6 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] font-mono">
                           {p.pib || "—"}
                         </td>
-                        <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] font-mono">
-                          {p.maticni_broj || "—"}
-                        </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8] max-w-[160px]">
                           <div className="truncate">
                             {p.adresa_partnera || "—"}
@@ -4161,9 +4234,6 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
                           {p.ptt || "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
-                          {p.entitet || "—"}
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 dark:text-[#c5bfd8]">
                           {p.naziv_drzave || "—"}
@@ -4177,18 +4247,11 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                           </div>
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          {!!p.dodatne_lokacije?.length && (
+                          {p.broj_poslovnica > 0 && (
                             <span
                               className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white"
                               style={{ background: ACCENT }}
-                              title={p.dodatne_lokacije
-                                .map(
-                                  (l) =>
-                                    l.naziv_lokacije ??
-                                    l.naziv_grada ??
-                                    "Dodatna lokacija",
-                                )
-                                .join(", ")}
+                              title={`${p.broj_poslovnica} poslovnih jedinica`}
                             >
                               <MapPin size={9} />
                             </span>

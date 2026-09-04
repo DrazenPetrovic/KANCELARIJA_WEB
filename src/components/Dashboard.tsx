@@ -16,6 +16,8 @@ import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
 import { RadniciUnos } from "./RadniciUnos";
 import { RadniciPregled } from "./RadniciPregled";
+import { RadniciPrisutnostUnos } from "./RadniciPrisutnostUnos";
+import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
@@ -142,6 +144,8 @@ type MenuSection =
   | "file-arhiva-2021"
   | "radnici-unos"
   | "radnici-pregled"
+  | "radnici-prisutnost-unos"
+  | "radnici-prisutnost-pregled"
   | "partneri-unos"
   | "partneri-pregled"
   | "artikli-pregled"
@@ -175,6 +179,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "file-opcije": "Opcije",
   "radnici-unos": "Radnici – unos",
   "radnici-pregled": "Radnici – pregled",
+  "radnici-prisutnost-unos": "Radnici – unos prisutnosti",
+  "radnici-prisutnost-pregled": "Radnici – pregled prisutnosti",
   "partneri-unos": "Partneri – unos",
   "partneri-pregled": "Partneri – pregled",
   "artikli-pregled": "Artikli – pregled",
@@ -1064,6 +1070,83 @@ export function Dashboard({
                             />
                           </span>
                           Pregled radnika
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("radnici-prisutnost-unos")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "radnici-prisutnost-unos",
+                          )}
+                          style={
+                            activeSection === "radnici-prisutnost-unos"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "radnici-prisutnost-unos"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "radnici-prisutnost-unos"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <UserPlus
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "radnici-prisutnost-unos"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos prisutnosti
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("radnici-prisutnost-pregled")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "radnici-prisutnost-pregled",
+                          )}
+                          style={
+                            activeSection === "radnici-prisutnost-pregled"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "radnici-prisutnost-pregled"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "radnici-prisutnost-pregled"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Eye
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection ===
+                                  "radnici-prisutnost-pregled"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Pregled prisutnosti
                         </button>
                       </div>
                     </div>,
@@ -2555,6 +2638,14 @@ export function Dashboard({
           {activeSection === "radnici-unos" && <RadniciUnos />}
 
           {activeSection === "radnici-pregled" && <RadniciPregled />}
+
+          {activeSection === "radnici-prisutnost-unos" && (
+            <RadniciPrisutnostUnos />
+          )}
+
+          {activeSection === "radnici-prisutnost-pregled" && (
+            <RadniciPrisutnostPregled />
+          )}
 
           {activeSection === "partneri-unos" && (
             <PartneriUnos username={username} />

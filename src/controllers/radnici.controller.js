@@ -46,3 +46,17 @@ export const dodajRadnika = async (req, res) => {
     });
   }
 };
+
+export const unosPrisutnosti = async (req, res) => {
+  try {
+    const data = await RadniciService.unosPrisutnosti(req.body);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos prisutnosti error:", error);
+    return res.status(500).json({
+      success: false,
+      error:
+        error.sqlMessage || error.message || "Greška pri unosu prisutnosti",
+    });
+  }
+};

@@ -181,18 +181,32 @@ export const setPartneriGlavno = async (partner) => {
   });
 };
 
-// Sinhronizacija izmjene partnera u staru (LEGACY) bazu — isto mapiranje
-// polja kao pri unosu (izgradiJsonStaraBaza), uz partner_id kao identifikator
-// za pronalaženje postojećeg zapisa u staroj bazi. Vidi
-// erp.partneri_izmjena_podataka_staro.
-const azurirajPartneraUStaruBazu = async (connection, partnerId, partner) => {
-  const json = JSON.stringify({
-    partner_id: partnerId,
-    ...izgradiJsonStaraBaza(partner),
-  });
+// Sinhronizacija izmjene partnera u staru (LEGACY) bazu. erp.partneri_izmjena_podataka_staro
+// ažurira po ziralni.partneri.sifra_partnera, koji je POTPUNO ODVOJENA numeracija
+// od erp.partneri.partner_id (nema kolone koja ih direktno povezuje) — zato se
+// prije poziva mora pronaći odgovarajući zapis u staroj bazi preko JIB-a (jedini
+// pouzdan zajednički identifikator). Ako partner nema JIB ili nema zapis u staroj
+// bazi (npr. kreiran nakon što je sinhronizacija pri unosu izostala), sinhronizacija
+// se preskače umjesto da tiho ne uradi ništa.
+const azurirajPartneraUStaruBazu = async (connection, partner) => {
+  const jib = partner.jib ? String(partner.jib).trim() : "";
+  if (!jib) {
+    return { uspjesno: false, poruka: "Partner nema JIB — sinhronizacija sa starom bazom preskočena" };
+  }
+
+  const [postojeci] = await connection.execute(
+    "SELECT sifra_partnera FROM ziralni.partneri WHERE JIB = ? LIMIT 1",
+    [jib],
+  );
+  if (!Array.isArray(postojeci) || postojeci.length === 0) {
+    return { uspjesno: false, poruka: `Partner sa JIB-om "${jib}" ne postoji u staroj bazi — sinhronizacija preskočena` };
+  }
+  const sifraPartneraStaro = postojeci[0].sifra_partnera;
+
+  const json = JSON.stringify(izgradiJsonStaraBaza(partner));
   const [rows] = await connection.query(
-    "CALL erp.partneri_izmjena_podataka_staro(?)",
-    [json],
+    "CALL erp.partneri_izmjena_podataka_staro(?, ?)",
+    [sifraPartneraStaro, json],
   );
   const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   return Array.isArray(rezultatSet) && rezultatSet.length > 0
@@ -230,7 +244,13 @@ export const azurirajPartneriGlavno = async (partnerId, partner) => {
     }
 
     try {
-      await azurirajPartneraUStaruBazu(connection, partnerId, partner);
+      const staroRezultat = await azurirajPartneraUStaruBazu(connection, partner);
+      if (staroRezultat?.uspjesno === false) {
+        console.warn(
+          "Izmjena partnera nije sinhronizovana sa starom (LEGACY) bazom:",
+          staroRezultat.poruka,
+        );
+      }
     } catch (error) {
       console.error(
         "Sinhronizacija izmjene partnera u staru (LEGACY) bazu nije uspjela:",

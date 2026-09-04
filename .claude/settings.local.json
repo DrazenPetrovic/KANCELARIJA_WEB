@@ -69,7 +69,16 @@
       "Bash(taskkill //PID 46544 //F)",
       "Bash(node --check src/services/radnici.service.js)",
       "Bash(node --check src/controllers/radnici.controller.js)",
-      "Bash(node --check src/routes/radnici.routes.js)"
+      "Bash(node --check src/routes/radnici.routes.js)",
+      "Bash(node \"C:/Users/Korisnik/AppData/Local/Temp/claude/d--WEB-KOMERCIJALA-KANCELARIJA-WEB/4c5f8a01-cd72-47bf-a6a9-74549c1acea9/scratchpad/check-partner-28.mjs\")",
+      "Bash(cp \"C:/Users/Korisnik/AppData/Local/Temp/claude/d--WEB-KOMERCIJALA-KANCELARIJA-WEB/4c5f8a01-cd72-47bf-a6a9-74549c1acea9/scratchpad/check-partner-28.mjs\" \"d:/WEB_KOMERCIJALA/KANCELARIJA_WEB/check-partner-28.mjs\")",
+      "Bash(node check-partner-28.mjs)",
+      "Bash(node compare-nazivi.mjs)",
+      "Bash(node compare-po-jib.mjs)",
+      "Bash(node build-update.mjs)",
+      "Bash(node verify-diff.mjs)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\(process.env.DB_HOST, process.env.DB_NAME\\)\")",
+      "Bash(echo \"EXIT_CODE=$?\")"
     ],
     "additionalDirectories": [
       "\\mnt\\d\\WEB_KOMERCIJALA\\KANCELARIJA_WEB"

@@ -103,6 +103,7 @@ export function RacunA5({ racun, stavke }: Props) {
       style={{
         width: "148mm",
         minHeight: "210mm",
+        position: "relative",
         boxSizing: "border-box",
         fontFamily: "Arial, sans-serif",
         fontSize: 11,
@@ -353,6 +354,34 @@ export function RacunA5({ racun, stavke }: Props) {
             </div>
           )}
       </div>
+      </div>
+
+      {/* ── Footer — fiksiran na dnu stranice (zadnja 2cm), centriran,
+          bez obzira na dužinu sadržaja iznad. ── */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "2cm",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        <div
+          style={{
+            width: "85%",
+            height: 2,
+            background: `linear-gradient(to right, transparent, ${PRIMARY}, transparent)`,
+          }}
+        />
+        <span style={{ fontSize: 9, fontWeight: 600, color: "#444" }}>
+          www.karpasambalaze.com
+        </span>
       </div>
     </div>
   );

@@ -178,3 +178,24 @@ export const unosRadnika = async (podaci) => {
     return rezultat;
   });
 };
+
+// Unos prisutnosti (jedan ili više radnika odjednom) sa stranice Radnici >
+// Unos prisutnosti. Vidi erp.radnici_prisutnost_unos — prima JSON niz zapisa,
+// svaki sa { sifra_radnika, datum_pocetka, datum_kraja, smjena, i tačno
+// jednom od zastavica redovan_rad/prekovremeni_rad/rad_nocu/rad_praznikom/
+// terenski_rad/dezurstvo/godisnji_odmor/praznik_odmor/
+// privremena_nesposobnost/porodiljsko/placeno_odsustvo/neplaceno_odsustvo/
+// odsustvo_bez_krivice/ostala_odsustva/sedmicni_odmor postavljenom na 1 }.
+export const unosPrisutnosti = async (zapisi) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify(zapisi);
+    const [rows] = await connection.query(
+      "CALL erp.radnici_prisutnost_unos(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { uspjesno: true };
+  });
+};

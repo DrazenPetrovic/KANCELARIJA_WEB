@@ -190,6 +190,7 @@ export function RacunA4({ racun, stavke }: Props) {
       style={{
         width: "210mm",
         minHeight: "297mm",
+        position: "relative",
         boxSizing: "border-box",
         fontFamily: "Arial, sans-serif",
         fontSize: 13,
@@ -706,18 +707,33 @@ export function RacunA4({ racun, stavke }: Props) {
         </div>
       </div>
 
-      {/* ── Footer (podnožje firme) ── */}
-      <img
-        src={`${import.meta.env.BASE_URL}foto/MEMORANDUM_1.jpg`}
-        alt="Footer"
+      {/* ── Footer — fiksiran na dnu stranice (zadnja 2cm), centriran,
+          bez obzira na dužinu sadržaja iznad. ── */}
+      <div
         style={{
-          display: "block",
-          width: "calc(100% - 18px)",
-          marginTop: "10px",
-          marginLeft: "9px",
-          marginRight: "9px",
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "2cm",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
         }}
-      />
+      >
+        <div
+          style={{
+            width: "85%",
+            height: 2,
+            background: `linear-gradient(to right, transparent, ${PRIMARY}, transparent)`,
+          }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#444" }}>
+          www.karpasambalaze.com
+        </span>
+      </div>
     </div>
   );
 }
