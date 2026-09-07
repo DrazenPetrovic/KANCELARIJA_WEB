@@ -295,7 +295,7 @@ interface Grad {
 interface Radnik {
   sifra_radnika: number;
   naziv_radnika: string;
-  sifra_vrste: number;
+  vrsta_radnika: number;
   [key: string]: unknown;
 }
 
@@ -735,7 +735,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
   useEffect(() => {
     if (radnici.length > 0 || loadingRadnici) return;
     setLoadingRadnici(true);
-    fetch(`${API_URL}/api/radnici`, { credentials: "include" })
+    fetch(`${API_URL}/api/radnici/pregled-sve`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => setRadnici(d.data ?? []))
       .catch(() => setRadnici([]))
@@ -798,7 +798,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
   const radniciZaIzbor = useMemo(
     () =>
       radnici.filter(
-        (r) => Number(r.sifra_vrste) === 1 || Number(r.sifra_vrste) === 2,
+        (r) => Number(r.vrsta_radnika) === 1 || Number(r.vrsta_radnika) === 2,
       ),
     [radnici],
   );
@@ -826,7 +826,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     }
     if (radnici.length === 0 && !loadingRadnici) {
       setLoadingRadnici(true);
-      fetch(`${API_URL}/api/radnici`, { credentials: "include" })
+      fetch(`${API_URL}/api/radnici/pregled-sve`, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => setRadnici(d.data ?? []))
         .catch(() => setRadnici([]))

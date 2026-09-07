@@ -14,22 +14,24 @@ interface PostojeciRadnik {
   radnik_id: number;
   naziv_radnika: string;
   oznaka: string | null;
+  vrsta_radnika: number;
+  vrsta_posla: string | null;
 }
 
-// Šifarnik vrsta_radnika u novoj bazi (erp.radnici_unos) — isto kao
-// docs/radnici_vrste_radnika.txt, uz dodatu vrijednost 0 = Ostalo (default
-// kolone u novoj tabeli).
-const VRSTA_RADNIKA_OPTIONS = [
-  { value: "0", label: "Ostalo" },
-  { value: "1", label: "Vlasnik" },
-  { value: "2", label: "Komercijala" },
-  { value: "3", label: "Kancelarija" },
-  { value: "4", label: "Proizvodnja kesa" },
-  { value: "5", label: "Proizvodnja kutija" },
-  { value: "6", label: "Magacin" },
-  { value: "7", label: "Vozač" },
-  { value: "10", label: "Spoljni saradnik" },
-];
+// Fallback nazivi vrsta_radnika (vidi docs/radnici_vrste_radnika.txt) — koriste
+// se samo ako erp.radnici_pregled (join na rm.vrsta_posla) ne vrati naziv za
+// dati kod, npr. kod za koji trenutno nema nijednog radnika.
+const VRSTA_RADNIKA_LABELS: Record<number, string> = {
+  0: "Ostalo",
+  1: "Vlasnik",
+  2: "Komercijala",
+  3: "Kancelarija",
+  4: "Proizvodnja kesa",
+  5: "Proizvodnja kutija",
+  6: "Magacin",
+  7: "Vozač",
+  10: "Spoljni saradnik",
+};
 
 // Šifarnik status_radnika u novoj bazi (erp.radnici_unos) — različit od
 // starog "zaposlenik" (1/0/-1/2/3) iz erp.radnici_unos_staro.
@@ -113,6 +115,25 @@ export function RadniciUnos() {
     if (PRAZNE_OZNAKE.has(q)) return null;
     return postojeciRadnici.find((r) => r.oznaka?.trim() === q) ?? null;
   }, [forma.oznaka, postojeciRadnici]);
+
+  // Stvarni naziv radnog mjesta iz baze (rm.vrsta_posla) — unija fallback
+  // šifarnika i svih šifri viđenih u podacima, sa stvarnim nazivom kad je poznat.
+  const vrstaRadnikaOpcije = useMemo(() => {
+    const nazivi = new Map<number, string>();
+    postojeciRadnici.forEach((r) => {
+      if (r.vrsta_posla) nazivi.set(r.vrsta_radnika, r.vrsta_posla);
+    });
+    const sveSifre = new Set<number>([
+      ...Object.keys(VRSTA_RADNIKA_LABELS).map(Number),
+      ...nazivi.keys(),
+    ]);
+    return Array.from(sveSifre)
+      .sort((a, b) => a - b)
+      .map((v) => ({
+        value: String(v),
+        label: nazivi.get(v) ?? VRSTA_RADNIKA_LABELS[v] ?? `Vrsta ${v}`,
+      }));
+  }, [postojeciRadnici]);
 
   const setPolje = (polje: keyof ReturnType<typeof praznaForma>, v: string) =>
     setForma((f) => ({ ...f, [polje]: v }));
@@ -239,7 +260,7 @@ export function RadniciUnos() {
               className={inputClass}
             >
               <option value="">Izaberite vrstu</option>
-              {VRSTA_RADNIKA_OPTIONS.map((o) => (
+              {vrstaRadnikaOpcije.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

@@ -1,15 +1,5 @@
 import * as RadniciService from "../services/radnici.service.js";
 
-export const getPregledRadnika = async (req, res) => {
-  try {
-    const data = await RadniciService.getPregledRadnika();
-    return res.json({ success: true, data, count: data.length });
-  } catch (error) {
-    console.error("Pregled radnika error:", error);
-    return res.status(500).json({ success: false, error: "Greška pri učitavanju radnika" });
-  }
-};
-
 export const getRadniciPregledSve = async (req, res) => {
   try {
     const data = await RadniciService.getRadniciPregledSve();
@@ -57,6 +47,26 @@ export const unosPrisutnosti = async (req, res) => {
       success: false,
       error:
         error.sqlMessage || error.message || "Greška pri unosu prisutnosti",
+    });
+  }
+};
+
+const danasnjiDatum = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+export const getPrisutnostPoDanu = async (req, res) => {
+  try {
+    const datum = req.query.datum || danasnjiDatum();
+    const data = await RadniciService.getPrisutnostPoDanu(datum);
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled prisutnosti po danu error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju prisutnosti za dati dan",
     });
   }
 };

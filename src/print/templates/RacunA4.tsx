@@ -132,34 +132,6 @@ export function RacunA4({ racun, stavke }: Props) {
     });
   }, [racun.sifra_tabele]);
 
-  // SALDO cifra — font-size (ne CSS transform, da se ne deformiše) izračunat
-  // tako da tekst maksimalno ispuni raspoloživu širinu okvira, bez obzira na
-  // broj cifara.
-  const saldoWrapRef = useRef<HTMLDivElement>(null);
-  const [saldoFontSize, setSaldoFontSize] = useState(16);
-
-  useEffect(() => {
-    if (
-      racun.dug_partnera === undefined ||
-      racun.dug_partnera === null ||
-      !saldoWrapRef.current
-    )
-      return;
-    const dostupnaSirina = saldoWrapRef.current.clientWidth;
-    if (!dostupnaSirina) return;
-    const tekst = `${broj(racun.dug_partnera)} KM`;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const referentnaVelicina = 100;
-    ctx.font = `800 ${referentnaVelicina}px Arial`;
-    const sirinaPriReferenci = ctx.measureText(tekst).width;
-    if (!sirinaPriReferenci) return;
-    const izracunato =
-      (dostupnaSirina / sirinaPriReferenci) * referentnaVelicina;
-    setSaldoFontSize(Math.max(14, Math.min(42, izracunato)));
-  }, [racun.dug_partnera]);
-
   // Rekapitulacija — sve u KM, sabrano preko svih stavki.
   const rVrednost = stavke.reduce(
     (s, r) => s + brojN(r.vpc) * brojN(r.kolicina),
@@ -511,15 +483,15 @@ export function RacunA4({ racun, stavke }: Props) {
               <div
                 style={{
                   flex: 4,
+                  alignSelf: "flex-start",
                   boxSizing: "border-box",
                   background: "#ffffff",
-                  border: "1px solid #999",
-                  borderRadius: 6,
-                  paddingTop: 2,
-                  paddingLeft: 5,
-                  paddingRight: 12,
-                  paddingBottom: 9,
-                  minHeight: 90,
+                  border: "1px solid #ccc",
+                  borderRadius: 4,
+                  padding: 8,
+                  height: 44,
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
                 <div
@@ -536,13 +508,20 @@ export function RacunA4({ racun, stavke }: Props) {
                 </div>
                 {racun.dug_partnera !== undefined &&
                   racun.dug_partnera !== null && (
-                    <div ref={saldoWrapRef} style={{ marginTop: 4 }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
                       <span
                         style={{
                           display: "inline-block",
                           color: "#000",
                           fontWeight: 800,
-                          fontSize: saldoFontSize,
+                          fontSize: 13,
                           lineHeight: 1,
                           whiteSpace: "nowrap",
                         }}
