@@ -25,14 +25,16 @@ interface Radnik {
   lozinka: string | null;
   oznaka: string | null;
   vrsta_radnika: number;
+  vrsta_posla: string | null;
   status_radnika: number;
   aktivan: number;
   datum_unosa: string | null;
   datum_izmjene: string | null;
 }
 
-// Šifarnik vrsta_radnika (erp.radnici) — vidi docs/radnici_vrste_radnika.txt,
-// uz dodatu vrijednost 0 = Ostalo (default kolone u novoj tabeli).
+// Fallback nazivi vrsta_radnika (vidi docs/radnici_vrste_radnika.txt) — koriste
+// se samo ako erp.radnici_pregled (join na rm.vrsta_posla) ne vrati naziv za
+// dati kod, npr. kod za koji trenutno nema nijednog radnika.
 const VRSTA_RADNIKA_LABELS: Record<number, string> = {
   0: "Ostalo",
   1: "Vlasnik",
@@ -74,10 +76,6 @@ const STATUS_RADNIKA_OPTIONS = [
   { value: "2", label: "Zaposleni spoljni saradnici" },
   { value: "3", label: "Bivši saradnici" },
 ];
-
-const VRSTA_RADNIKA_OPTIONS = Object.entries(VRSTA_RADNIKA_LABELS).map(
-  ([value, label]) => ({ value, label }),
-);
 
 const STATUS_RADNIKA_EDIT_OPTIONS = STATUS_RADNIKA_OPTIONS.filter(
   (o) => o.value !== "svi",
@@ -225,12 +223,38 @@ export function RadniciPregled() {
     void ucitaj();
   }, []);
 
+  // Stvarni naziv radnog mjesta iz baze (rm.vrsta_posla, spojen u
+  // erp.radnici_pregled) — pouzdaniji od statičkog šifarnika jer prati
+  // stvarnu tabelu radnih mjesta, a ne pretpostavke iz docs fajla.
+  const vrstaPoslaMap = useMemo(() => {
+    const mapa = new Map<number, string>();
+    data.forEach((r) => {
+      if (r.vrsta_posla) mapa.set(r.vrsta_radnika, r.vrsta_posla);
+    });
+    return mapa;
+  }, [data]);
+
+  const vrstaRadnikaLabel = (kod: number) =>
+    vrstaPoslaMap.get(kod) ?? VRSTA_RADNIKA_LABELS[kod] ?? `Vrsta ${kod}`;
+
   const vrsteZaFilter = useMemo(() => {
     const prisutne = new Set(data.map((r) => r.vrsta_radnika));
     return Array.from(prisutne)
       .sort((a, b) => a - b)
-      .map((v) => ({ value: String(v), label: VRSTA_RADNIKA_LABELS[v] ?? `Vrsta ${v}` }));
-  }, [data]);
+      .map((v) => ({ value: String(v), label: vrstaRadnikaLabel(v) }));
+  }, [data, vrstaPoslaMap]);
+
+  // Opcije za izmjenu — unija svih poznatih šifri (fallback šifarnik + sve
+  // šifre viđene u podacima), sa stvarnim nazivom kad je poznat.
+  const vrstaRadnikaOpcije = useMemo(() => {
+    const sveSifre = new Set<number>([
+      ...Object.keys(VRSTA_RADNIKA_LABELS).map(Number),
+      ...vrstaPoslaMap.keys(),
+    ]);
+    return Array.from(sveSifre)
+      .sort((a, b) => a - b)
+      .map((v) => ({ value: String(v), label: vrstaRadnikaLabel(v) }));
+  }, [vrstaPoslaMap]);
 
   const filtrirani = useMemo(() => {
     return data.filter((r) => {
@@ -391,10 +415,7 @@ export function RadniciPregled() {
                         </span>
                       </TD>
                       <TD>{r.oznaka || "–"}</TD>
-                      <TD>
-                        {VRSTA_RADNIKA_LABELS[r.vrsta_radnika] ??
-                          `Vrsta ${r.vrsta_radnika}`}
-                      </TD>
+                      <TD>{vrstaRadnikaLabel(r.vrsta_radnika)}</TD>
                       <TD center>
                         <span
                           className="inline-flex items-center gap-1 text-xs font-semibold"
@@ -540,7 +561,7 @@ export function RadniciPregled() {
                   onChange={(e) => setFormVrsta(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
                 >
-                  {VRSTA_RADNIKA_OPTIONS.map((o) => (
+                  {vrstaRadnikaOpcije.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

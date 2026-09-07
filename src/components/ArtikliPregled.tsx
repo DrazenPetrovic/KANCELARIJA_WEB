@@ -86,7 +86,7 @@ const TD = ({
   center?: boolean;
 }) => (
   <td
-    className={`px-4 py-2.5 text-sm whitespace-nowrap border-b border-gray-100 dark:border-[#2d2648] text-gray-700 dark:text-[#c5bfd8] ${center ? "text-center" : ""}`}
+    className={`px-4 py-2.5 text-sm whitespace-nowrap border-b border-gray-300 dark:border-[#453a68] text-gray-700 dark:text-[#c5bfd8] ${center ? "text-center" : ""}`}
   >
     {children}
   </td>
@@ -98,6 +98,28 @@ const formatBroj = (v: number | string | undefined) => {
   return n.toLocaleString("bs-BA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Marža = koliko je VPC veći od nabavne cijene, u procentima.
+const izracunajMarzu = (
+  nabavna: number | string | undefined,
+  vpc: number | string | undefined,
+) => {
+  const n = Number(nabavna);
+  const v = Number(vpc);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(v)) return null;
+  return ((v - n) / n) * 100;
+};
+
+// Fin. vrijednost artikla na stanju = količina * VPC.
+const izracunajFinVrijednost = (
+  kolicina: number | string | undefined,
+  vpc: number | string | undefined,
+) => {
+  const k = Number(kolicina);
+  const v = Number(vpc);
+  if (!Number.isFinite(k) || !Number.isFinite(v)) return 0;
+  return k * v;
+};
+
 export function ArtikliPregled() {
   const { theme } = useTheme();
   const [data, setData] = useState<Artikal[]>([]);
@@ -106,6 +128,7 @@ export function ArtikliPregled() {
   const [error, setError] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
   const [grupaFilter, setGrupaFilter] = useState("sve");
+  const [sakrijBezStanja, setSakrijBezStanja] = useState(true);
   const [sortPolje, setSortPolje] = useState<"sifra" | "naziv" | "grupa">(
     "naziv",
   );
@@ -146,6 +169,8 @@ export function ArtikliPregled() {
   const filtrirani = useMemo(() => {
     return data
       .filter((a) => {
+        if (sakrijBezStanja && Number(a.kolicina_proizvoda) <= 0) return false;
+
         const matchGrupa =
           grupaFilter === "sve" || String(a.grupa_proizvoda) === grupaFilter;
 
@@ -173,7 +198,16 @@ export function ArtikliPregled() {
         );
         return sortSmjer === "asc" ? cmp : -cmp;
       });
-  }, [data, pretraga, grupaFilter, sortPolje, sortSmjer]);
+  }, [data, pretraga, grupaFilter, sakrijBezStanja, sortPolje, sortSmjer]);
+
+  const finVrijednostZaliha = useMemo(
+    () =>
+      filtrirani.reduce(
+        (zbir, a) => zbir + izracunajFinVrijednost(a.kolicina_proizvoda, a.vpc),
+        0,
+      ),
+    [filtrirani],
+  );
 
   // Boja pozadine po grupi — dodjeljuje se redom kojim se grupe pojavljuju u
   // listi grupa sa servera (stabilan redoslijed, neovisan o filterima).
@@ -198,54 +232,79 @@ export function ArtikliPregled() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-            <Package size={20} style={{ color: PRIMARY }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-              Pregled artikala
-            </h2>
-            {!loading && !error && (
-              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-                Ukupno: {filtrirani.length} / {data.length}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="relative w-72">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
-            />
-            <input
-              type="text"
-              placeholder="Šifra, naziv, barkod..."
-              value={pretraga}
-              onChange={(e) => setPretraga(e.target.value)}
-              className="pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-full focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
-            />
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div className="flex flex-nowrap items-center gap-3">
+            <div className="relative w-72">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+              />
+              <input
+                type="text"
+                placeholder="Šifra, naziv, barkod..."
+                value={pretraga}
+                onChange={(e) => setPretraga(e.target.value)}
+                className="pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-full focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
+              />
+            </div>
+
+            <select
+              value={grupaFilter}
+              onChange={(e) => setGrupaFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
+            >
+              <option value="sve">Sve grupe</option>
+              {grupe.map((g) => (
+                <option key={g.sifra_grupe} value={String(g.sifra_grupe)}>
+                  {g.naziv_grupe}
+                </option>
+              ))}
+            </select>
+
+            <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sakrijBezStanja}
+                onChange={(e) => setSakrijBezStanja(e.target.checked)}
+                className="w-4 h-4 rounded accent-[#785E9E]"
+              />
+              Sakrij artikle bez stanja
+            </label>
           </div>
 
-          <select
-            value={grupaFilter}
-            onChange={(e) => setGrupaFilter(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
-          >
-            <option value="sve">Sve grupe</option>
-            {grupe.map((g) => (
-              <option key={g.sifra_grupe} value={String(g.sifra_grupe)}>
-                {g.naziv_grupe}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] shrink-0">
+              <Package size={20} style={{ color: PRIMARY }} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+                Pregled artikala
+              </h2>
+              {!loading && !error && (
+                <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+                  Ukupno: {filtrirani.length} / {data.length}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {!loading && !error ? (
+            <div className="flex flex-col items-end justify-self-end">
+              <span
+                className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: PRIMARY }}
+              >
+                Fin vrijednost zaliha
+              </span>
+              <span className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
+                {formatBroj(finVrijednostZaliha)}
+              </span>
+            </div>
+          ) : (
+            <div />
+          )}
         </div>
       </div>
 
@@ -277,17 +336,19 @@ export function ArtikliPregled() {
             className="overflow-auto"
             style={{ maxHeight: "70vh" }}
           >
-            <table className="w-full table-fixed">
+            <table className="w-full table-fixed border-collapse">
               <colgroup>
-                <col style={{ width: 85 }} />
-                <col style={{ width: 40 }} />
-                <col />
-                <col style={{ width: 150 }} />
-                <col style={{ width: 70 }} />
-                <col style={{ width: 90 }} />
-                <col style={{ width: 100 }} />
-                <col style={{ width: 90 }} />
-                <col style={{ width: 90 }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "3%" }} />
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "4%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "9%" }} />
               </colgroup>
               <thead>
                 <tr className="sticky top-0 z-10">
@@ -304,17 +365,19 @@ export function ArtikliPregled() {
                   >
                     Naziv artikla
                   </TH>
+                  <TH center>JM</TH>
+                  <TH center>Količina</TH>
+                  <TH center>Nabavna</TH>
+                  <TH center>VPC</TH>
+                  <TH center>Marža</TH>
+                  <TH center>Fin. vrijednost</TH>
+                  <TH center>MPC</TH>
                   <TH
                     onClick={() => handleSort("grupa")}
                     sortDir={sortPolje === "grupa" ? sortSmjer : null}
                   >
                     Grupa
                   </TH>
-                  <TH center>JM</TH>
-                  <TH center>Količina</TH>
-                  <TH center>Nabavna</TH>
-                  <TH center>VPC</TH>
-                  <TH center>MPC</TH>
                 </tr>
               </thead>
               <tbody>
@@ -352,16 +415,35 @@ export function ArtikliPregled() {
                         </span>
                       )}
                     </TD>
+                    <TD center>{a.jm || "–"}</TD>
+                    <TD center>
+                      {Number(a.kolicina_proizvoda) > 0 ? (
+                        <span className="font-bold text-green-700 dark:text-green-400">
+                          {formatBroj(a.kolicina_proizvoda)}
+                        </span>
+                      ) : (
+                        formatBroj(a.kolicina_proizvoda)
+                      )}
+                    </TD>
+                    <TD center>{formatBroj(a.nabavna_cijena)}</TD>
+                    <TD center>{formatBroj(a.vpc)}</TD>
+                    <TD center>
+                      {(() => {
+                        const marza = izracunajMarzu(a.nabavna_cijena, a.vpc);
+                        return marza === null
+                          ? "–"
+                          : `${formatBroj(marza)}%`;
+                      })()}
+                    </TD>
+                    <TD center>
+                      {formatBroj(izracunajFinVrijednost(a.kolicina_proizvoda, a.vpc))}
+                    </TD>
+                    <TD center>{formatBroj(a.mpc)}</TD>
                     <TD>
                       <span className="block truncate" title={a.naziv_grupe}>
                         {a.naziv_grupe || "–"}
                       </span>
                     </TD>
-                    <TD center>{a.jm || "–"}</TD>
-                    <TD center>{formatBroj(a.kolicina_proizvoda)}</TD>
-                    <TD center>{formatBroj(a.nabavna_cijena)}</TD>
-                    <TD center>{formatBroj(a.vpc)}</TD>
-                    <TD center>{formatBroj(a.mpc)}</TD>
                   </tr>
                 ))}
               </tbody>

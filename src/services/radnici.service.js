@@ -1,16 +1,10 @@
 import { withConnection } from "./db.service.js";
 
-export const getPregledRadnika = async () => {
-  return withConnection(async (connection) => {
-    const [rows] = await connection.execute("CALL erp.sp_radnici_pregled()");
-    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
-  });
-};
-
 // Kompletan pregled radnika (radnik_id, sifra_radnika, naziv, lozinka,
-// oznaka, vrsta radnika, status_radnika, aktivan, datumi unosa/izmjene) — za
-// stranicu Radnici > Pregled radnika. erp.radnici_pregled sada čita iz NOVE
-// baze (erp.radnici) — naziv procedure je ostao isti, samo joj je promijenjen
+// oznaka, vrsta_radnika, vrsta_posla — naziv radnog mjesta spojen sa rm
+// tabelom, status_radnika, aktivan, datumi unosa/izmjene) — za stranicu
+// Radnici > Pregled radnika. erp.radnici_pregled sada čita iz NOVE baze
+// (erp.radnici) — naziv procedure je ostao isti, samo joj je promijenjen
 // izvor podataka.
 export const getRadniciPregledSve = async () => {
   return withConnection(async (connection) => {
@@ -197,5 +191,21 @@ export const unosPrisutnosti = async (zapisi) => {
     return Array.isArray(rezultatSet) && rezultatSet.length > 0
       ? rezultatSet[0]
       : { uspjesno: true };
+  });
+};
+
+// Pregled već upisane prisutnosti za dati dan — koristi se na stranici
+// Radnici > Unos prisutnosti da se pri otvaranju provjeri da li je za neke
+// radnike prisutnost već unesena za taj dan (da bi se ti radnici zaključali
+// i spriječio dupli unos). Vidi erp.radnici_prisutnost_pregled_po_danu —
+// vraća niz zapisa { sifra_tabele, sifra_radnika, datum_pocetka, datum_kraja,
+// smjena, ...zastavice/sati po vrsti rada } ili prazan niz ako ničega nema.
+export const getPrisutnostPoDanu = async (datum) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.radnici_prisutnost_pregled_po_danu(?)",
+      [datum],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
