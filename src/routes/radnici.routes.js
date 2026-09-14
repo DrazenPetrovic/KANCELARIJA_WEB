@@ -8,5 +8,9 @@ router.post("/azuriraj", RadniciController.azurirajRadnika);
 router.post("/unos", RadniciController.dodajRadnika);
 router.post("/prisutnost/unos", RadniciController.unosPrisutnosti);
 router.get("/prisutnost/po-danu", RadniciController.getPrisutnostPoDanu);
+router.get(
+  "/prisutnost/pristigli",
+  RadniciController.getPrisutnostPristiglihRadnika,
+);
 
 export default router;

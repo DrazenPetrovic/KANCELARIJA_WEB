@@ -209,3 +209,17 @@ export const getPrisutnostPoDanu = async (datum) => {
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
+
+// Lista radnika koji su se autentifikovali (npr. karticom) i "pristigli su"
+// na posao, ali za njih još nije unesena prisutnost — pokreće se zajedno sa
+// stranicom Radnici > Unos prisutnosti da operater brzo vidi ko je stigao i
+// odmah ga doda u unos. Vidi erp.radnici_prisutnos_pregled_pristiglih_radnika
+// (naziv procedure kako je zadat, sa "prisutnos" bez t).
+export const getPrisutnostPristiglihRadnika = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.radnici_prisutnos_pregled_pristiglih_radnika()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};

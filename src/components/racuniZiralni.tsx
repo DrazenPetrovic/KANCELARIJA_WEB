@@ -473,8 +473,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [stampajDirektno, setStampajDirektno] = useState(false);
   // Da li ESIR uređaj treba sam odštampati fiskalni isječak (parametar "print"
   // u zahtjevu ka ESIR-u) — ne utiče na A4/A5 štampu iz aplikacije, samo na
-  // uređaj. Podrazumijevano uključeno (dosadašnje ponašanje).
-  const [stampajFiskalniIsjecak, setStampajFiskalniIsjecak] = useState(true);
+  // uređaj. Podrazumijevano isključeno — QR kod na sopstvenoj štampi je zakonski
+  // dovoljan, fiskalni isječak je samo opcionalan.
+  const [stampajFiskalniIsjecak, setStampajFiskalniIsjecak] = useState(false);
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
   // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema

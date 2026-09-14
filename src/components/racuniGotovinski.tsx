@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Download,
-  Eye,
   History,
   Loader2,
   Lock,
@@ -28,7 +27,6 @@ import {
   preuzmiStatusEsira,
   izdajFiskalniRacun,
   izdvojiFiskalnePodatke,
-  posaljiEsirDebugZahtjev,
   ESIR_OZNAKA_SA_PDV,
   ESIR_SLIP_PRESET_58MM,
   ESIR_INVOICE_TYPE,
@@ -346,15 +344,11 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
   // Kad je uključeno, "Sačuvaj i štampaj" šalje A5 obrazac direktno na izabrani
   // štampač (bez otvaranja print modala da korisnik klikne štampaj).
   const [stampajDirektno, setStampajDirektno] = useState(false);
-  // Privremeno (debug) — modal koji prikazuje tačan zahtjev koji se šalje ESIR
-  // uređaju (esirFetch/izdajFiskalniRacun), da se vidi šta stvarno ide preko wire-a.
-  const [pokaziEsirDebug, setPokazuiEsirDebug] = useState(false);
-  const [esirDebugSalje, setEsirDebugSalje] = useState(false);
-  const [esirDebugOdgovor, setEsirDebugOdgovor] = useState<{
-    ok: boolean;
-    status: number;
-    tekst: string;
-  } | null>(null);
+  // Da li ESIR uređaj treba sam odštampati fiskalni isječak (parametar "print"
+  // u zahtjevu ka ESIR-u) — ne utiče na A4/A5 štampu iz aplikacije, samo na
+  // uređaj. Podrazumijevano isključeno — QR kod na sopstvenoj štampi je zakonski
+  // dovoljan, fiskalni isječak je samo opcionalan.
+  const [stampajFiskalniIsjecak, setStampajFiskalniIsjecak] = useState(false);
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [odabraniPartner, setOdabraniPartner] = useState<Partner | null>(null);
@@ -1243,7 +1237,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
   });
 
   const esirOpcijeStampe: EsirOpcijeStampe = {
-    print: true,
+    print: stampajFiskalniIsjecak,
     renderReceiptImage: true,
     receiptLayout: "Slip",
     receiptImageFormat: "Png",
@@ -2707,16 +2701,20 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                     />
                     Direktno
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setPokazuiEsirDebug(true)}
-                    disabled={stavke.length === 0}
-                    title="Prikaži tačan ESIR zahtjev (debug)"
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  <label
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-[#7d7498] select-none cursor-pointer"
+                    title="Kad je uključeno, ESIR uređaj će sam odštampati fiskalni isječak (parametar 'print' u zahtjevu ka ESIR-u) — ne utiče na A4/A5 štampu iz aplikacije"
                   >
-                    <Eye size={13} />
-                    ESIR JSON
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={stampajFiskalniIsjecak}
+                      onChange={(e) =>
+                        setStampajFiskalniIsjecak(e.target.checked)
+                      }
+                      className="accent-purple-600"
+                    />
+                    Fiskalni isječak
+                  </label>
                 </div>
               </div>
               {(spremanjeGreska ||
@@ -3410,6 +3408,13 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                       : "Izaberite kupca da biste mogli nastaviti unos artikala"}
                   </div>
                 </div>
+                {!prikaziNoviRazniForm && !loadingPartneriRazni && (
+                  <span className="flex-shrink-0 px-2 py-0.5 rounded-full bg-white/15 text-white text-[10px] font-bold">
+                    {pretragaRazni.trim()
+                      ? `${filtriraniRazni.length} / ${partneriRazni.length}`
+                      : partneriRazni.length}
+                  </span>
+                )}
               </div>
 
               {prikaziNoviRazniForm ? (
@@ -4112,198 +4117,6 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                     );
                   })
                 )}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* Privremeno (debug) — tačan zahtjev koji ide ka ESIR-u (esirFetch). */}
-      {pokaziEsirDebug &&
-        ReactDOM.createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.45)" }}
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setPokazuiEsirDebug(false);
-            }}
-          >
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[640px] max-h-[85vh] flex flex-col overflow-hidden">
-              <div
-                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
-                style={{ background: PRIMARY }}
-              >
-                <Eye size={18} className="text-white flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-white text-base truncate">
-                    ESIR zahtjev (debug)
-                  </div>
-                  <div className="text-white/70 text-xs mt-0.5">
-                    Tačno ono što esirFetch šalje ka uređaju
-                  </div>
-                </div>
-                <button
-                  onClick={() => setPokazuiEsirDebug(false)}
-                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-auto p-5 space-y-4">
-                {(() => {
-                  const baseUrl =
-                    import.meta.env.VITE_ESIR_URL_GOTOVINSKI ||
-                    "http://127.0.0.1:3566";
-                  const apiKey =
-                    import.meta.env.VITE_ESIR_API_KEY_GOTOVINSKI || "";
-                  const bodyObj = {
-                    ...esirOpcijeStampe,
-                    invoiceRequest: pripremiEsirZahtjev(),
-                  };
-                  const bodyText = JSON.stringify(bodyObj, null, 2);
-                  return (
-                    <>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-1">
-                          Method + URL
-                        </div>
-                        <div className="text-xs font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] break-all">
-                          POST {baseUrl}/api/invoices
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878] mb-1">
-                          Headers
-                        </div>
-                        <div className="text-xs font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] break-all space-y-1">
-                          <div>Authorization: Bearer {apiKey}</div>
-                          <div>
-                            Content-Type: application/json; charset=UTF-8
-                          </div>
-                          <div>
-                            RequestId: (kod stvarnog čuvanja = sifra_tabele
-                            računa; ovdje, prije čuvanja, generiše se nasumičan
-                            UUID)
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-[#5f5878]">
-                            Body
-                          </div>
-                          <button
-                            onClick={() =>
-                              navigator.clipboard?.writeText(bodyText)
-                            }
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
-                          >
-                            Kopiraj
-                          </button>
-                        </div>
-                        <pre className="text-[11px] font-mono bg-gray-50 dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] rounded-lg px-3 py-2 text-gray-700 dark:text-[#c5bfd8] whitespace-pre-wrap break-all">
-                          {bodyText}
-                        </pre>
-                      </div>
-
-                      <div>
-                        <button
-                          onClick={async () => {
-                            setEsirDebugSalje(true);
-                            setEsirDebugOdgovor(null);
-                            try {
-                              const odgovor = await posaljiEsirDebugZahtjev(
-                                "gotovinski",
-                                bodyObj.invoiceRequest,
-                                esirOpcijeStampe,
-                              );
-                              let tekst = odgovor.rawText;
-                              try {
-                                tekst = JSON.stringify(
-                                  JSON.parse(odgovor.rawText),
-                                  null,
-                                  2,
-                                );
-                              } catch {
-                                // Nije JSON — ostavi sirov tekst (npr. HTML greška).
-                              }
-                              setEsirDebugOdgovor({
-                                ok: odgovor.ok,
-                                status: odgovor.status,
-                                tekst,
-                              });
-                            } catch (err) {
-                              setEsirDebugOdgovor({
-                                ok: false,
-                                status: 0,
-                                tekst:
-                                  err instanceof Error
-                                    ? err.message
-                                    : String(err),
-                              });
-                            } finally {
-                              setEsirDebugSalje(false);
-                            }
-                          }}
-                          disabled={esirDebugSalje}
-                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{ background: ACCENT }}
-                        >
-                          {esirDebugSalje ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <Eye size={15} />
-                          )}
-                          {esirDebugSalje
-                            ? "Šaljem ka ESIR uređaju..."
-                            : "Pošalji test ka ESIR-u i prikaži odgovor"}
-                        </button>
-                        <p className="text-[10px] text-gray-400 dark:text-[#5f5878] mt-1.5">
-                          Ovo stvarno šalje zahtjev na uređaj (isti kao gore) —
-                          identično Postman testu.
-                        </p>
-                      </div>
-
-                      {esirDebugOdgovor && (
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <div
-                              className={`text-[10px] font-bold uppercase tracking-widest ${
-                                esirDebugOdgovor.ok
-                                  ? "text-emerald-500"
-                                  : "text-red-500"
-                              }`}
-                            >
-                              Odgovor uređaja — HTTP{" "}
-                              {esirDebugOdgovor.status || "?"} (
-                              {esirDebugOdgovor.ok ? "OK" : "GREŠKA"})
-                            </div>
-                            <button
-                              onClick={() =>
-                                navigator.clipboard?.writeText(
-                                  esirDebugOdgovor.tekst,
-                                )
-                              }
-                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
-                            >
-                              Kopiraj
-                            </button>
-                          </div>
-                          <pre
-                            className={`text-[11px] font-mono border rounded-lg px-3 py-2 whitespace-pre-wrap break-all ${
-                              esirDebugOdgovor.ok
-                                ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200"
-                                : "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900 text-red-800 dark:text-red-200"
-                            }`}
-                          >
-                            {esirDebugOdgovor.tekst}
-                          </pre>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
               </div>
             </div>
           </div>,

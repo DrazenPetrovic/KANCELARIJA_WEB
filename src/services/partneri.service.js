@@ -7,6 +7,10 @@ export const getPartneri = async () => {
   });
 };
 
+// erp.partneri_razni_partneri_pregled() spaja namjenske "razne" kupce
+// (erp.partneri_razni_partneri, vrsta=1) sa svim aktivnim partnerima
+// (erp.partneri WHERE aktivan=1, vrsta=0) — pravi partneri idu prvi
+// (ORDER BY vrsta ASC), pa onda namjenski "razni" zapisi.
 export const getPartneriRazni = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
