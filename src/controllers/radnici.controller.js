@@ -83,3 +83,22 @@ export const getPrisutnostPristiglihRadnika = async (req, res) => {
     });
   }
 };
+
+export const obrisiPrisutnost = async (req, res) => {
+  try {
+    const { sifra_tabele } = req.body;
+    if (sifra_tabele == null) {
+      return res
+        .status(400)
+        .json({ success: false, error: "sifra_tabele je obavezna" });
+    }
+    const data = await RadniciService.obrisiPrisutnost(sifra_tabele);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Brisanje prisutnosti error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri brisanju prisutnosti",
+    });
+  }
+};

@@ -12,5 +12,6 @@ router.get(
   "/prisutnost/pristigli",
   RadniciController.getPrisutnostPristiglihRadnika,
 );
+router.post("/prisutnost/obrisi", RadniciController.obrisiPrisutnost);
 
 export default router;

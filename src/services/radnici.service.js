@@ -223,3 +223,19 @@ export const getPrisutnostPristiglihRadnika = async () => {
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
+
+// Brisanje pogrešno unesenog zapisa prisutnosti (otključava radnika da se
+// prisutnost može ponovo unijeti). sifra_tabele je PK iz
+// erp.radnici_prisutnost_pregled_po_danu.
+// NAPOMENA: naziv procedure je pretpostavljen po ustaljenoj konvenciji
+// (radnici_prisutnost_unos/pregled_po_danu) — nije potvrđen sa korisnikom,
+// treba provjeriti/ispraviti kad se testira.
+export const obrisiPrisutnost = async (sifraTabele) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.radnici_prisutnost_obrisi(?)",
+      [sifraTabele],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};

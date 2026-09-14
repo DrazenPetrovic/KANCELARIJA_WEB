@@ -7,6 +7,7 @@ import {
   Lock,
   Search,
   UserCheck,
+  X,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -58,6 +59,8 @@ interface ZakljucanZapis {
   kraj: string | null;
   opis: string;
   izvor: "baza" | "sesija";
+  // PK zapisa u prisutnosti — samo za izvor "baza", potrebno za brisanje.
+  sifraTabele?: number;
 }
 
 // Fallback nazivi vrsta_radnika (vidi docs/radnici_vrste_radnika.txt) — koriste
@@ -95,6 +98,21 @@ const VRSTA_RADA_OPTIONS = [
   { key: "ostala_odsustva", label: "Ostala odsustva" },
   { key: "sedmicni_odmor", label: "Sedmični odmor" },
 ] as const;
+
+// Vrste odsustva/odmora — dan kad je radnik na nekoj od ovih ne može
+// istovremeno imati i redovan rad, pa se redovan_rad automatski postavlja na
+// 0 čim se bilo koje od ovih polja postavi na broj veći od 0.
+const ODSUSTVO_KLJUCEVI = new Set([
+  "godisnji_odmor",
+  "praznik_odmor",
+  "privremena_nesposobnost",
+  "porodiljsko",
+  "placeno_odsustvo",
+  "neplaceno_odsustvo",
+  "odsustvo_bez_krivice",
+  "ostala_odsustva",
+  "sedmicni_odmor",
+]);
 
 // Definicije smjena — kad operater izabere smjenu, datum/vrijeme početka i
 // kraja se automatski popunjavaju na osnovu današnjeg datuma (i dalje se
@@ -345,6 +363,10 @@ export function RadniciPrisutnostUnos() {
   );
   // Zapisi pripremljeni preko "Prihvati", čekaju na konačno čuvanje.
   const [stagedZapisi, setStagedZapisi] = useState<ZapisPrisutnosti[]>([]);
+  // sifra_radnika čiji je zapis trenutno u procesu brisanja/otključavanja.
+  const [otkljucavanje, setOtkljucavanje] = useState<number | null>(null);
+  // sifra_radnika za kojeg je otvoren modal potvrde brisanja (umjesto window.confirm).
+  const [potvrdaBrisanja, setPotvrdaBrisanja] = useState<number | null>(null);
 
   const [datumPocetkaDan, setDatumPocetkaDan] = useState("");
   const [datumPocetkaVrijeme, setDatumPocetkaVrijeme] = useState("");
@@ -413,6 +435,7 @@ export function RadniciPrisutnostUnos() {
               kraj: izvuciVrijeme(z.datum_kraja),
               opis: odrediVrstuRadaOpis(z),
               izvor: "baza",
+              sifraTabele: z.sifra_tabele,
             });
           });
           return mapa;
@@ -506,7 +529,13 @@ export function RadniciPrisutnostUnos() {
   }, [datumPocetkaDan, datumPocetkaVrijeme, datumKrajaDan, datumKrajaVrijeme]);
 
   const setSatiZaVrstu = (kljuc: string, v: string) =>
-    setSatiPoVrsti((prev) => ({ ...prev, [kljuc]: v }));
+    setSatiPoVrsti((prev) => {
+      const sledeci = { ...prev, [kljuc]: v };
+      if (ODSUSTVO_KLJUCEVI.has(kljuc) && Number(v) > 0) {
+        sledeci.redovan_rad = "0";
+      }
+      return sledeci;
+    });
 
   // Uparivanje kartice (broj_kartice sa čitača) sa radnikom preko Oznake.
   const radnikPoOznaci = useMemo(() => {
@@ -573,6 +602,59 @@ export function RadniciPrisutnostUnos() {
     });
     return grupe;
   }, [filtriraniRadnici]);
+
+  // Otključavanje pogrešno zaključanog radnika ("ukoliko dođe do greške").
+  // Ako je zapis samo pripremljen u ovoj sesiji (izvor "sesija"), briše se
+  // lokalno bez poziva servera. Ako je već upisan u bazu (izvor "baza"),
+  // prvo se briše na serveru (erp.radnici_prisutnost_obrisi), pa se tek onda
+  // otključava — da se izbjegne da se "otključa" red koji zapravo nije obrisan.
+  const handleOtkljucaj = async (sifra: number) => {
+    const zapis = zakljucani.get(sifra);
+    if (!zapis) return;
+
+    if (zapis.izvor === "sesija") {
+      setStagedZapisi((prev) =>
+        prev.filter((z) => z.sifra_radnika !== sifra),
+      );
+      setZakljucani((prev) => {
+        const mapa = new Map(prev);
+        mapa.delete(sifra);
+        return mapa;
+      });
+      setPotvrdaBrisanja(null);
+      return;
+    }
+
+    if (zapis.sifraTabele == null) {
+      setPotvrdaBrisanja(null);
+      return;
+    }
+    setOtkljucavanje(sifra);
+    setGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/radnici/prisutnost/obrisi`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sifra_tabele: zapis.sifraTabele }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri brisanju prisutnosti");
+      }
+      setZakljucani((prev) => {
+        const mapa = new Map(prev);
+        mapa.delete(sifra);
+        return mapa;
+      });
+      setPotvrdaBrisanja(null);
+    } catch (err) {
+      setGreska(err instanceof Error ? err.message : "Nepoznata greška");
+      setPotvrdaBrisanja(null);
+    } finally {
+      setOtkljucavanje(null);
+    }
+  };
 
   // "Prihvati" — primjenjuje trenutno podešene datume/smjenu/vrstu rada na
   // izabrane radnike: zaključava ih (katanac, ne mogu se više birati) i
@@ -833,6 +915,19 @@ export function RadniciPrisutnostUnos() {
                                   ? `–${zakljucanZapis.kraj}`
                                   : ""}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => setPotvrdaBrisanja(sifra)}
+                                disabled={otkljucavanje === sifra}
+                                title="Obriši i otključaj (ukoliko je greškom unesen)"
+                                className="shrink-0 text-gray-400 dark:text-[#5f5878] hover:text-red-500 dark:hover:text-red-400 disabled:opacity-50"
+                              >
+                                {otkljucavanje === sifra ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <X size={14} />
+                                )}
+                              </button>
                             </div>
                           );
                         }
@@ -1059,7 +1154,7 @@ export function RadniciPrisutnostUnos() {
               className="text-xs font-bold uppercase tracking-wider"
               style={{ color: PRIMARY }}
             >
-              Pristigli radnici
+              Pristigli radnici ({pristigliFiltrirani.length})
             </span>
             <p className="text-[11px] text-gray-400 dark:text-[#5f5878] -mt-2">
               Klik na radnika prepoznaje smjenu po vremenu dolaska i označava ga za unos.
@@ -1182,6 +1277,41 @@ export function RadniciPrisutnostUnos() {
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {potvrdaBrisanja !== null && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-[#261f38] shadow-2xl border-2 border-red-300 p-6">
+            <div className="flex justify-center mb-3">
+              <AlertTriangle size={40} className="text-red-500" />
+            </div>
+            <p className="text-base font-semibold text-gray-800 dark:text-[#ede9f6] text-center">
+              Obrisati unesenu prisutnost za ovog radnika i otključati ga?
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPotvrdaBrisanja(null)}
+                disabled={otkljucavanje === potvrdaBrisanja}
+                className="min-w-[90px] px-4 py-2 rounded-lg font-semibold text-gray-600 dark:text-[#c5bfd8] border border-gray-200 dark:border-[#3a3158] hover:bg-gray-50 dark:hover:bg-[#1e1a2d] transition-all disabled:opacity-50"
+              >
+                Otkaži
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleOtkljucaj(potvrdaBrisanja)}
+                disabled={otkljucavanje === potvrdaBrisanja}
+                className="min-w-[90px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white font-semibold transition-all disabled:opacity-60"
+                style={{ backgroundColor: "#ef4444" }}
+              >
+                {otkljucavanje === potvrdaBrisanja && (
+                  <Loader2 size={14} className="animate-spin" />
+                )}
+                Obriši
               </button>
             </div>
           </div>
