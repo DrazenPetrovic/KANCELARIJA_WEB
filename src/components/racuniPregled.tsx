@@ -1198,6 +1198,58 @@ export function RacuniPregled() {
       // kod unosa).
       const brojPolje = (s: RacunRed, k: string) => Number(s[k] ?? 0) || 0;
 
+      // VPC1/VPC2/VPC3(=Osnova) se NE uzimaju iz gotovih polja "vpc_rabat_1"/
+      // "vpc_sa_rab_2"/"vpc" — dump je pokazao da je "vpc_sa_rab_2" = "0.00"
+      // kad Rabat 2 nije aktivno korišten (ne kaskadira samo od sebe kao
+      // vpc_rabat_1), pa bi VPC2/Osnova ispali pogrešni. Umjesto toga se sve
+      // tri kaskadno računaju ručno iz vpc_bez_rabata (kataloški VPC) i tri
+      // procenta rabata (rabat_proc/rabat_proc_2/rab_proc_3) — ta polja su
+      // potvrđeno tačna (ista polja odakle Rab.1/Rab.2 kolone već rade).
+      const izracunajStavku = (s: RacunRed) => {
+        const ukupno = brojPolje(s, "prodajna_vrednost");
+        const pdv = brojPolje(s, "pdv_po_artiklu");
+        const vpcKatalog = brojPolje(s, "vpc_bez_rabata");
+        const rab1Proc = brojPolje(s, "rabat_proc");
+        const rab2Proc = brojPolje(s, "rabat_proc_2");
+        const rab3Proc = brojPolje(s, "rab_proc_3");
+        const poslijeRab1 =
+          Math.round(vpcKatalog * (1 - rab1Proc / 100) * 100) / 100;
+        const poslijeRab2 =
+          Math.round(poslijeRab1 * (1 - rab2Proc / 100) * 100) / 100;
+        const poslijeRab3 =
+          Math.round(poslijeRab2 * (1 - rab3Proc / 100) * 100) / 100;
+        return {
+          sifra_proizvoda: (s.sifra_proizvoda as string | number) ?? "",
+          naziv_proizvoda: String(s.naziv_proizvoda ?? ""),
+          jm: String(s.jm ?? ""),
+          kolicina: (s.kolicina as number | string) ?? 0,
+          vpc: vpcKatalog,
+          vpc1: poslijeRab1,
+          rab1: rab1Proc,
+          vpc2: poslijeRab2,
+          rab2: rab2Proc,
+          vpc3: poslijeRab3,
+          rab3: rab3Proc,
+          osnova: poslijeRab3,
+          vrednost: Math.round((ukupno - pdv) * 100) / 100,
+          pdv,
+          ukupno,
+        };
+      };
+      const stavkeMapirane = stavkeZaStampu.map(izracunajStavku);
+
+      // Debug dump — kompletan uvid za ovaj račun: sirove stavke (sve što
+      // sp_racuni_po_pregled vrati, bez filtriranja) + šta se od toga zaista
+      // šalje na štampu (RacunA4Stavka, nakon kaskadnog izračuna iznad).
+      preuzmiJsonKaoFajl(
+        `${formatDatumZaNazivFajla(new Date())}_${sifraTabele}_racun-debug`,
+        {
+          header_sirovo: red,
+          stavke_sirovo: stavkeZaStampu,
+          stavke_za_stampu: stavkeMapirane,
+        },
+      );
+
       // Trenutni dug partnera (erp.partneri_trenutni_dug_pregled) — za "Trenutna
       // dugovanja partnera iznose" na štampi. Best-effort, ne blokira štampu.
       let trenutniDugPartnera: number | null = null;
@@ -1247,27 +1299,7 @@ export function RacuniPregled() {
               verifikacioni_qr: verifikacioniQr,
               dug_partnera: trenutniDugPartnera,
             }}
-            stavke={stavkeZaStampu.map((s) => {
-              const ukupno = brojPolje(s, "prodajna_vrednost");
-              const pdv = brojPolje(s, "pdv_po_artiklu");
-              return {
-                sifra_proizvoda: (s.sifra_proizvoda as string | number) ?? "",
-                naziv_proizvoda: String(s.naziv_proizvoda ?? ""),
-                jm: String(s.jm ?? ""),
-                kolicina: (s.kolicina as number | string) ?? 0,
-                vpc: brojPolje(s, "vpc_bez_rabata"),
-                vpc1: brojPolje(s, "vpc_rabat_1"),
-                rab1: brojPolje(s, "rabat_proc"),
-                vpc2: brojPolje(s, "vpc_sa_rab_2"),
-                rab2: brojPolje(s, "rabat_proc_2"),
-                vpc3: brojPolje(s, "vpc"),
-                rab3: brojPolje(s, "rab_proc_3"),
-                osnova: brojPolje(s, "vpc"),
-                vrednost: Math.round((ukupno - pdv) * 100) / 100,
-                pdv,
-                ukupno,
-              };
-            })}
+            stavke={stavkeMapirane}
           />
         ),
       });

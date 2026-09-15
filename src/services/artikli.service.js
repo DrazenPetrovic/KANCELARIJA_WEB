@@ -16,6 +16,19 @@ export const getArtikliGrupe = async () => {
   });
 };
 
+// Kartica proizvoda — hronološki promet (ulaz/izlaz) sa tekućim saldom, za
+// ekran "Kartica proizvoda" u meniju Pregledi > Kartice. Vidi
+// erp.kartica_proizvoda_pregled.
+export const getKarticaProizvoda = async (sifraProizvoda) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kartica_proizvoda_pregled(?)",
+      [sifraProizvoda],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 const normalizujKljuc = (kljuc) =>
   String(kljuc)
     .toLowerCase()

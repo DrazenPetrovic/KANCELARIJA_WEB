@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 
 // Štampač je mrežni monochrome (crno-bijeli) — boje se pretvaraju u blijedi
@@ -103,12 +103,6 @@ function brojN(v: number | string | null | undefined) {
 
 export function RacunA4({ racun, stavke }: Props) {
   const barkodRef = useRef<HTMLCanvasElement>(null);
-  // Dimenzije nacrtanog barkoda (prije rotacije) — potrebne da omotač oko
-  // canvasa rezerviše zamijenjen (širina/visina) prostor za uspravan barkod.
-  const [barkodDim, setBarkodDim] = useState<{
-    w: number;
-    h: number;
-  } | null>(null);
 
   useEffect(() => {
     const vrijednost =
@@ -125,10 +119,6 @@ export function RacunA4({ racun, stavke }: Props) {
       displayValue: true,
       fontSize: 10,
       margin: 0,
-    });
-    setBarkodDim({
-      w: barkodRef.current.width,
-      h: barkodRef.current.height,
     });
   }, [racun.sifra_tabele]);
 
@@ -371,13 +361,13 @@ export function RacunA4({ racun, stavke }: Props) {
                   </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     {broj(s.vpc1)}
-                    <div style={{ fontSize: 9, color: "#888" }}>
+                    <div style={{ fontSize: 9, color: "#000" }}>
                       {broj(s.rab1)}%
                     </div>
                   </td>
                   <td style={{ ...cell, textAlign: "right" }}>
                     {broj(s.vpc2)}
-                    <div style={{ fontSize: 9, color: "#888" }}>
+                    <div style={{ fontSize: 9, color: "#000" }}>
                       {broj(s.rab2)}%
                     </div>
                   </td>
@@ -478,92 +468,82 @@ export function RacunA4({ racun, stavke }: Props) {
                 )}
               </div>
 
-              {/* SALDO na dan — cifra dinamički skalirana (font-size, ne
-                  transform) da maksimalno ispuni širinu okvira bez deformacije. */}
+              {/* SALDO na dan (gore) + barkod ispod, iste širine — obje u
+                  zajedničkoj koloni. */}
               <div
                 style={{
                   flex: 4,
                   alignSelf: "flex-start",
-                  boxSizing: "border-box",
-                  background: "#ffffff",
-                  border: "1px solid #ccc",
-                  borderRadius: 4,
-                  padding: 8,
-                  height: 44,
                   display: "flex",
                   flexDirection: "column",
+                  gap: 5,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: ACCENT,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    textAlign: "left",
+                    boxSizing: "border-box",
+                    background: "#ffffff",
+                    border: "1px solid #ccc",
+                    borderRadius: 4,
+                    padding: 8,
+                    height: 44,
+                    display: "flex",
+                    flexDirection: "column",
                   }}
                 >
-                  SALDO NA DAN {formatDatum(new Date().toISOString())}:
-                </div>
-                {racun.dug_partnera !== undefined &&
-                  racun.dug_partnera !== null && (
-                    <div
-                      style={{
-                        flex: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <span
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: ACCENT,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      textAlign: "left",
+                    }}
+                  >
+                    SALDO NA DAN {formatDatum(new Date().toISOString())}:
+                  </div>
+                  {racun.dug_partnera !== undefined &&
+                    racun.dug_partnera !== null && (
+                      <div
                         style={{
-                          display: "inline-block",
-                          color: "#000",
-                          fontWeight: 800,
-                          fontSize: 13,
-                          lineHeight: 1,
-                          whiteSpace: "nowrap",
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                       >
-                        {broj(racun.dug_partnera)} KM
-                      </span>
-                    </div>
-                  )}
-              </div>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            color: "#000",
+                            fontWeight: 800,
+                            fontSize: 13,
+                            lineHeight: 1,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {broj(racun.dug_partnera)} KM
+                        </span>
+                      </div>
+                    )}
+                </div>
 
-              {/* Barkod (šifra tabele) — vraćen iz zaglavlja, sada u dnu pored napomene,
-                  okrenut uspravno (rotate -90°) tako da tekst (koji je kod
-                  horizontalnog barkoda ispod) završi uz desnu ivicu, odn. uz
-                  lijevu ivicu rekapitulacije. */}
-              <div
-                style={{
-                  flexShrink: 0,
-                  boxSizing: "border-box",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+                {/* Barkod (šifra tabele) — vodoravno, razvučen na istu širinu
+                    kao SALDO okvir iznad. */}
                 {racun.sifra_tabele !== undefined &&
                   racun.sifra_tabele !== null &&
                   racun.sifra_tabele !== "" && (
                     <div
                       style={{
-                        width: barkodDim ? barkodDim.h : undefined,
-                        height: barkodDim ? barkodDim.w : undefined,
-                        position: "relative",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
                       <canvas
                         ref={barkodRef}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          transformOrigin: "top left",
-                          transform: "rotate(-90deg) translateX(-100%)",
-                        }}
+                        style={{ width: "100%", height: "auto" }}
                       />
                     </div>
                   )}

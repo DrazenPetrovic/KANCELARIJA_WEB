@@ -21,6 +21,7 @@ import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
+import { KarticaProizvoda } from "./KarticaProizvoda";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { Kuf } from "./Kuf";
@@ -153,6 +154,7 @@ type MenuSection =
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
   | "kartica-partnera"
+  | "kartica-proizvoda"
   | "narudzbe-pregled"
   | "narudzbe-teren"
   | "narudzbe-lokalno"
@@ -188,6 +190,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
   "kartica-partnera": "Kartica partnera",
+  "kartica-proizvoda": "Kartica proizvoda",
   "narudzbe-pregled": "Pregled narudžbi",
   "narudzbe-teren": "Unos narudžbe teren",
   "narudzbe-lokalno": "Unos narudžbe lokalno",
@@ -1385,7 +1388,8 @@ export function Dashboard({
                       activeSection === "pregledi-racuna" ||
                       activeSection === "pregled-kalkulacija" ||
                       activeSection === "ugovorene-cijene" ||
-                      activeSection === "kartica-partnera"
+                      activeSection === "kartica-partnera" ||
+                      activeSection === "kartica-proizvoda"
                     ),
                   )}
                   onMouseEnter={() => setHoveredBtn("pregledi")}
@@ -1585,6 +1589,35 @@ export function Dashboard({
                                 <Users size={13} />
                               </span>
                               Kartica partnera
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange("kartica-proizvoda")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "kartica-proizvoda"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "kartica-proizvoda"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <span
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection === "kartica-proizvoda"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              >
+                                <Package size={13} />
+                              </span>
+                              Kartica proizvoda
                             </button>
                           </div>
                         )}
@@ -2660,6 +2693,7 @@ export function Dashboard({
           {activeSection === "ugovorene-cijene" && <UgovoreneCijenePregled />}
 
           {activeSection === "kartica-partnera" && <KarticaPartnera />}
+          {activeSection === "kartica-proizvoda" && <KarticaProizvoda />}
 
           {activeSection === "pregled-kalkulacija" && (
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
