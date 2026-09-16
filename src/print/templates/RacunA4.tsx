@@ -530,8 +530,9 @@ export function RacunA4({ racun, stavke }: Props) {
                     )}
                 </div>
 
-                {/* Barkod (šifra tabele) — vodoravno, razvučen na istu širinu
-                    kao SALDO okvir iznad. */}
+                {/* Barkod (šifra tabele) — vodoravno, na istoj poziciji ispod
+                    SALDO okvira; smanjen za 40% (60% širine) jer je na 100%
+                    bio previše razvučen/nejasan za skener. */}
                 {racun.sifra_tabele !== undefined &&
                   racun.sifra_tabele !== null &&
                   racun.sifra_tabele !== "" && (
@@ -544,7 +545,7 @@ export function RacunA4({ racun, stavke }: Props) {
                     >
                       <canvas
                         ref={barkodRef}
-                        style={{ width: "100%", height: "auto" }}
+                        style={{ width: "60%", height: "auto" }}
                       />
                     </div>
                   )}
