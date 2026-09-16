@@ -504,7 +504,8 @@ export function RacunA4({ racun, stavke }: Props) {
                     SALDO NA DAN {formatDatum(new Date().toISOString())}:
                   </div>
                   {racun.dug_partnera !== undefined &&
-                    racun.dug_partnera !== null && (
+                    racun.dug_partnera !== null &&
+                    Number(racun.dug_partnera) >= 0 && (
                       <div
                         style={{
                           flex: 1,
