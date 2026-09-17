@@ -103,14 +103,22 @@ function StatTile({
   vrijednost,
   naziv,
   boja,
+  prazno,
 }: {
   icon: React.ReactNode;
   vrijednost: string;
   naziv: string;
   boja: string;
+  prazno?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm px-4 py-3 flex-1 min-w-[150px]">
+    <div
+      className={`flex items-center gap-3 rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[150px] ${
+        prazno
+          ? "bg-gray-100 dark:bg-[#1a1626] border-2 border-red-300 dark:border-red-900/70"
+          : "bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648]"
+      }`}
+    >
       <div
         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ background: `${boja}1f` }}
@@ -118,7 +126,13 @@ function StatTile({
         <div style={{ color: boja }}>{icon}</div>
       </div>
       <div className="min-w-0">
-        <div className="text-lg font-bold leading-tight text-gray-800 dark:text-[#ede9f6]">
+        <div
+          className={`text-lg font-bold leading-tight ${
+            prazno
+              ? "text-gray-400 dark:text-[#7d7498]"
+              : "text-gray-800 dark:text-[#ede9f6]"
+          }`}
+        >
           {vrijednost}
         </div>
         <div className="text-xs text-gray-400 dark:text-[#5f5878] truncate">
@@ -457,7 +471,8 @@ export function KarticaProizvoda() {
                   icon={<Wallet size={16} />}
                   vrijednost={formatIznos(trenutnoStanje)}
                   naziv="Trenutno stanje"
-                  boja={PRIMARY}
+                  boja={Number(trenutnoStanje) === 0 ? "#9ca3af" : PRIMARY}
+                  prazno={Number(trenutnoStanje) === 0}
                 />
               </div>
 

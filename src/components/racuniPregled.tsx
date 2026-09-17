@@ -50,29 +50,6 @@ interface RacunPodgrupa {
 
 // Normalizacija naziva kolone za poređenje — mala slova, bez donjih crta/razmaka —
 // jer tačan zapis (velika/mala slova, "_" ili razmak) iz procedure nije unaprijed poznat.
-// Debug pomoć: preuzimanje JSON odgovora sa API poziva kao fajl u browseru —
-// naziv fajla: yyyy-MM-dd_HH_mm_ss_<šifra tabele>.json.
-const preuzmiJsonKaoFajl = (naziv: string, podaci: unknown) => {
-  const blob = new Blob([JSON.stringify(podaci, null, 2)], {
-    type: "application/json;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${naziv}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-const formatDatumZaNazivFajla = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}_${String(d.getHours()).padStart(2, "0")}_${String(
-    d.getMinutes(),
-  ).padStart(2, "0")}_${String(d.getSeconds()).padStart(2, "0")}`;
-
 const normalizujKljuc = (k: string) => k.toLowerCase().replace(/[_\s]/g, "");
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -188,15 +165,15 @@ const PODESAVANJA_STAVKE: Record<string, PodesavanjeKolone> = {
 
   vpc: { naziv: "VPC", sakrij: true, pozicija: 9 },
   vpc_vrednost: { naziv: "VP", sakrij: true, pozicija: 10 },
-  rabat_proc: { naziv: "Rabat Proc", sakrij: true, pozicija: 12 },
-  cijena_sa_rab: { naziv: "CIJENA", sakrij: false, pozicija: 12 },
-  prodajna_cijena: { naziv: "MPC", sakrij: false, pozicija: 13 },
-  nabavna_vrednost: { naziv: "Nabavna Vrednost", sakrij: true, pozicija: 15 },
+  rabat_proc: { naziv: "RABAT %", sakrij: false, pozicija: 12 },
+  cijena_sa_rab: { naziv: "CIJENA", sakrij: false, pozicija: 13 },
+  prodajna_cijena: { naziv: "MPC", sakrij: false, pozicija: 14 },
+  nabavna_vrednost: { naziv: "Nabavna Vrednost", sakrij: true, pozicija: 16 },
 
   prodajna_vrednost: {
     naziv: "UKUPNO",
     sakrij: false,
-    pozicija: 14,
+    pozicija: 15,
   },
   rabat_km: { naziv: "RABAT", sakrij: false, pozicija: 11 },
   ruc: { naziv: "Ruc", sakrij: true, pozicija: 17 },
@@ -329,6 +306,7 @@ const STAVKE_ZBIJENE_KOLONE = new Set([
   "vpc",
   "vpc_vrednost",
   "rabat_km",
+  "rabat_proc",
   "cijena_sa_rab",
   "prodajna_cijena",
   "prodajna_vrednost",
@@ -344,6 +322,7 @@ const STAVKE_SIRINA_KARAKTERA: Record<string, number> = {
   kolicina: 20,
   vpc_bez_rabata: 12,
   rabat_km: 12,
+  rabat_proc: 9,
   cijena_sa_rab: 12,
   prodajna_cijena: 12,
   prodajna_vrednost: 20,
@@ -545,13 +524,26 @@ function GenericnaTabela({
     );
   }
 
+  // Stavke — sve stavke pripadaju istom računu, pa se boja lijeve/desne ivice
+  // reda (vidi jeStorniranRacun/bojaVrsteRacuna ispod) ponavlja i na zaglavlju,
+  // da linija koja "počinje" objekat ide i na kraju.
+  const headerRed = redovi[0];
+  const headerStorniran = jeStorniranRacun(
+    headerRed.storniran_racun ?? headerRed.stornirano,
+  );
+  const headerBoja = headerStorniran
+    ? BOJA_STORNIRANO
+    : bojaVrsteRacuna(headerRed.vrsta_racuna_novi ?? headerRed.vrsta);
+
   return (
     <div
       ref={jeVirtualizovano ? scrollRef : undefined}
       className="overflow-x-auto"
       style={jeVirtualizovano ? { maxHeight: "70vh", overflowY: "auto" } : undefined}
     >
-      <table className="w-full text-xs border-collapse">
+      <table
+        className={`${jeStavke ? "mx-auto" : "w-full"} text-xs border-collapse`}
+      >
         <thead>
           <tr
             className={`sticky top-0 z-10 ${
@@ -559,6 +551,14 @@ function GenericnaTabela({
                 ? "bg-[#e9f5da] dark:bg-[#1b2712] text-[#4d7a1f] dark:text-[#a3d474]"
                 : "bg-[#785E9E] dark:bg-[#5b4a7d] text-white dark:text-[#f0ecfa]"
             }`}
+            style={
+              jeStavke
+                ? {
+                    borderLeft: `4px solid ${headerBoja}`,
+                    borderRight: `4px solid ${headerBoja}`,
+                  }
+                : undefined
+            }
           >
             {imaPartnera && (
               <th
@@ -584,9 +584,9 @@ function GenericnaTabela({
                   key={k}
                   className={`py-2 font-bold whitespace-nowrap border-b ${
                     jeUska
-                      ? "text-left px-1.5"
+                      ? "text-center px-1.5"
                       : jeZbijena
-                        ? `text-right ${stavkeRazmak(k)}`
+                        ? `text-center ${stavkeRazmak(k)}`
                         : "text-left px-3"
                   } ${
                     jeStavke
@@ -687,6 +687,7 @@ function GenericnaTabela({
                   onClick={() => onKlik?.(red)}
                   style={{
                     borderLeft: `4px solid ${jeProsiren ? PRIMARY : boja}`,
+                    borderRight: `4px solid ${jeProsiren ? PRIMARY : boja}`,
                   }}
                   className={`border-b ${
                     jeProsiren
@@ -825,27 +826,23 @@ function GenericnaTabela({
                         key={k}
                         className={`py-1.5 whitespace-nowrap ${
                           jeUska
-                            ? "px-1.5"
+                            ? "text-center px-1.5"
                             : jeZbijena
-                              ? `text-right ${stavkeRazmak(k)}`
+                              ? `text-center ${stavkeRazmak(k)}`
                               : "px-3"
                         } ${
                           k === "vrsta_racuna_novi"
                             ? "font-bold"
                             : k === "ukupno" || k === "prodajna_vrednost"
                               ? "font-bold text-sm"
-                              : k === "rabat_km"
-                                ? "font-semibold"
-                                : "text-gray-700 dark:text-[#c5bfd8]"
+                              : "text-gray-700 dark:text-[#c5bfd8]"
                         }`}
                         style={{
                           ...(k === "vrsta_racuna_novi" ||
                           k === "ukupno" ||
                           k === "prodajna_vrednost"
                             ? { color: boja }
-                            : k === "rabat_km"
-                              ? { color: ACCENT }
-                              : undefined),
+                            : undefined),
                           ...(jeStavke && k === "naziv_proizvoda"
                             ? { minWidth: "260px" }
                             : undefined),
@@ -1168,16 +1165,6 @@ export function RacuniPregled() {
         );
         verifikacioniQr = fiskalniRacun.verificationQRCode ?? null;
         datumVremeFiskalnog = fiskalniRacun.sdcDateTime ?? datumVremeFiskalnog;
-
-        // Debug dump — samo za štampu gotovinskog (A5) računa: JSON odgovor od
-        // ESIR-a (GET /api/invoices/:invoiceNumber) kao fajl, da se provjere
-        // tačna imena/vrijednosti polja (npr. PFR broj/datum).
-        if (vrsta === 1 || vrsta === 3) {
-          preuzmiJsonKaoFajl(
-            `${formatDatumZaNazivFajla(new Date())}_${sifraTabele}_fiskalni-racun`,
-            fiskalniRacun,
-          );
-        }
       } catch (greska) {
         console.error(
           "Preuzimanje QR koda od ESIR-a nije uspjelo:",
@@ -1237,18 +1224,6 @@ export function RacuniPregled() {
         };
       };
       const stavkeMapirane = stavkeZaStampu.map(izracunajStavku);
-
-      // Debug dump — kompletan uvid za ovaj račun: sirove stavke (sve što
-      // sp_racuni_po_pregled vrati, bez filtriranja) + šta se od toga zaista
-      // šalje na štampu (RacunA4Stavka, nakon kaskadnog izračuna iznad).
-      preuzmiJsonKaoFajl(
-        `${formatDatumZaNazivFajla(new Date())}_${sifraTabele}_racun-debug`,
-        {
-          header_sirovo: red,
-          stavke_sirovo: stavkeZaStampu,
-          stavke_za_stampu: stavkeMapirane,
-        },
-      );
 
       // Trenutni dug partnera (erp.partneri_trenutni_dug_pregled) — za "Trenutna
       // dugovanja partnera iznose" na štampi. Best-effort, ne blokira štampu.
