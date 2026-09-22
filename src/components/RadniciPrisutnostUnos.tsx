@@ -984,6 +984,17 @@ export function RadniciPrisutnostUnos() {
 
         {/* SREDINA: vrijeme i vrsta rada, zajednički za izabrane; "Prihvati" ih zaključava */}
         <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-4 space-y-4">
+          <button
+            type="button"
+            onClick={handlePrihvati}
+            disabled={odabraniRadnici.size === 0}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+            style={{ background: ACCENT }}
+          >
+            <CheckCircle2 size={15} />
+            Prihvati ({odabraniRadnici.size})
+          </button>
+
           <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5 space-y-3">
             <Field label="Smjena">
               <select
@@ -1134,17 +1145,6 @@ export function RadniciPrisutnostUnos() {
               </p>
             </Field>
           </div>
-
-          <button
-            type="button"
-            onClick={handlePrihvati}
-            disabled={odabraniRadnici.size === 0}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
-            style={{ background: ACCENT }}
-          >
-            <CheckCircle2 size={15} />
-            Prihvati ({odabraniRadnici.size})
-          </button>
         </div>
 
         {/* SKROZ DESNO: pristigli radnici (autentifikacija karticom) */}

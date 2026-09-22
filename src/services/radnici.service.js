@@ -197,14 +197,43 @@ export const unosPrisutnosti = async (zapisi) => {
 // Pregled već upisane prisutnosti za dati dan — koristi se na stranici
 // Radnici > Unos prisutnosti da se pri otvaranju provjeri da li je za neke
 // radnike prisutnost već unesena za taj dan (da bi se ti radnici zaključali
-// i spriječio dupli unos). Vidi erp.radnici_prisutnost_pregled_po_danu —
-// vraća niz zapisa { sifra_tabele, sifra_radnika, datum_pocetka, datum_kraja,
-// smjena, ...zastavice/sati po vrsti rada } ili prazan niz ako ničega nema.
+// i spriječio dupli unos). Vidi erp.radnici_prisutnost_pregled_po_danu.
+//
+// NAPOMENA: procedura ne vraća jedan red po zapisu, nego JEDAN red sa jednom
+// JSON kolonom "podaci" koja sadrži čitav niz zapisa
+// { sifra_tabele, sifra_radnika, datum_pocetka, datum_kraja, smjena,
+// ...sati po vrsti rada } — zato se ovdje mora "odmotati" (rows[0][0].podaci),
+// inače frontend dobija [{ podaci: [...] }] umjesto pravog niza.
 export const getPrisutnostPoDanu = async (datum) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
       "CALL erp.radnici_prisutnost_pregled_po_danu(?)",
       [datum],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    const prviRed =
+      Array.isArray(rezultatSet) && rezultatSet.length > 0
+        ? rezultatSet[0]
+        : null;
+    const podaci = prviRed?.podaci;
+    if (!podaci) return [];
+    return typeof podaci === "string" ? JSON.parse(podaci) : podaci;
+  });
+};
+
+// Kompletan pregled (svi dani, svi radnici) za stranicu Radnici > Pregled
+// prisutnosti. Vidi erp.radnici_prisutnost_pregled() — vraća niz zapisa
+// { sifra_tabele, sifra_radnika, naziv_radnika, vrsta_radnika, datum_pocetka,
+// datum_kraja, smjena, ...sati po vrsti rada (redovan_rad, prekovremeni_rad,
+// rad_nocu, rad_praznikom, terenski_rad, dezurstvo, godisnji_odmor,
+// praznik_odmor, privremena_nesposobnost, porodiljsko, placeno_odsustvo,
+// neplaceno_odsustvo, odsustvo_bez_krivice, ostala_odsustva, sedmicni_odmor) }.
+// Grupisanje po danu i po vrsta_radnika se radi na frontendu
+// (RadniciPrisutnostPregled.tsx).
+export const getPrisutnostPregled = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.radnici_prisutnost_pregled()",
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });

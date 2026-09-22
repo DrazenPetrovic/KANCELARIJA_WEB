@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Crown,
@@ -133,6 +133,7 @@ export function RadniciPregled() {
   const [pretraga, setPretraga] = useState("");
   const [vrstaFilter, setVrstaFilter] = useState("sve");
   const [statusFilter, setStatusFilter] = useState("1");
+  const [grupisiPoVrsti, setGrupisiPoVrsti] = useState(false);
   const [otkrivenaLozinka, setOtkrivenaLozinka] = useState<number | null>(
     null,
   );
@@ -275,6 +276,119 @@ export function RadniciPregled() {
     });
   }, [data, pretraga, vrstaFilter, statusFilter]);
 
+  const renderRedRadnika = (r: Radnik) => {
+    const status = STATUS_RADNIKA_META[r.status_radnika] ?? {
+      label: `Nepoznato (${r.status_radnika})`,
+      color: "#9ca3af",
+      icon: null,
+    };
+    const otkriveno = otkrivenaLozinka === r.radnik_id;
+    return (
+      <tr
+        key={r.radnik_id}
+        className="hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40 transition-colors"
+      >
+        <TD>
+          <span
+            className="font-mono font-semibold text-xs"
+            style={{ color: PRIMARY }}
+          >
+            {r.sifra_radnika ?? "–"}
+          </span>
+        </TD>
+        <TD>
+          <span className="inline-flex items-center gap-2">
+            <span className="font-medium">{r.naziv_radnika}</span>
+            <button
+              type="button"
+              onClick={() => otvoriIzmjenu(r)}
+              title="Izmijeni radnika"
+              className="text-gray-400 dark:text-[#5f5878] hover:opacity-70"
+              style={{ color: PRIMARY }}
+            >
+              <Pencil size={13} />
+            </button>
+          </span>
+        </TD>
+        <TD>{r.oznaka || "–"}</TD>
+        <TD>{vrstaRadnikaLabel(r.vrsta_radnika)}</TD>
+        <TD center>
+          <span
+            className="inline-flex items-center gap-1 text-xs font-semibold"
+            style={{ color: status.color }}
+          >
+            {status.icon}
+            {status.label}
+          </span>
+        </TD>
+        <TD center>
+          {r.aktivan === 1 ? (
+            <span
+              className="inline-flex items-center gap-1 text-xs font-semibold"
+              style={{ color: ACCENT }}
+            >
+              <CheckCircle2 size={13} />
+              Da
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400 dark:text-[#5f5878]">
+              <XCircle size={13} />
+              Ne
+            </span>
+          )}
+        </TD>
+        <TD center>
+          <button
+            type="button"
+            onClick={() =>
+              setOtkrivenaLozinka((prev) =>
+                prev === r.radnik_id ? null : r.radnik_id,
+              )
+            }
+            title={otkriveno ? "Sakrij lozinku" : "Prikaži lozinku"}
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-gray-500 dark:text-[#a99fc2] hover:opacity-80"
+          >
+            {otkriveno ? (
+              <>
+                {r.lozinka || "–"}
+                <EyeOff size={13} />
+              </>
+            ) : (
+              <>
+                ••••••
+                <Eye size={13} />
+              </>
+            )}
+          </button>
+        </TD>
+        <TD>{formatDatum(r.datum_unosa)}</TD>
+        <TD>{formatDatum(r.datum_izmjene)}</TD>
+      </tr>
+    );
+  };
+
+  // Abecedno kad se ne grupiše (ako neće grupisati, ide abecednim redom).
+  const filtriraniSortirani = useMemo(
+    () =>
+      [...filtrirani].sort((a, b) =>
+        a.naziv_radnika.localeCompare(b.naziv_radnika, "sr-Latn"),
+      ),
+    [filtrirani],
+  );
+
+  // Grupisano po vrsta_radnika (rastuće po šifri), unutar grupe abecedno.
+  const grupisaniRadnici = useMemo(() => {
+    const poVrsti = new Map<number, Radnik[]>();
+    filtriraniSortirani.forEach((r) => {
+      const lista = poVrsti.get(r.vrsta_radnika) ?? [];
+      lista.push(r);
+      poVrsti.set(r.vrsta_radnika, lista);
+    });
+    return Array.from(poVrsti.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([vrsta, radnici]) => ({ vrsta, radnici }));
+  }, [filtriraniSortirani]);
+
   return (
     <div className="space-y-4">
       {/* Naslov */}
@@ -337,6 +451,16 @@ export function RadniciPregled() {
               </option>
             ))}
           </select>
+
+          <label className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={grupisiPoVrsti}
+              onChange={(e) => setGrupisiPoVrsti(e.target.checked)}
+              className="w-4 h-4 accent-[#785E9E]"
+            />
+            Grupiši po vrsti radnika
+          </label>
         </div>
       </div>
 
@@ -355,7 +479,7 @@ export function RadniciPregled() {
           </div>
         )}
 
-        {!loading && !error && filtrirani.length === 0 && (
+        {!loading && !error && filtriraniSortirani.length === 0 && (
           <div className="flex items-center justify-center py-20">
             <p className="text-sm text-gray-400 dark:text-[#5f5878]">
               Nema podataka za prikaz.
@@ -363,7 +487,7 @@ export function RadniciPregled() {
           </div>
         )}
 
-        {!loading && !error && filtrirani.length > 0 && (
+        {!loading && !error && filtriraniSortirani.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -380,96 +504,25 @@ export function RadniciPregled() {
                 </tr>
               </thead>
               <tbody>
-                {filtrirani.map((r) => {
-                  const status = STATUS_RADNIKA_META[r.status_radnika] ?? {
-                    label: `Nepoznato (${r.status_radnika})`,
-                    color: "#9ca3af",
-                    icon: null,
-                  };
-                  const otkriveno = otkrivenaLozinka === r.radnik_id;
-                  return (
-                    <tr
-                      key={r.radnik_id}
-                      className="hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40 transition-colors"
-                    >
-                      <TD>
-                        <span
-                          className="font-mono font-semibold text-xs"
-                          style={{ color: PRIMARY }}
-                        >
-                          {r.sifra_radnika ?? "–"}
-                        </span>
-                      </TD>
-                      <TD>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="font-medium">{r.naziv_radnika}</span>
-                          <button
-                            type="button"
-                            onClick={() => otvoriIzmjenu(r)}
-                            title="Izmijeni radnika"
-                            className="text-gray-400 dark:text-[#5f5878] hover:opacity-70"
-                            style={{ color: PRIMARY }}
-                          >
-                            <Pencil size={13} />
-                          </button>
-                        </span>
-                      </TD>
-                      <TD>{r.oznaka || "–"}</TD>
-                      <TD>{vrstaRadnikaLabel(r.vrsta_radnika)}</TD>
-                      <TD center>
-                        <span
-                          className="inline-flex items-center gap-1 text-xs font-semibold"
-                          style={{ color: status.color }}
-                        >
-                          {status.icon}
-                          {status.label}
-                        </span>
-                      </TD>
-                      <TD center>
-                        {r.aktivan === 1 ? (
-                          <span
-                            className="inline-flex items-center gap-1 text-xs font-semibold"
+                {grupisiPoVrsti
+                  ? grupisaniRadnici.map(({ vrsta, radnici }) => (
+                      <Fragment key={vrsta}>
+                        <tr>
+                          <td
+                            colSpan={9}
+                            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340]"
                             style={{ color: ACCENT }}
                           >
-                            <CheckCircle2 size={13} />
-                            Da
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400 dark:text-[#5f5878]">
-                            <XCircle size={13} />
-                            Ne
-                          </span>
-                        )}
-                      </TD>
-                      <TD center>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOtkrivenaLozinka((prev) =>
-                              prev === r.radnik_id ? null : r.radnik_id,
-                            )
-                          }
-                          title={otkriveno ? "Sakrij lozinku" : "Prikaži lozinku"}
-                          className="inline-flex items-center gap-1.5 text-xs font-mono text-gray-500 dark:text-[#a99fc2] hover:opacity-80"
-                        >
-                          {otkriveno ? (
-                            <>
-                              {r.lozinka || "–"}
-                              <EyeOff size={13} />
-                            </>
-                          ) : (
-                            <>
-                              ••••••
-                              <Eye size={13} />
-                            </>
-                          )}
-                        </button>
-                      </TD>
-                      <TD>{formatDatum(r.datum_unosa)}</TD>
-                      <TD>{formatDatum(r.datum_izmjene)}</TD>
-                    </tr>
-                  );
-                })}
+                            {vrstaRadnikaLabel(vrsta)}{" "}
+                            <span className="text-gray-400 dark:text-[#5f5878] font-normal normal-case">
+                              ({radnici.length})
+                            </span>
+                          </td>
+                        </tr>
+                        {radnici.map((r) => renderRedRadnika(r))}
+                      </Fragment>
+                    ))
+                  : filtriraniSortirani.map((r) => renderRedRadnika(r))}
               </tbody>
             </table>
           </div>

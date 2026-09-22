@@ -57,6 +57,19 @@ const danasnjiDatum = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+export const getPrisutnostPregled = async (req, res) => {
+  try {
+    const data = await RadniciService.getPrisutnostPregled();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled prisutnosti error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju pregleda prisutnosti",
+    });
+  }
+};
+
 export const getPrisutnostPoDanu = async (req, res) => {
   try {
     const datum = req.query.datum || danasnjiDatum();
