@@ -71,6 +71,27 @@ const formatirajDan = (dan: string): string => {
   return `${dd}.${MM}.${yyyy}.`;
 };
 
+// "dd.MM." — kratak prikaz za brzi link (mjesec/godina su već u naslovu grupe).
+const formatirajDanKratko = (dan: string): string => {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(dan);
+  if (!m) return dan;
+  const [, MM, dd] = m;
+  return `${dd}.${MM}.`;
+};
+
+// "yyyy-MM" -> "Septembar 2026." (lokalizovan naziv mjeseca preko Intl).
+const formatirajMjesec = (mjesec: string): string => {
+  const m = /^(\d{4})-(\d{2})$/.exec(mjesec);
+  if (!m) return mjesec;
+  const [, yyyy, MM] = m;
+  const d = new Date(Number(yyyy), Number(MM) - 1, 1);
+  const naziv = d.toLocaleDateString("sr-Latn-BA", {
+    month: "long",
+    year: "numeric",
+  });
+  return naziv.charAt(0).toUpperCase() + naziv.slice(1);
+};
+
 const izvuciVrijeme = (v: string | null): string | null => {
   if (!v) return null;
   const m = /(\d{2}):(\d{2})/.exec(v);
@@ -194,11 +215,18 @@ export function RadniciPrisutnostPregled() {
       });
   }, [filtrirano]);
 
+  // Dan koji je trenutno "aktivan" (upravo kliknut/otvoren) — odvojeno od
+  // otvoreniDani jer više dana može biti otvoreno istovremeno, a samo jedan
+  // je "trenutni" (primarna boja u sidebar-u; ostali otvoreni ali ne
+  // trenutni su sivi, nikad otvoreni su sekundarne boje).
+  const [aktivanDan, setAktivanDan] = useState<string | null>(null);
+
   // Podrazumevano otvoren samo najnoviji dan (skalabilno kad ima puno dana
   // — ostali se ne renderuju dok se ne klikne na njih).
   useEffect(() => {
     if (!pocetnoOtvoreno && grupisanoPoDanima.length > 0) {
       setOtvoreniDani(new Set([grupisanoPoDanima[0].dan]));
+      setAktivanDan(grupisanoPoDanima[0].dan);
       setPocetnoOtvoreno(true);
     }
   }, [grupisanoPoDanima, pocetnoOtvoreno]);
@@ -206,14 +234,56 @@ export function RadniciPrisutnostPregled() {
   const preklopiDan = (dan: string) => {
     setOtvoreniDani((prev) => {
       const sledeci = new Set(prev);
-      if (sledeci.has(dan)) sledeci.delete(dan);
-      else sledeci.add(dan);
+      if (sledeci.has(dan)) {
+        sledeci.delete(dan);
+      } else {
+        sledeci.add(dan);
+        setAktivanDan(dan);
+      }
       return sledeci;
     });
   };
 
+  // Brzi linkovi (lijevo) grupisani po mjesecu — dani su već opadajuće
+  // sortirani unutar grupisanoPoDanima, pa se taj redoslijed samo prenosi.
+  const linkoviPoMjesecu = useMemo(() => {
+    const poMjesecu = new Map<
+      string,
+      { dan: string; ukupno: number }[]
+    >();
+    grupisanoPoDanima.forEach(({ dan, ukupno }) => {
+      const mjesec = dan.slice(0, 7);
+      const lista = poMjesecu.get(mjesec) ?? [];
+      lista.push({ dan, ukupno });
+      poMjesecu.set(mjesec, lista);
+    });
+    return Array.from(poMjesecu.entries()).map(([mjesec, dani]) => ({
+      mjesec,
+      dani,
+    }));
+  }, [grupisanoPoDanima]);
+
+  // Klik na brzi link: otvori taj dan (ako već nije) i skroluj do njega —
+  // skrol se izvršava tek kad se sekcija stvarno pojavi u DOM-u (otvoren).
+  const [skrolNaDan, setSkrolNaDan] = useState<string | null>(null);
+
+  const idiNaDan = (dan: string) => {
+    setOtvoreniDani((prev) => new Set(prev).add(dan));
+    setAktivanDan(dan);
+    setSkrolNaDan(dan);
+  };
+
+  useEffect(() => {
+    if (!skrolNaDan) return;
+    const el = document.getElementById(`prisutnost-dan-${skrolNaDan}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setSkrolNaDan(null);
+    }
+  }, [skrolNaDan, otvoreniDani, grupisanoPoDanima]);
+
   return (
-    <div className="w-full md:w-[60%] mx-auto space-y-4">
+    <div className="w-full lg:w-[85%] mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
@@ -271,20 +341,70 @@ export function RadniciPrisutnostPregled() {
         </div>
       )}
 
-      {!loading &&
-        !error &&
-        grupisanoPoDanima.map(({ dan, grupe, ukupno }) => {
+      {!loading && !error && grupisanoPoDanima.length > 0 && (
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
+          {/* LIJEVO: brzi linkovi na prethodne dane, grupisani po mjesecu */}
+          <div className="w-full lg:w-60 shrink-0 lg:sticky lg:top-4">
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+              <span
+                className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: PRIMARY }}
+              >
+                Dani sa podacima
+              </span>
+              <div className="mt-2 space-y-4 max-h-[75vh] overflow-y-auto">
+                {linkoviPoMjesecu.map(({ mjesec, dani }) => (
+                  <div key={mjesec}>
+                    <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                      {formatirajMjesec(mjesec)}
+                    </div>
+                    <div className="space-y-0.5">
+                      {dani.map(({ dan, ukupno: ukupnoDan }) => {
+                        const aktivan = dan === aktivanDan;
+                        const otvorenRanije =
+                          !aktivan && otvoreniDani.has(dan);
+                        const boja = aktivan
+                          ? PRIMARY
+                          : otvorenRanije
+                            ? "#9ca3af"
+                            : ACCENT;
+                        return (
+                          <button
+                            key={dan}
+                            type="button"
+                            onClick={() => idiNaDan(dan)}
+                            className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors hover:opacity-90"
+                            style={{ backgroundColor: boja }}
+                          >
+                            <span>{formatirajDanKratko(dan)}</span>
+                            <span className="text-white/80">
+                              {ukupnoDan}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* DESNO: kartice po danu (postojeći prikaz) */}
+          <div className="flex-1 min-w-0 space-y-4">
+      {grupisanoPoDanima.map(({ dan, grupe, ukupno }) => {
           const otvoren = otvoreniDani.has(dan);
           return (
           <div
             key={dan}
+            id={`prisutnost-dan-${dan}`}
             className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden"
           >
             <button
               type="button"
               onClick={() => preklopiDan(dan)}
-              className="w-full px-5 py-3 flex items-center justify-between transition-opacity hover:opacity-90"
-              style={{ backgroundColor: PRIMARY }}
+              className="w-full px-5 py-3 flex items-center justify-between transition-colors hover:opacity-90"
+              style={{ backgroundColor: otvoren ? PRIMARY : ACCENT }}
             >
               <span className="text-sm font-bold text-white">
                 {formatirajDan(dan)}
@@ -356,6 +476,9 @@ export function RadniciPrisutnostPregled() {
           </div>
           );
         })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

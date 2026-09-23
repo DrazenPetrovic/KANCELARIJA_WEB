@@ -14,6 +14,57 @@ import {
   XCircle,
 } from "lucide-react";
 
+// Zapis vraćen sa erp.radnici_prisutnost_pregled_po_danu (isti izvor kao na
+// stranici Radnici > Unos prisutnosti) — koristi se ovdje samo da se
+// vizuelno označi ko je od radnika unesen (došao na posao) danas.
+interface PrisutnostZapisDanas {
+  sifra_tabele: number;
+  sifra_radnika: number;
+  datum_pocetka: string;
+  datum_kraja: string | null;
+  smjena: number | null;
+  [key: string]: unknown;
+}
+
+const VRSTA_RADA_OPTIONS_KRATKO = [
+  { key: "redovan_rad", label: "Redovan rad" },
+  { key: "prekovremeni_rad", label: "Prekovremeni rad" },
+  { key: "rad_nocu", label: "Rad noću" },
+  { key: "rad_praznikom", label: "Rad praznikom" },
+  { key: "terenski_rad", label: "Terenski rad" },
+  { key: "dezurstvo", label: "Dežurstvo" },
+  { key: "godisnji_odmor", label: "Godišnji odmor" },
+  { key: "praznik_odmor", label: "Praznik (neradni dan)" },
+  { key: "privremena_nesposobnost", label: "Bolovanje" },
+  { key: "porodiljsko", label: "Porodiljsko odsustvo" },
+  { key: "placeno_odsustvo", label: "Plaćeno odsustvo" },
+  { key: "neplaceno_odsustvo", label: "Neplaćeno odsustvo" },
+  { key: "odsustvo_bez_krivice", label: "Odsustvo bez krivice" },
+  { key: "ostala_odsustva", label: "Ostala odsustva" },
+  { key: "sedmicni_odmor", label: "Sedmični odmor" },
+] as const;
+
+const izvuciVrijemeDanas = (v: string | null): string | null => {
+  if (!v) return null;
+  const m = /(\d{2}):(\d{2})/.exec(v);
+  return m ? `${m[1]}:${m[2]}` : v;
+};
+
+const opisPrisutnostiDanas = (z: PrisutnostZapisDanas): string => {
+  const dijelovi = VRSTA_RADA_OPTIONS_KRATKO.map((o) => ({
+    label: o.label,
+    sati: Number(z[o.key]) || 0,
+  })).filter((d) => d.sati > 0);
+  const opis =
+    dijelovi.length > 0
+      ? dijelovi.map((d) => `${d.label} ${d.sati}h`).join(", ")
+      : "Prisutnost";
+  const pocetak = izvuciVrijemeDanas(z.datum_pocetka);
+  const kraj = izvuciVrijemeDanas(z.datum_kraja);
+  const vrijeme = pocetak ? `${pocetak}${kraj ? `–${kraj}` : ""}` : "";
+  return vrijeme ? `${opis} (${vrijeme})` : opis;
+};
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
@@ -137,6 +188,9 @@ export function RadniciPregled() {
   const [otkrivenaLozinka, setOtkrivenaLozinka] = useState<number | null>(
     null,
   );
+  const [prisutniDanas, setPrisutniDanas] = useState<
+    Map<number, PrisutnostZapisDanas>
+  >(new Map());
 
   const [urediRadnika, setUrediRadnika] = useState<Radnik | null>(null);
   const [formNaziv, setFormNaziv] = useState("");
@@ -224,6 +278,23 @@ export function RadniciPregled() {
     void ucitaj();
   }, []);
 
+  // Ko je od radnika unesen (došao na posao) danas — isti izvor kao Radnici >
+  // Unos prisutnosti (erp.radnici_prisutnost_pregled_po_danu), samo za
+  // vizuelnu oznaku ovdje, ne za zaključavanje.
+  useEffect(() => {
+    fetch(`${API_URL}/api/radnici/prisutnost/po-danu`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((json) => {
+        const lista: PrisutnostZapisDanas[] = json.data ?? [];
+        setPrisutniDanas(
+          new Map(lista.map((z) => [z.sifra_radnika, z])),
+        );
+      })
+      .catch(() => setPrisutniDanas(new Map()));
+  }, []);
+
   // Stvarni naziv radnog mjesta iz baze (rm.vrsta_posla, spojen u
   // erp.radnici_pregled) — pouzdaniji od statičkog šifarnika jer prati
   // stvarnu tabelu radnih mjesta, a ne pretpostavke iz docs fajla.
@@ -309,6 +380,22 @@ export function RadniciPregled() {
               <Pencil size={13} />
             </button>
           </span>
+        </TD>
+        <TD center>
+          {r.sifra_radnika != null && prisutniDanas.has(r.sifra_radnika) ? (
+            <span
+              title={opisPrisutnostiDanas(
+                prisutniDanas.get(r.sifra_radnika) as PrisutnostZapisDanas,
+              )}
+              className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white"
+              style={{ background: ACCENT }}
+            >
+              <CheckCircle2 size={11} />
+              PRIJAVLJEN
+            </span>
+          ) : (
+            <span className="text-gray-300 dark:text-[#4a4360]">–</span>
+          )}
         </TD>
         <TD>{r.oznaka || "–"}</TD>
         <TD>{vrstaRadnikaLabel(r.vrsta_radnika)}</TD>
@@ -494,6 +581,7 @@ export function RadniciPregled() {
                 <tr>
                   <TH>Šifra</TH>
                   <TH>Naziv</TH>
+                  <TH center>Prijavljen</TH>
                   <TH>Oznaka</TH>
                   <TH>Vrsta radnika</TH>
                   <TH center>Status</TH>
@@ -509,7 +597,7 @@ export function RadniciPregled() {
                       <Fragment key={vrsta}>
                         <tr>
                           <td
-                            colSpan={9}
+                            colSpan={10}
                             className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340]"
                             style={{ color: ACCENT }}
                           >

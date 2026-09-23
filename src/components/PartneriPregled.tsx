@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Building2,
   CheckCircle2,
   IdCard,
@@ -110,6 +113,39 @@ const TH = ({
     style={{ color: PRIMARY }}
   >
     {children}
+  </th>
+);
+
+type SmjerSortiranja = "asc" | "desc";
+
+const SortableTH = ({
+  children,
+  aktivno,
+  smjer,
+  onClick,
+}: {
+  children: React.ReactNode;
+  aktivno: boolean;
+  smjer: SmjerSortiranja;
+  onClick: () => void;
+}) => (
+  <th
+    onClick={onClick}
+    className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap bg-[#f4f1f9] dark:bg-[#2a2340] text-left cursor-pointer select-none hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
+    style={{ color: PRIMARY }}
+  >
+    <span className="inline-flex items-center gap-1">
+      {children}
+      {aktivno ? (
+        smjer === "asc" ? (
+          <ArrowUp size={12} />
+        ) : (
+          <ArrowDown size={12} />
+        )
+      ) : (
+        <ArrowUpDown size={12} className="opacity-30" />
+      )}
+    </span>
   </th>
 );
 
@@ -264,6 +300,19 @@ export function PartneriPregled() {
   const [pretraga, setPretraga] = useState("");
   const [tipFilter, setTipFilter] = useState("svi");
   const [statusFilter, setStatusFilter] = useState("aktivni");
+  const [sortPolje, setSortPolje] = useState<"partner_id" | "naziv">(
+    "partner_id",
+  );
+  const [sortSmjer, setSortSmjer] = useState<SmjerSortiranja>("asc");
+
+  const promijeniSortiranje = (polje: "partner_id" | "naziv") => {
+    if (sortPolje === polje) {
+      setSortSmjer((s) => (s === "asc" ? "desc" : "asc"));
+    } else {
+      setSortPolje(polje);
+      setSortSmjer("asc");
+    }
+  };
 
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [activeTab, setActiveTab] = useState<PartnerTab>("poslovnice");
@@ -514,7 +563,7 @@ export function PartneriPregled() {
   };
 
   const filtrirani = useMemo(() => {
-    return data.filter((p) => {
+    const rezultat = data.filter((p) => {
       const matchTip = tipFilter === "svi" || p.tip_partnera === tipFilter;
       const matchStatus =
         statusFilter === "svi" ||
@@ -536,7 +585,17 @@ export function PartneriPregled() {
         p.telefon?.toLowerCase().includes(q)
       );
     });
-  }, [data, pretraga, tipFilter, statusFilter]);
+
+    const smjer = sortSmjer === "asc" ? 1 : -1;
+    rezultat.sort((a, b) => {
+      if (sortPolje === "partner_id") {
+        return (a.partner_id - b.partner_id) * smjer;
+      }
+      return a.naziv.localeCompare(b.naziv) * smjer;
+    });
+
+    return rezultat;
+  }, [data, pretraga, tipFilter, statusFilter, sortPolje, sortSmjer]);
 
   const jeVirtualizovano = filtrirani.length > PRAG_VIRTUALIZACIJE;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -676,8 +735,20 @@ export function PartneriPregled() {
             <table className="w-full">
               <thead>
                 <tr className={jeVirtualizovano ? "sticky top-0 z-10" : undefined}>
-                  <TH>Šifra</TH>
-                  <TH>Naziv</TH>
+                  <SortableTH
+                    aktivno={sortPolje === "partner_id"}
+                    smjer={sortSmjer}
+                    onClick={() => promijeniSortiranje("partner_id")}
+                  >
+                    Šifra
+                  </SortableTH>
+                  <SortableTH
+                    aktivno={sortPolje === "naziv"}
+                    smjer={sortSmjer}
+                    onClick={() => promijeniSortiranje("naziv")}
+                  >
+                    Naziv
+                  </SortableTH>
                   <TH>JIB / PIB</TH>
                   <TH>Adresa</TH>
                   <TH>Telefon</TH>

@@ -72,6 +72,11 @@ const KORACI_CUVANJA = [
 
 const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] focus:ring-1 focus:ring-[#785E9E]/20 transition-all text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-300 dark:placeholder:text-[#5f5878] bg-white dark:bg-[#1e1a2d]";
+// Skida native gore/dole strelice sa number inputa (VPC/Rabat/Količina u modalu za
+// unos stavke) — ostaje samo unos kucanjem, sprečava nehotičnu promjenu vrijednosti
+// klikom na strelicu.
+const bezStrelicaClass =
+  "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -532,6 +537,29 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const searchRef = useRef<HTMLDivElement>(null);
   const terenRef = useRef<HTMLDivElement>(null);
   const datumValuteRef = useRef<HTMLInputElement>(null);
+
+  // Onemogućava nativno "drag & drop" prevlačenje označenog teksta iz jedne
+  // kolone/polja u drugo (npr. iz VPC1 u Rabat 2) — browser to dozvoljava
+  // po defaultu, a u ovoj formi otvara vrata nehotičnom prepisivanju cijena/
+  // rabata. Ne dira normalnu selekciju teksta niti Ctrl+C/Ctrl+V.
+  // Na document nivou (capture faza) jer se dio modala renderuje kroz
+  // ReactDOM.createPortal (van glavnog DOM stabla ove forme), a mora ostati
+  // aktivno samo dok je ovaj ekran otvoren.
+  useEffect(() => {
+    const blokirajPrevlacenjeTeksta = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener("dragstart", blokirajPrevlacenjeTeksta, true);
+    document.addEventListener("drop", blokirajPrevlacenjeTeksta, true);
+    return () => {
+      document.removeEventListener(
+        "dragstart",
+        blokirajPrevlacenjeTeksta,
+        true,
+      );
+      document.removeEventListener("drop", blokirajPrevlacenjeTeksta, true);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -3902,7 +3930,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                               !isNaN(n) ? n.toFixed(2) : vpcKatalog.toFixed(2),
                             );
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                           style={
                             dogovorenaVpcAktivna
                               ? { borderColor: "#ef4444", borderWidth: 2 }
@@ -3925,7 +3953,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                             const n = parseFloat(rab1);
                             if (!isNaN(n)) onRab1Change(n.toFixed(2));
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                         />
                       </div>
                       <div>
@@ -3944,7 +3972,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                               !isNaN(n) ? n.toFixed(2) : bazaVpc2.toFixed(2),
                             );
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                         />
                       </div>
                       <div>
@@ -3962,7 +3990,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                             const n = parseFloat(rab2);
                             if (!isNaN(n)) onRab2Change(n.toFixed(2));
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                         />
                       </div>
                       <div>
@@ -3981,7 +4009,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                               !isNaN(n) ? n.toFixed(2) : bazaVpc3.toFixed(2),
                             );
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                         />
                       </div>
                       <div>
@@ -3999,7 +4027,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                             const n = parseFloat(rab3);
                             if (!isNaN(n)) onRab3Change(n.toFixed(2));
                           }}
-                          className={inputClass}
+                          className={`${inputClass} ${bezStrelicaClass}`}
                         />
                       </div>
                     </div>
@@ -4047,7 +4075,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         e.key === "Enter" && handlePotvrdiStavku()
                       }
                       autoFocus
-                      className={inputClass}
+                      className={`${inputClass} ${bezStrelicaClass}`}
                     />
                   </div>
                   {kolicina &&
