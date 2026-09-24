@@ -78,8 +78,8 @@ function formatBroj(n: number) {
 const VRSTA_UPLATE: Record<number, { naziv: string; tip: "uplata" | "isplata" }> = {
   0: { naziv: "Dugovanja kupcu", tip: "isplata" },
   1: { naziv: "Uplate kupaca", tip: "uplata" },
-  2: { naziv: "Uplata dobavljačima (kalk)", tip: "isplata" },
-  3: { naziv: "Uplata (KUF)", tip: "isplata" },
+  2: { naziv: "Isplata dobavljačima (kalk)", tip: "isplata" },
+  3: { naziv: "Isplata (KUF)", tip: "isplata" },
   4: { naziv: "Dugovanja (dobavljaču)", tip: "isplata" },
   5: { naziv: "Davanje pozajmice", tip: "isplata" },
   6: { naziv: "Vraćanje date pozajmice", tip: "uplata" },
@@ -230,6 +230,15 @@ export function IzvodiPregled() {
       niz.push(u);
       map.set(kljuc, niz);
     });
+    // Prvo uplate pa isplate, unutar svake grupe od najvećeg iznosa ka najmanjem.
+    map.forEach((niz) =>
+      niz.sort((a, b) => {
+        const tipA = vrstaUplateInfo(a.vrsta_uplate).tip === "isplata" ? 1 : 0;
+        const tipB = vrstaUplateInfo(b.vrsta_uplate).tip === "isplata" ? 1 : 0;
+        if (tipA !== tipB) return tipA - tipB;
+        return (Number(b.uplaceno) || 0) - (Number(a.uplaceno) || 0);
+      }),
+    );
     return map;
   }, [uplate]);
 
@@ -307,7 +316,7 @@ export function IzvodiPregled() {
     sortirani.length > 0 && prosireno.size >= sortirani.length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-[90%] mx-auto">
       {/* Naslov */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
@@ -415,7 +424,7 @@ export function IzvodiPregled() {
       </div>
 
       {/* Lista izvoda */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-[80%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -511,7 +520,45 @@ export function IzvodiPregled() {
                       {izvod.redni_broj}
                     </div>
                   </div>
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none whitespace-nowrap">
+                  <div className="hidden md:flex items-center gap-6 text-xs text-gray-500 dark:text-[#9e96b8] flex-shrink-0">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
+                          Krajnje
+                        </span>
+                        <span className="font-semibold" style={{ color: PRIMARY }}>
+                          {formatKM(izvod.krajnje_stanje)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
+                          Početno
+                        </span>
+                        <span className="font-semibold text-red-500">
+                          {formatKM(izvod.pocetno_stanje)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
+                          Uplata
+                        </span>
+                        <span className="font-semibold" style={{ color: ACCENT }}>
+                          {formatKM(izvod.ukupno_uplata)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
+                          Isplata
+                        </span>
+                        <span className="font-semibold text-red-500">
+                          {formatKM(izvod.ukupno_isplata)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex justify-center items-center gap-4 pointer-events-none whitespace-nowrap">
                     <div className="flex flex-col items-center">
                       <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
                         Izvod #{izvod.sifra_izvoda}
@@ -551,44 +598,6 @@ export function IzvodiPregled() {
                       )}
                     </div>
                   </div>
-                  <div className="hidden md:flex items-center gap-6 text-xs text-gray-500 dark:text-[#9e96b8] flex-shrink-0">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
-                          Krajnje
-                        </span>
-                        <span className="font-semibold" style={{ color: PRIMARY }}>
-                          {formatKM(izvod.krajnje_stanje)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-14">
-                          Početno
-                        </span>
-                        <span className="font-semibold text-red-500">
-                          {formatKM(izvod.pocetno_stanje)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
-                          Uplata
-                        </span>
-                        <span className="font-semibold" style={{ color: ACCENT }}>
-                          {formatKM(izvod.ukupno_uplata)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 dark:text-[#5f5878] w-12">
-                          Isplata
-                        </span>
-                        <span className="font-semibold text-red-500">
-                          {formatKM(izvod.ukupno_isplata)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
                   <div className="ml-auto flex items-center gap-3 flex-shrink-0">
                     <div className="hidden lg:flex flex-col items-end leading-tight text-[10px]">
                       <span className="text-green-600 dark:text-green-400">
@@ -613,26 +622,26 @@ export function IzvodiPregled() {
                         <span className="text-xs">Nema uplata za ovaj izvod</span>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-[#2d2648]">
-                        <table className="w-full">
+                      <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-[#2d2648] w-fit max-w-full mx-auto">
+                        <table className="table-auto">
                           <thead>
-                            <tr style={{ background: `${PRIMARY}1f` }}>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                            <tr style={{ background: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Partner
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Datum
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: ACCENT }}>
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-green-200">
                                 Uplate
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-500">
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-200">
                                 Isplate
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Opis / napomena
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Vrsta
                               </th>
                             </tr>
@@ -644,10 +653,14 @@ export function IzvodiPregled() {
                               return (
                               <tr
                                 key={u.sifra_uplate}
-                                className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
-                                  idx % 2 === 1
-                                    ? "bg-[#f4f1f9]/60 dark:bg-[#241d3a]/40"
-                                    : ""
+                                className={`transition-colors ${
+                                  vrsta.tip === "isplata"
+                                    ? idx % 2 === 1
+                                      ? "bg-red-200/70 hover:bg-red-200 dark:bg-red-900/45 dark:hover:bg-red-900/55"
+                                      : "bg-red-100 hover:bg-red-200 dark:bg-red-900/35 dark:hover:bg-red-900/55"
+                                    : idx % 2 === 1
+                                      ? "bg-green-100/70 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/40"
+                                      : "bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40"
                                 }`}
                               >
                                 <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">

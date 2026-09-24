@@ -59,8 +59,14 @@ interface JedinicaMjereOpcija {
   [key: string]: unknown;
 }
 
+// Vrsta "Nije definisano" (-1) je samo placeholder — forsira operatera da
+// eksplicitno izabere pravu vrstu, forma se ne može sačuvati dok je izabrana.
+// Vrsta "Sirovina" (0) automatski postavlja sirovina_da, bez posebnog checkboxa.
+const VRSTA_NIJE_DEFINISANO = "-1";
+const VRSTA_SIROVINA = "0";
 const VRSTA_OPCIJE = [
-  { value: "0", label: "Razno" },
+  { value: VRSTA_NIJE_DEFINISANO, label: "Nije definisano" },
+  { value: VRSTA_SIROVINA, label: "Sirovina" },
   { value: "1", label: "Proizvodi" },
   { value: "2", label: "Roba" },
   { value: "3", label: "Usluga" },
@@ -196,7 +202,7 @@ export function ArtikliPregled() {
   const [jmIzmjena, setJmIzmjena] = useState("");
   const [barkodIzmjena, setBarkodIzmjena] = useState("");
   const [grupaIzmjena, setGrupaIzmjena] = useState("0");
-  const [vrstaIzmjena, setVrstaIzmjena] = useState("0");
+  const [vrstaIzmjena, setVrstaIzmjena] = useState(VRSTA_NIJE_DEFINISANO);
   const [kolicinaIzmjena, setKolicinaIzmjena] = useState("0");
   const [cijenaBezIzmjena, setCijenaBezIzmjena] = useState("");
   const [vpcIzmjena, setVpcIzmjena] = useState("");
@@ -205,7 +211,6 @@ export function ArtikliPregled() {
     useState("");
   const [minimalnaProdajnaIzmjena, setMinimalnaProdajnaIzmjena] =
     useState("");
-  const [sirovinaDaIzmjena, setSirovinaDaIzmjena] = useState(false);
   const [ogranicenaMarzaIzmjena, setOgranicenaMarzaIzmjena] = useState(false);
   const [koristitiZaPonuduIzmjena, setKoristitiZaPonuduIzmjena] =
     useState(true);
@@ -284,11 +289,11 @@ export function ArtikliPregled() {
     );
     // Ovi podaci nisu dio pregleda artikala (sp_artikli_pregled), pa se
     // otvaraju sa podrazumijevanim vrijednostima — korisnik ih po potrebi
-    // popravi prije snimanja.
-    setVrstaIzmjena("0");
+    // popravi prije snimanja. Vrsta se otvara kao "Nije definisano" da
+    // operater mora eksplicitno potvrditi pravu vrstu prije snimanja.
+    setVrstaIzmjena(VRSTA_NIJE_DEFINISANO);
     setMarzaZaKalkulacijuIzmjena("");
     setMinimalnaProdajnaIzmjena("");
-    setSirovinaDaIzmjena(false);
     setOgranicenaMarzaIzmjena(false);
     setKoristitiZaPonuduIzmjena(true);
     setGreskaIzmjena(null);
@@ -311,6 +316,10 @@ export function ArtikliPregled() {
       setGreskaIzmjena("Jedinica mjere (JM) je obavezna");
       return;
     }
+    if (vrstaIzmjena === VRSTA_NIJE_DEFINISANO) {
+      setGreskaIzmjena("Vrsta artikla je obavezna — izaberite jednu od opcija");
+      return;
+    }
 
     const payload = {
       sifra_proizvoda: Number(artikalZaIzmjenu.sifra_proizvoda),
@@ -320,7 +329,7 @@ export function ArtikliPregled() {
       cijena_bez: Number(cijenaBezIzmjena) || 0,
       vpc: Number(vpcIzmjena) || 0,
       marza: Number(marzaIzmjena) || 0,
-      sirovina_da: sirovinaDaIzmjena ? 1 : 0,
+      sirovina_da: vrstaIzmjena === VRSTA_SIROVINA ? 1 : 0,
       ogranicena_marza: ogranicenaMarzaIzmjena ? 1 : 0,
       marza_za_kalkulaciju: Number(marzaZaKalkulacijuIzmjena) || 0,
       grupa_proizvoda: Number(grupaIzmjena) || 0,
@@ -851,16 +860,6 @@ export function ArtikliPregled() {
                 </div>
 
                 <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={sirovinaDaIzmjena}
-                      onChange={(e) => setSirovinaDaIzmjena(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                      style={{ accentColor: PRIMARY }}
-                    />
-                    Sirovina
-                  </label>
                   <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
                     <input
                       type="checkbox"

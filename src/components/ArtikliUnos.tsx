@@ -34,8 +34,14 @@ interface PostojeciArtikal {
   [key: string]: unknown;
 }
 
+// Vrsta "Nije definisano" (-1) je samo placeholder — forsira operatera da
+// eksplicitno izabere pravu vrstu, forma se ne može sačuvati dok je izabrana.
+// Vrsta "Sirovina" (0) automatski postavlja sirovina_da, bez posebnog checkboxa.
+const VRSTA_NIJE_DEFINISANO = "-1";
+const VRSTA_SIROVINA = "0";
 const VRSTA_OPCIJE = [
-  { value: "0", label: "Razno" },
+  { value: VRSTA_NIJE_DEFINISANO, label: "Nije definisano" },
+  { value: VRSTA_SIROVINA, label: "Sirovina" },
   { value: "1", label: "Proizvodi" },
   { value: "2", label: "Roba" },
   { value: "3", label: "Usluga" },
@@ -68,14 +74,10 @@ export function ArtikliUnos() {
   const [jm, setJm] = useState("");
   const [barkod, setBarkod] = useState("");
   const [grupaProizvoda, setGrupaProizvoda] = useState("0");
-  const [vrsta, setVrsta] = useState("0");
-  const [kolicinaProizvoda, setKolicinaProizvoda] = useState("0");
-  const [cijenaBez, setCijenaBez] = useState("");
-  const [vpc, setVpc] = useState("");
+  const [vrsta, setVrsta] = useState(VRSTA_NIJE_DEFINISANO);
   const [marza, setMarza] = useState("");
   const [marzaZaKalkulaciju, setMarzaZaKalkulaciju] = useState("");
   const [minimalnaProdajna, setMinimalnaProdajna] = useState("");
-  const [sirovinaDa, setSirovinaDa] = useState(false);
   const [ogranicenaMarza, setOgranicenaMarza] = useState(false);
   const [koristitiZaPonudu, setKoristitiZaPonudu] = useState(true);
 
@@ -153,29 +155,15 @@ export function ArtikliUnos() {
       .slice(0, 50);
   }, [postojeciArtikli, nazivProizvoda]);
 
-  // Marža se automatski predlaže iz odnosa nabavne cijene i VPC-a
-  // (isti izračun kao u pregledu artikala), korisnik je može ručno prepraviti.
-  useEffect(() => {
-    const n = Number(cijenaBez);
-    const v = Number(vpc);
-    if (Number.isFinite(n) && n > 0 && Number.isFinite(v)) {
-      setMarza((((v - n) / n) * 100).toFixed(2));
-    }
-  }, [cijenaBez, vpc]);
-
   const resetujFormu = () => {
     setNazivProizvoda("");
     setJm(jediniceMjere.length > 0 ? String(jediniceMjere[0].sifra) : "");
     setBarkod("");
     setGrupaProizvoda("0");
-    setVrsta("0");
-    setKolicinaProizvoda("0");
-    setCijenaBez("");
-    setVpc("");
+    setVrsta(VRSTA_NIJE_DEFINISANO);
     setMarza("");
     setMarzaZaKalkulaciju("");
     setMinimalnaProdajna("");
-    setSirovinaDa(false);
     setOgranicenaMarza(false);
     setKoristitiZaPonudu(true);
   };
@@ -192,6 +180,10 @@ export function ArtikliUnos() {
       setGreska("Jedinica mjere (JM) je obavezna");
       return;
     }
+    if (vrsta === VRSTA_NIJE_DEFINISANO) {
+      setGreska("Vrsta artikla je obavezna — izaberite jednu od opcija");
+      return;
+    }
     if (nazivDuplikat) {
       setGreska(
         `Artikal sa nazivom "${nazivProizvoda.trim()}" već postoji (šifra ${nazivDuplikat.sifra_proizvoda})`,
@@ -202,11 +194,13 @@ export function ArtikliUnos() {
     const payload = {
       naziv_proizvoda: nazivProizvoda.trim(),
       jm: Number(jm),
-      kolicina_proizvoda: Number(kolicinaProizvoda) || 0,
-      cijena_bez: Number(cijenaBez) || 0,
-      vpc: Number(vpc) || 0,
+      // Količina, nabavna cijena i VPC se ne unose ovim putem — dolaze kasnije
+      // kroz nivelaciju/kalkulaciju, ne kroz unos novog artikla.
+      kolicina_proizvoda: 0,
+      cijena_bez: 0,
+      vpc: 0,
       marza: Number(marza) || 0,
-      sirovina_da: sirovinaDa ? 1 : 0,
+      sirovina_da: vrsta === VRSTA_SIROVINA ? 1 : 0,
       ogranicena_marza: ogranicenaMarza ? 1 : 0,
       marza_za_kalkulaciju: Number(marzaZaKalkulaciju) || 0,
       grupa_proizvoda: Number(grupaProizvoda) || 0,
@@ -335,42 +329,16 @@ export function ArtikliUnos() {
         </div>
       </div>
 
-      {/* Cijene i količina */}
+      {/* Marža i dodatne postavke */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5 max-w-5xl space-y-3">
         <span
           className="text-xs font-bold uppercase tracking-wider"
           style={{ color: PRIMARY }}
         >
-          Cijene i količina
+          Marža i dodatne postavke
         </span>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <Field label="Količina">
-            <input
-              type="number"
-              value={kolicinaProizvoda}
-              onChange={(e) => setKolicinaProizvoda(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Nabavna cijena (bez PDV-a)">
-            <input
-              type="number"
-              step="0.01"
-              value={cijenaBez}
-              onChange={(e) => setCijenaBez(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="VPC">
-            <input
-              type="number"
-              step="0.01"
-              value={vpc}
-              onChange={(e) => setVpc(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
           <Field label="Marža (%)">
             <input
               type="number"
@@ -401,16 +369,6 @@ export function ArtikliUnos() {
         </div>
 
         <div className="flex flex-wrap gap-4 pt-1">
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={sirovinaDa}
-              onChange={(e) => setSirovinaDa(e.target.checked)}
-              className="w-4 h-4 rounded"
-              style={{ accentColor: PRIMARY }}
-            />
-            Sirovina
-          </label>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
             <input
               type="checkbox"

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Boxes,
   CreditCard,
   Loader2,
   Package,
@@ -21,6 +22,10 @@ interface Proizvod {
   sifra_proizvoda: string;
   naziv_proizvoda: string;
   jm: string;
+  // erp.artikli_pregled_sve — 1 ako je artikal sirovina, 1 ako se koristi za
+  // ponudu (kupcu); koriste se samo vizuelno za razlikovanje u pretrazi.
+  sirovina?: number | null;
+  koristiti_za_ponudu?: number | null;
 }
 
 // Jedna stavka (red prometa) u kartici proizvoda — vidi
@@ -160,7 +165,7 @@ export function KarticaProizvoda() {
 
   useEffect(() => {
     setProizvodiLoading(true);
-    fetch(`${API_URL}/api/artikli`, { credentials: "include" })
+    fetch(`${API_URL}/api/artikli/pregled-sve`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("Greška pri učitavanju artikala");
         return res.json();
@@ -247,6 +252,12 @@ export function KarticaProizvoda() {
     () => (stavke ?? []).reduce((acc, s) => acc + Number(s.ulaz ?? 0), 0),
     [stavke],
   );
+  // Procedura vraća stavke hronološki, prva stavka je početno stanje (isto
+  // kao kod erp.kartica_partnera_pregled) — od ukupnog ulaza se izdvaja
+  // njegova količina, a ostatak je stvarni ulaz robe (prijemi tokom perioda).
+  const pocetnoStanje =
+    stavke && stavke.length > 0 ? Number(stavke[0].ulaz ?? 0) : 0;
+  const stvarniUlaz = ukupnoUlaz - pocetnoStanje;
   const ukupnoIzlaz = useMemo(
     () => (stavke ?? []).reduce((acc, s) => acc + Number(s.izlaz ?? 0), 0),
     [stavke],
@@ -254,6 +265,10 @@ export function KarticaProizvoda() {
   const trenutnoStanje =
     stavke && stavke.length > 0 ? stavke[stavke.length - 1].saldo : 0;
   const jedinicaMjere = odabraniProizvod?.jm ?? stavke?.[0]?.jedinica_m ?? "";
+  // Trenutna cijena — cijena sa posljednje (najnovije) stavke u kartici.
+  const trenutnaCijena =
+    stavke && stavke.length > 0 ? stavke[stavke.length - 1].cijena : 0;
+  const financijskaVrijednost = Number(trenutnoStanje) * Number(trenutnaCijena ?? 0);
 
   // Rekapitulacija po broju stavki (ne po količini): koliko je izlaza
   // evidentirano kao redovan račun, koliko kao storno (izlaz u minusu — vidi
@@ -280,11 +295,11 @@ export function KarticaProizvoda() {
   return (
     <div className="space-y-4">
       {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+      <div className="relative flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] flex-shrink-0">
           <Package size={20} style={{ color: PRIMARY }} />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
             Kartica proizvoda
           </h2>
@@ -292,6 +307,19 @@ export function KarticaProizvoda() {
             Pregled ulaza, izlaza i stanja zaliha po proizvodu
           </p>
         </div>
+
+        {/* Naziv/šifra/JM odabranog proizvoda — centrirano na sredini ekrana, u ravnini naslova */}
+        {odabraniProizvod && (
+          <div className="hidden lg:block absolute left-1/2 -translate-x-1/2 text-center max-w-[45%] pointer-events-none">
+            <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6] truncate">
+              {odabraniProizvod.naziv_proizvoda}
+            </div>
+            <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+              Šifra: {odabraniProizvod.sifra_proizvoda}
+              {odabraniProizvod.jm ? ` · ${odabraniProizvod.jm}` : ""}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filteri + rekapitulacija */}
@@ -336,27 +364,59 @@ export function KarticaProizvoda() {
 
               {pokaziDropdown && filtrirani.length > 0 && (
                 <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-[#261f38] border border-gray-200 dark:border-[#3a3158] rounded-xl shadow-xl overflow-hidden max-h-72 overflow-y-auto">
-                  {filtrirani.map((p) => (
-                    <button
-                      key={p.sifra_proizvoda}
-                      type="button"
-                      onMouseDown={() => odaberiProizvod(p)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-all border-b border-gray-100 dark:border-[#2d2648] last:border-b-0"
-                    >
-                      <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                        <Package size={13} style={{ color: PRIMARY }} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
-                          {p.naziv_proizvoda}
+                  {filtrirani.map((p) => {
+                    const jeSirovina = Number(p.sirovina) === 1;
+                    const vanPonude =
+                      p.koristiti_za_ponudu !== undefined &&
+                      p.koristiti_za_ponudu !== null &&
+                      Number(p.koristiti_za_ponudu) === 0;
+                    return (
+                      <button
+                        key={p.sifra_proizvoda}
+                        type="button"
+                        onMouseDown={() => odaberiProizvod(p)}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-all border-b border-gray-100 dark:border-[#2d2648] last:border-b-0 ${
+                          jeSirovina
+                            ? "bg-amber-50/60 dark:bg-[#2e2410] hover:bg-amber-100/70 dark:hover:bg-[#3a2d14]"
+                            : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]"
+                        }`}
+                      >
+                        <div
+                          className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
+                            jeSirovina
+                              ? "bg-amber-100 dark:bg-amber-500/15"
+                              : "bg-[#ede8f5] dark:bg-[#312a50]"
+                          }`}
+                        >
+                          <Package
+                            size={13}
+                            style={{ color: jeSirovina ? "#b45309" : PRIMARY }}
+                          />
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-[#7d7498]">
-                          Šifra: {p.sifra_proizvoda}
-                          {p.jm ? ` · ${p.jm}` : ""}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
+                              {p.naziv_proizvoda}
+                            </div>
+                            {jeSirovina && (
+                              <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                                Sirovina
+                              </span>
+                            )}
+                            {vanPonude && (
+                              <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide bg-gray-100 text-gray-500 dark:bg-gray-500/10 dark:text-gray-400">
+                                Van ponude
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-[#7d7498]">
+                            Šifra: {p.sifra_proizvoda}
+                            {p.jm ? ` · ${p.jm}` : ""}
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               {pokaziDropdown &&
@@ -456,9 +516,15 @@ export function KarticaProizvoda() {
               {/* Statistika */}
               <div className="flex flex-wrap gap-3">
                 <StatTile
+                  icon={<Package size={16} />}
+                  vrijednost={formatKolicina(pocetnoStanje, jedinicaMjere)}
+                  naziv="Početno stanje"
+                  boja={PRIMARY}
+                />
+                <StatTile
                   icon={<TrendingUp size={16} />}
-                  vrijednost={formatKolicina(ukupnoUlaz, jedinicaMjere)}
-                  naziv="Ukupno ulaz"
+                  vrijednost={formatKolicina(stvarniUlaz, jedinicaMjere)}
+                  naziv="Stvarni ulaz"
                   boja={ACCENT}
                 />
                 <StatTile
@@ -468,18 +534,25 @@ export function KarticaProizvoda() {
                   boja="#ef4444"
                 />
                 <StatTile
-                  icon={<Wallet size={16} />}
-                  vrijednost={formatIznos(trenutnoStanje)}
+                  icon={<Boxes size={16} />}
+                  vrijednost={formatKolicina(trenutnoStanje, jedinicaMjere)}
                   naziv="Trenutno stanje"
                   boja={Number(trenutnoStanje) === 0 ? "#9ca3af" : PRIMARY}
                   prazno={Number(trenutnoStanje) === 0}
                 />
+                <StatTile
+                  icon={<Wallet size={16} />}
+                  vrijednost={formatIznos(financijskaVrijednost)}
+                  naziv="Financijska vrijednost"
+                  boja={financijskaVrijednost === 0 ? "#9ca3af" : PRIMARY}
+                  prazno={financijskaVrijednost === 0}
+                />
               </div>
 
-              {/* Tabela */}
-              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano */}
+              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto origin-top scale-105">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="table-auto">
                     <thead>
                       <tr style={{ background: `${PRIMARY}1f` }}>
                         <th
@@ -495,16 +568,22 @@ export function KarticaProizvoda() {
                           Datum
                         </th>
                         <th
-                          className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                          className="text-left px-1 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
                           Broj računa
                         </th>
                         <th
-                          className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                          className="text-left px-1 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
                           Korisnik
+                        </th>
+                        <th
+                          className="text-left px-1 py-2.5 text-xs font-bold uppercase tracking-wide"
+                          style={{ color: PRIMARY }}
+                        >
+                          Jm
                         </th>
                         <th
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
@@ -528,7 +607,7 @@ export function KarticaProizvoda() {
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
-                          Saldo
+                          Stanje
                         </th>
                       </tr>
                     </thead>
@@ -555,17 +634,20 @@ export function KarticaProizvoda() {
                             <td className={`px-4 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] ${border}`}>
                               {formatDatum(s.datum)}
                             </td>
-                            <td className={`px-4 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
                               {s.broj_racuna ?? "–"}
                             </td>
-                            <td className={`px-4 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
                               {s.korisnik ?? "–"}
+                            </td>
+                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                              {s.jedinica_m ?? "–"}
                             </td>
                             <td
                               className={`px-4 py-2 text-sm text-right font-semibold ${border}`}
                               style={{ color: ACCENT }}
                             >
-                              {s.ulaz ? formatKolicina(s.ulaz, s.jedinica_m) : "–"}
+                              {s.ulaz ? formatKolicina(s.ulaz) : "–"}
                             </td>
                             <td
                               className={`px-4 py-2 text-sm text-right font-semibold ${border} ${
@@ -574,7 +656,7 @@ export function KarticaProizvoda() {
                                   : "text-red-500 dark:text-red-400"
                               }`}
                             >
-                              {s.izlaz ? formatKolicina(s.izlaz, s.jedinica_m) : "–"}
+                              {s.izlaz ? formatKolicina(s.izlaz) : "–"}
                             </td>
                             <td className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}>
                               {formatIznos(s.cijena)}
@@ -583,7 +665,7 @@ export function KarticaProizvoda() {
                               className={`px-4 py-2 text-sm text-right font-bold ${border}`}
                               style={{ color: PRIMARY }}
                             >
-                              {formatIznos(s.saldo)}
+                              {formatKolicina(s.saldo)}
                             </td>
                           </tr>
                         );

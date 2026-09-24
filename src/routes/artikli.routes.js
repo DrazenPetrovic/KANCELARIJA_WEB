@@ -4,6 +4,7 @@ import * as ArtikliController from "../controllers/artikli.controller.js";
 const router = Router();
 
 router.get("/", ArtikliController.getArtikli);
+router.get("/pregled-sve", ArtikliController.getArtikliPregledSve);
 router.get("/grupe", ArtikliController.getArtikliGrupe);
 router.get("/grupe-unos", ArtikliController.getArtikliGrupeZaUnos);
 router.get("/jedinica-mjere", ArtikliController.getJedinicaMjere);

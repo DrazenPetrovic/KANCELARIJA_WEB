@@ -10,6 +10,18 @@ export const getArtikli = async (req, res) => {
   }
 };
 
+export const getArtikliPregledSve = async (req, res) => {
+  try {
+    const data = await ArtikliService.getArtikliPregledSve();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled svih artikala error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju svih artikala" });
+  }
+};
+
 export const getArtikliGrupe = async (req, res) => {
   try {
     const data = await ArtikliService.getArtikliGrupe();

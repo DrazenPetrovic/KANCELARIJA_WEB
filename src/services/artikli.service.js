@@ -7,6 +7,17 @@ export const getArtikli = async () => {
   });
 };
 
+// Potpuna lista artikala — uključuje i artikle definisane kao sirovina
+// (sp_artikli_pregled ih ne vraća). Koristi se za izbor proizvoda u kartici
+// proizvoda, gdje operater mora moći odabrati i sirovine. Vidi
+// erp.artikli_pregled_sve.
+export const getArtikliPregledSve = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.artikli_pregled_sve()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getArtikliGrupe = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
