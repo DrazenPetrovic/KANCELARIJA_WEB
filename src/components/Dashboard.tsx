@@ -19,6 +19,7 @@ import { RadniciPregled } from "./RadniciPregled";
 import { RadniciPrisutnostUnos } from "./RadniciPrisutnostUnos";
 import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
+import { ArtikliUnos } from "./ArtikliUnos";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
 import { KarticaProizvoda } from "./KarticaProizvoda";
@@ -71,6 +72,7 @@ import {
   MapPin,
   Moon,
   Package,
+  PackagePlus,
   PenLine,
   Receipt,
   Settings,
@@ -150,12 +152,13 @@ type MenuSection =
   | "radnici-prisutnost-pregled"
   | "partneri-unos"
   | "partneri-pregled"
+  | "partneri-kartica"
+  | "artikli-unos"
   | "artikli-pregled"
+  | "artikli-kartica"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
-  | "kartica-partnera"
-  | "kartica-proizvoda"
   | "trgovacke-knjige-veleprodaja"
   | "trgovacke-knjige-maloprodaja"
   | "narudzbe-pregled"
@@ -188,12 +191,13 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "radnici-prisutnost-pregled": "Radnici – pregled prisutnosti",
   "partneri-unos": "Partneri – unos",
   "partneri-pregled": "Partneri – pregled",
+  "artikli-unos": "Unos artikla",
   "artikli-pregled": "Artikli – pregled",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
-  "kartica-partnera": "Kartica partnera",
-  "kartica-proizvoda": "Kartica proizvoda",
+  "partneri-kartica": "Kartica partnera",
+  "artikli-kartica": "Kartica artikla",
   "trgovacke-knjige-veleprodaja": "Trgovačka knjiga – veleprodaja",
   "trgovacke-knjige-maloprodaja": "Trgovačka knjiga – maloprodaja",
   "narudzbe-pregled": "Pregled narudžbi",
@@ -279,7 +283,6 @@ export function Dashboard({
   >(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [kliseExpanded, setKliseExpanded] = useState(false);
-  const [karticeExpanded, setKarticeExpanded] = useState(false);
   const [trgovackeKnjigeExpanded, setTrgovackeKnjigeExpanded] =
     useState(false);
   const [izvodiExpanded, setIzvodiExpanded] = useState(false);
@@ -604,13 +607,10 @@ export function Dashboard({
     setOpenMenu((prev) => (prev === menu ? null : menu));
     if (menu !== "file") setArchiveExpanded(false);
     if (menu !== "proizvodnja") setKliseExpanded(false);
-    if (menu !== "pregledi") {
-      setKarticeExpanded(false);
-      setTrgovackeKnjigeExpanded(false);
-    }
     if (menu !== "finansije") {
       setIzvodiExpanded(false);
       setBlagajnaExpanded(false);
+      setTrgovackeKnjigeExpanded(false);
     }
   };
 
@@ -621,7 +621,6 @@ export function Dashboard({
     setKliseExpanded(false);
     setIzvodiExpanded(false);
     setBlagajnaExpanded(false);
-    setKarticeExpanded(false);
     setTrgovackeKnjigeExpanded(false);
   };
 
@@ -1291,6 +1290,44 @@ export function Dashboard({
                           </span>
                           Pregled
                         </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("partneri-kartica")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "partneri-kartica",
+                          )}
+                          style={
+                            activeSection === "partneri-kartica"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-kartica"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-kartica"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <CreditCard
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-kartica"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Kartica partnera
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -1347,6 +1384,42 @@ export function Dashboard({
                       </div>
                       <div className="p-2 space-y-0.5">
                         <button
+                          onClick={() => handleSectionChange("artikli-unos")}
+                          className={dropdownItemClass(
+                            activeSection === "artikli-unos",
+                          )}
+                          style={
+                            activeSection === "artikli-unos"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "artikli-unos"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "artikli-unos"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <PackagePlus
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "artikli-unos"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos
+                        </button>
+
+                        <button
                           onClick={() => handleSectionChange("artikli-pregled")}
                           className={dropdownItemClass(
                             activeSection === "artikli-pregled",
@@ -1381,6 +1454,42 @@ export function Dashboard({
                           </span>
                           Pregled
                         </button>
+
+                        <button
+                          onClick={() => handleSectionChange("artikli-kartica")}
+                          className={dropdownItemClass(
+                            activeSection === "artikli-kartica",
+                          )}
+                          style={
+                            activeSection === "artikli-kartica"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "artikli-kartica"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "artikli-kartica"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <CreditCard
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "artikli-kartica"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Kartica artikla
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -1399,11 +1508,7 @@ export function Dashboard({
                       openMenu === "pregledi" ||
                       activeSection === "pregledi-racuna" ||
                       activeSection === "pregled-kalkulacija" ||
-                      activeSection === "ugovorene-cijene" ||
-                      activeSection === "kartica-partnera" ||
-                      activeSection === "kartica-proizvoda" ||
-                      activeSection === "trgovacke-knjige-veleprodaja" ||
-                      activeSection === "trgovacke-knjige-maloprodaja"
+                      activeSection === "ugovorene-cijene"
                     ),
                   )}
                   onMouseEnter={() => setHoveredBtn("pregledi")}
@@ -1553,176 +1658,6 @@ export function Dashboard({
                           </span>
                           Ugovorene cijene
                         </button>
-
-                        {/* Kartice toggle */}
-                        <button
-                          onClick={() => setKarticeExpanded((p) => !p)}
-                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
-                        >
-                          <span className="flex items-center gap-3">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
-                              <CreditCard size={13} style={{ color: PRIMARY }} />
-                            </span>
-                            Kartice
-                          </span>
-                          <ChevronRight
-                            size={14}
-                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${karticeExpanded ? "rotate-90" : ""}`}
-                          />
-                        </button>
-
-                        {karticeExpanded && (
-                          <div
-                            className="ml-4 pl-3 space-y-0.5 border-l-2"
-                            style={{ borderColor: PRIMARY }}
-                          >
-                            <button
-                              onClick={() =>
-                                handleSectionChange("kartica-partnera")
-                              }
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
-                                activeSection === "kartica-partnera"
-                                  ? "font-bold"
-                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                              }`}
-                              style={
-                                activeSection === "kartica-partnera"
-                                  ? { color: PRIMARY }
-                                  : {}
-                              }
-                            >
-                              <span
-                                className="flex-shrink-0"
-                                style={{
-                                  color:
-                                    activeSection === "kartica-partnera"
-                                      ? PRIMARY
-                                      : "#9ca3af",
-                                }}
-                              >
-                                <Users size={13} />
-                              </span>
-                              Kartica partnera
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleSectionChange("kartica-proizvoda")
-                              }
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
-                                activeSection === "kartica-proizvoda"
-                                  ? "font-bold"
-                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                              }`}
-                              style={
-                                activeSection === "kartica-proizvoda"
-                                  ? { color: PRIMARY }
-                                  : {}
-                              }
-                            >
-                              <span
-                                className="flex-shrink-0"
-                                style={{
-                                  color:
-                                    activeSection === "kartica-proizvoda"
-                                      ? PRIMARY
-                                      : "#9ca3af",
-                                }}
-                              >
-                                <Package size={13} />
-                              </span>
-                              Kartica proizvoda
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Trgovačke knjige toggle */}
-                        <button
-                          onClick={() => setTrgovackeKnjigeExpanded((p) => !p)}
-                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
-                        >
-                          <span className="flex items-center gap-3">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
-                              <BookOpen size={13} style={{ color: PRIMARY }} />
-                            </span>
-                            Trgovačke knjige
-                          </span>
-                          <ChevronRight
-                            size={14}
-                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${trgovackeKnjigeExpanded ? "rotate-90" : ""}`}
-                          />
-                        </button>
-
-                        {trgovackeKnjigeExpanded && (
-                          <div
-                            className="ml-4 pl-3 space-y-0.5 border-l-2"
-                            style={{ borderColor: PRIMARY }}
-                          >
-                            <button
-                              onClick={() =>
-                                handleSectionChange(
-                                  "trgovacke-knjige-veleprodaja",
-                                )
-                              }
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
-                                activeSection === "trgovacke-knjige-veleprodaja"
-                                  ? "font-bold"
-                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                              }`}
-                              style={
-                                activeSection === "trgovacke-knjige-veleprodaja"
-                                  ? { color: PRIMARY }
-                                  : {}
-                              }
-                            >
-                              <span
-                                className="flex-shrink-0"
-                                style={{
-                                  color:
-                                    activeSection ===
-                                    "trgovacke-knjige-veleprodaja"
-                                      ? PRIMARY
-                                      : "#9ca3af",
-                                }}
-                              >
-                                <Truck size={13} />
-                              </span>
-                              Veleprodaje
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleSectionChange(
-                                  "trgovacke-knjige-maloprodaja",
-                                )
-                              }
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
-                                activeSection === "trgovacke-knjige-maloprodaja"
-                                  ? "font-bold"
-                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                              }`}
-                              style={
-                                activeSection === "trgovacke-knjige-maloprodaja"
-                                  ? { color: PRIMARY }
-                                  : {}
-                              }
-                            >
-                              <span
-                                className="flex-shrink-0"
-                                style={{
-                                  color:
-                                    activeSection ===
-                                    "trgovacke-knjige-maloprodaja"
-                                      ? PRIMARY
-                                      : "#9ca3af",
-                                }}
-                              >
-                                <ShoppingCart size={13} />
-                              </span>
-                              Maloprodaje
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>,
                     document.body,
@@ -1926,7 +1861,9 @@ export function Dashboard({
                     "finansije",
                     !!(
                       openMenu === "finansije" ||
-                      activeSection?.startsWith("finansije-")
+                      activeSection?.startsWith("finansije-") ||
+                      activeSection === "trgovacke-knjige-veleprodaja" ||
+                      activeSection === "trgovacke-knjige-maloprodaja"
                     ),
                   )}
                   onMouseEnter={() => setHoveredBtn("finansije")}
@@ -2140,6 +2077,94 @@ export function Dashboard({
                                 }}
                               />
                               Unos uplata/isplata
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Trgovačke knjige toggle */}
+                        <button
+                          onClick={() => setTrgovackeKnjigeExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <BookMarked size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Trgovačke knjige
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${trgovackeKnjigeExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {trgovackeKnjigeExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            <button
+                              onClick={() =>
+                                handleSectionChange(
+                                  "trgovacke-knjige-veleprodaja",
+                                )
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "trgovacke-knjige-veleprodaja"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "trgovacke-knjige-veleprodaja"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <span
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "trgovacke-knjige-veleprodaja"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              >
+                                <Truck size={13} />
+                              </span>
+                              Veleprodaje
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange(
+                                  "trgovacke-knjige-maloprodaja",
+                                )
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "trgovacke-knjige-maloprodaja"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "trgovacke-knjige-maloprodaja"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <span
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "trgovacke-knjige-maloprodaja"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              >
+                                <ShoppingCart size={13} />
+                              </span>
+                              Maloprodaje
                             </button>
                           </div>
                         )}
@@ -2788,14 +2813,17 @@ export function Dashboard({
 
           {activeSection === "partneri-pregled" && <PartneriPregled />}
 
+          {activeSection === "partneri-kartica" && <KarticaPartnera />}
+
+          {activeSection === "artikli-unos" && <ArtikliUnos />}
+
           {activeSection === "artikli-pregled" && <ArtikliPregled />}
+
+          {activeSection === "artikli-kartica" && <KarticaProizvoda />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 
           {activeSection === "ugovorene-cijene" && <UgovoreneCijenePregled />}
-
-          {activeSection === "kartica-partnera" && <KarticaPartnera />}
-          {activeSection === "kartica-proizvoda" && <KarticaProizvoda />}
 
           {activeSection === "trgovacke-knjige-veleprodaja" && (
             <TrgovackaKnjigaVeleprodaja />

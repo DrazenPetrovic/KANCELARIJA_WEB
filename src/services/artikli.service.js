@@ -16,6 +16,54 @@ export const getArtikliGrupe = async () => {
   });
 };
 
+// Grupe artikala za formu "Unos artikla" (šifra + naziv grupe, 0-22). Vidi
+// erp.artikli_grupe_artikala_pregled.
+export const getArtikliGrupeZaUnos = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.artikli_grupe_artikala_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Jedinice mjere za formu "Unos artikla" — vraća { sifra, naziv_jm }.
+// naziv_jm je tekst koji se prikazuje operateru (npr. "kg", "kom"), a sifra
+// je brojčani kod koji ide u JSON za erp.artikli_unos (polje "jm"). Vidi
+// erp.artikli_jedinica_mjere_pregled.
+export const getJedinicaMjere = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.artikli_jedinica_mjere_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Unos novog artikla. erp.artikli_unos prima JSON sa poljima
+// naziv_proizvoda, jm, kolicina_proizvoda, cijena_bez, vpc, marza,
+// sirovina_da, ogranicena_marza, marza_za_kalkulaciju, grupa_proizvoda,
+// vrsta, minimalna_prodajna, barkod, koristiti_za_ponudu. Šifru proizvoda
+// dodjeljuje sama procedura.
+export const unosArtikla = async (podaci) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify(podaci);
+    await connection.query("CALL erp.artikli_unos(?)", [json]);
+    return { uspjesno: true };
+  });
+};
+
+// Izmjena postojećeg artikla. erp.artikli_izmjene ažurira zapis na osnovu
+// sifra_proizvoda (mora biti uključena u JSON), ostala polja su ista kao kod
+// artikli_unos.
+export const izmjenaArtikla = async (podaci) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify(podaci);
+    await connection.query("CALL erp.artikli_izmjene(?)", [json]);
+    return { uspjesno: true };
+  });
+};
+
 // Kartica proizvoda — hronološki promet (ulaz/izlaz) sa tekućim saldom, za
 // ekran "Kartica proizvoda" u meniju Pregledi > Kartice. Vidi
 // erp.kartica_proizvoda_pregled.
