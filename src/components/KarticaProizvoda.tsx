@@ -199,12 +199,14 @@ export function KarticaProizvoda() {
 
   const odaberiProizvod = (p: Proizvod) => {
     setOdabraniProizvod(p);
-    setPretraga("");
+    // Pretraga se namjerno ne briše — ako operater ponovo klikne u polje,
+    // vraćaju mu se ista prethodno ukucana slova (vidi onFocus na inputu).
     setPokaziDropdown(false);
   };
 
   const ocistiProizvod = () => {
     setOdabraniProizvod(null);
+    setPretraga("");
     setStavke(null);
     setGreska(null);
   };
@@ -335,7 +337,9 @@ export function KarticaProizvoda() {
               )}
               <input
                 value={
-                  odabraniProizvod ? odabraniProizvod.naziv_proizvoda : pretraga
+                  odabraniProizvod && !pokaziDropdown
+                    ? odabraniProizvod.naziv_proizvoda
+                    : pretraga
                 }
                 onChange={(e) => {
                   setOdabraniProizvod(null);
@@ -343,7 +347,10 @@ export function KarticaProizvoda() {
                   setPokaziDropdown(true);
                 }}
                 onFocus={() => {
-                  if (odabraniProizvod) return;
+                  // Klikom nazad u polje vraćaju se prethodno ukucana slova
+                  // (pretraga), umjesto naziva već izabranog proizvoda —
+                  // kartica izabranog proizvoda ostaje prikazana ispod dok
+                  // operater bira sljedeći.
                   setPokaziDropdown(true);
                 }}
                 placeholder={
@@ -512,44 +519,9 @@ export function KarticaProizvoda() {
           )}
 
           {stavke.length > 0 && (
-            <>
-              {/* Statistika */}
-              <div className="flex flex-wrap gap-3">
-                <StatTile
-                  icon={<Package size={16} />}
-                  vrijednost={formatKolicina(pocetnoStanje, jedinicaMjere)}
-                  naziv="Početno stanje"
-                  boja={PRIMARY}
-                />
-                <StatTile
-                  icon={<TrendingUp size={16} />}
-                  vrijednost={formatKolicina(stvarniUlaz, jedinicaMjere)}
-                  naziv="Stvarni ulaz"
-                  boja={ACCENT}
-                />
-                <StatTile
-                  icon={<TrendingDown size={16} />}
-                  vrijednost={formatKolicina(ukupnoIzlaz, jedinicaMjere)}
-                  naziv="Ukupno izlaz"
-                  boja="#ef4444"
-                />
-                <StatTile
-                  icon={<Boxes size={16} />}
-                  vrijednost={formatKolicina(trenutnoStanje, jedinicaMjere)}
-                  naziv="Trenutno stanje"
-                  boja={Number(trenutnoStanje) === 0 ? "#9ca3af" : PRIMARY}
-                  prazno={Number(trenutnoStanje) === 0}
-                />
-                <StatTile
-                  icon={<Wallet size={16} />}
-                  vrijednost={formatIznos(financijskaVrijednost)}
-                  naziv="Financijska vrijednost"
-                  boja={financijskaVrijednost === 0 ? "#9ca3af" : PRIMARY}
-                  prazno={financijskaVrijednost === 0}
-                />
-              </div>
-
-              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano */}
+            <div className="flex flex-col lg:flex-row gap-4 items-start">
+              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u lijevom dijelu */}
+              <div className="flex-1 min-w-0">
               <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto origin-top scale-105">
                 <div className="overflow-x-auto">
                   <table className="table-auto">
@@ -674,7 +646,44 @@ export function KarticaProizvoda() {
                   </table>
                 </div>
               </div>
-            </>
+              </div>
+
+              {/* Statistika — vertikalno sa desne strane */}
+              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 lg:mt-[5%]">
+                <StatTile
+                  icon={<Package size={16} />}
+                  vrijednost={formatKolicina(pocetnoStanje, jedinicaMjere)}
+                  naziv="Početno stanje"
+                  boja={PRIMARY}
+                />
+                <StatTile
+                  icon={<TrendingUp size={16} />}
+                  vrijednost={formatKolicina(stvarniUlaz, jedinicaMjere)}
+                  naziv="Zaduženje"
+                  boja={ACCENT}
+                />
+                <StatTile
+                  icon={<TrendingDown size={16} />}
+                  vrijednost={formatKolicina(ukupnoIzlaz, jedinicaMjere)}
+                  naziv="Razduženje"
+                  boja="#ef4444"
+                />
+                <StatTile
+                  icon={<Boxes size={16} />}
+                  vrijednost={formatKolicina(trenutnoStanje, jedinicaMjere)}
+                  naziv="Saldo količinski"
+                  boja={Number(trenutnoStanje) === 0 ? "#9ca3af" : PRIMARY}
+                  prazno={Number(trenutnoStanje) === 0}
+                />
+                <StatTile
+                  icon={<Wallet size={16} />}
+                  vrijednost={formatIznos(financijskaVrijednost)}
+                  naziv="Saldo finansijski"
+                  boja={financijskaVrijednost === 0 ? "#9ca3af" : PRIMARY}
+                  prazno={financijskaVrijednost === 0}
+                />
+              </div>
+            </div>
           )}
         </>
       )}
