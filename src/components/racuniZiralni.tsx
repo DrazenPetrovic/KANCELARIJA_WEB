@@ -903,7 +903,10 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   };
 
   // Postavlja izabranog partnera i rješava poslovnu jedinicu: nijedna → prazno,
-  // tačno jedna → auto-izabrana, više njih → traži se izbor operatera kroz modal.
+  // jedna ili više → UVIJEK se traži izbor operatera kroz modal (partner sam po
+  // sebi podrazumijeva glavni objekat, poslovna jedinica je dodatak — operater
+  // je mora eksplicitno izabrati, čak i kad postoji samo jedna, nikad se ne
+  // pretpostavlja automatski). Isto važi i za ručan unos i za uvoz sa terena.
   // Uz to, kad još nema unesenih stavki, podgrupa računa se automatski usklađuje
   // sa partnerovom državom (sifra_drzave !== BiH → "Izvoz", bez PDV) — vidi
   // primeniPodgrupuPremaDrzavi. Ako stavke već postoje, podgrupa se ne dira
@@ -911,9 +914,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   // koji traži potvrdu).
   // opcije.forsirajIzborLokacije — kad se partner postavlja kroz uvoz narudžbe,
   // podatak o lokaciji sa terena postoji samo kao slobodan tekst u napomeni
-  // komercijaliste (nepouzdan), pa se auto-izbor preskače i operater UVIJEK
-  // eksplicitno bira poslovnu jedinicu čim partner ima bar jednu (kad nema
-  // nijednu, nema šta ni birati, pa se modal ne otvara).
+  // komercijaliste (nepouzdan) i prikazuje se u modalu kao pomoć operateru.
   const primeniOdabirPartnera = async (
     p: Partner,
     opcije?: { forsirajIzborLokacije?: boolean },
@@ -927,23 +928,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       // uvezene narudžbe više nije relevantna za ovog partnera.
       setNapomenaUvezeneNarudzbe(null);
     }
-    if (opcije?.forsirajIzborLokacije && lokacije.length > 0) {
-      setOdabranaPoslovnaJedinica(null);
-      setPokazuiModalPoslovnaJedinica(true);
-    } else if (opcije?.forsirajIzborLokacije) {
-      // lokacije.length === 0 — nema poslovnih jedinica, ništa za izbor.
-      setOdabranaPoslovnaJedinica(null);
-      setPokazuiModalPoslovnaJedinica(false);
-    } else if (lokacije.length === 1) {
-      setOdabranaPoslovnaJedinica(lokacije[0]);
-      setPokazuiModalPoslovnaJedinica(false);
-    } else if (lokacije.length > 1) {
-      setOdabranaPoslovnaJedinica(null);
-      setPokazuiModalPoslovnaJedinica(true);
-    } else {
-      setOdabranaPoslovnaJedinica(null);
-      setPokazuiModalPoslovnaJedinica(false);
-    }
+    setOdabranaPoslovnaJedinica(null);
+    setPokazuiModalPoslovnaJedinica(lokacije.length > 0);
 
     if (stavke.length === 0) {
       const ciljnaSifraPodgrupe =

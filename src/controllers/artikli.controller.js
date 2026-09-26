@@ -22,6 +22,18 @@ export const getArtikliPregledSve = async (req, res) => {
   }
 };
 
+export const getArtikliNabavnaCijena = async (req, res) => {
+  try {
+    const data = await ArtikliService.getArtikliNabavnaCijena(req.params.id);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled nabavne cijene artikla error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju nabavne cijene" });
+  }
+};
+
 export const getArtikliGrupe = async (req, res) => {
   try {
     const data = await ArtikliService.getArtikliGrupe();

@@ -99,8 +99,8 @@ const TH = ({
   center,
   sortDir,
   onClick,
-  padLeft = 16,
-  padRight = 16,
+  padLeft = 8,
+  padRight = 8,
 }: {
   children: React.ReactNode;
   center?: boolean;
@@ -135,8 +135,8 @@ const TH = ({
 const TD = ({
   children,
   center,
-  padLeft = 16,
-  padRight = 16,
+  padLeft = 8,
+  padRight = 8,
 }: {
   children: React.ReactNode;
   center?: boolean;
@@ -505,51 +505,37 @@ export function ArtikliPregled() {
       </div>
 
       {/* Tabela */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
-        {loading && (
-          <div className="flex items-center justify-center py-20 gap-3">
-            <Loader2 size={22} className="animate-spin" style={{ color: PRIMARY }} />
-            <span className="text-sm text-gray-500 dark:text-[#7d7498]">Učitavanje...</span>
-          </div>
-        )}
+      {(loading || error || filtrirani.length === 0) && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+          {loading && (
+            <div className="flex items-center justify-center py-20 gap-3">
+              <Loader2 size={22} className="animate-spin" style={{ color: PRIMARY }} />
+              <span className="text-sm text-gray-500 dark:text-[#7d7498]">Učitavanje...</span>
+            </div>
+          )}
 
-        {error && (
-          <div className="flex items-center justify-center py-20">
-            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
-          </div>
-        )}
+          {error && (
+            <div className="flex items-center justify-center py-20">
+              <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+            </div>
+          )}
 
-        {!loading && !error && filtrirani.length === 0 && (
-          <div className="flex items-center justify-center py-20">
-            <p className="text-sm text-gray-400 dark:text-[#5f5878]">
-              Nema podataka za prikaz.
-            </p>
-          </div>
-        )}
+          {!loading && !error && filtrirani.length === 0 && (
+            <div className="flex items-center justify-center py-20">
+              <p className="text-sm text-gray-400 dark:text-[#5f5878]">
+                Nema podataka za prikaz.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
-        {!loading && !error && filtrirani.length > 0 && (
-          <div
-            className="overflow-auto"
-            style={{ maxHeight: "70vh" }}
-          >
-            <table className="w-full table-fixed border-collapse">
-              <colgroup>
-                <col style={{ width: "7%" }} />
-                <col style={{ width: "26%" }} />
-                <col style={{ width: "22px" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "3%" }} />
-                <col style={{ width: "6%" }} />
-                <col style={{ width: "7%" }} />
-                <col style={{ width: "7%" }} />
-                <col style={{ width: "6%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "6%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "36px" }} />
-              </colgroup>
+      {!loading && !error && filtrirani.length > 0 && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto">
+          <div className="overflow-x-auto">
+            <table className="table-auto border-collapse">
               <thead>
-                <tr className="sticky top-0 z-10">
+                <tr>
                   <TH
                     onClick={() => handleSort("sifra")}
                     sortDir={sortPolje === "sifra" ? sortSmjer : null}
@@ -598,7 +584,7 @@ export function ArtikliPregled() {
                     </TD>
                     <TD padLeft={0}>
                       <span
-                        className="block truncate font-medium"
+                        className="block max-w-[421px] truncate font-medium"
                         title={a.naziv_proizvoda}
                       >
                         {a.naziv_proizvoda}
@@ -624,7 +610,7 @@ export function ArtikliPregled() {
                     <TD>
                       {a.barkod && a.barkod !== "0" && (
                         <span
-                          className="block truncate text-xs text-gray-500 dark:text-[#a99fc2]"
+                          className="block max-w-[140px] truncate text-xs text-gray-500 dark:text-[#a99fc2]"
                           title={a.barkod}
                         >
                           {a.barkod}
@@ -656,7 +642,10 @@ export function ArtikliPregled() {
                     </TD>
                     <TD center>{formatBroj(a.mpc)}</TD>
                     <TD>
-                      <span className="block truncate" title={a.naziv_grupe}>
+                      <span
+                        className="block max-w-[160px] truncate"
+                        title={a.naziv_grupe}
+                      >
                         {a.naziv_grupe || "–"}
                       </span>
                     </TD>
@@ -676,8 +665,8 @@ export function ArtikliPregled() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Modal — izmjena artikla */}
       {artikalZaIzmjenu && (

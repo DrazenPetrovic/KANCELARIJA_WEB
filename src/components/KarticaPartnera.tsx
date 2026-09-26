@@ -6,6 +6,8 @@ import {
   Receipt,
   RefreshCcw,
   Search,
+  TrendingDown,
+  TrendingUp,
   Truck,
   User,
   Users,
@@ -390,6 +392,18 @@ export function KarticaPartnera() {
     [aktivnaKartica],
   );
 
+  // Prva stavka (hronološki) je uvijek početno stanje — vidi
+  // erp.kartica_partnera_pregled. Njen saldo je preneseno stanje, a njegov
+  // duguje/potražuje dio se izdvaja iz ukupnog zaduženja/razduženja da bi ono
+  // prikazivalo samo stvarni promet tokom perioda (isto kao stvarniUlaz kod
+  // kartice proizvoda).
+  const pocetnaStavka = aktivnaKartica?.stavke?.[0] ?? null;
+  const pocetnoStanje = pocetnaStavka?.saldo ?? 0;
+  const stvarnoZaduzenje =
+    (aktivnaKartica?.ukupno_duguje ?? 0) - (pocetnaStavka?.duguje ?? 0);
+  const stvarnoRazduzenje =
+    (aktivnaKartica?.ukupno_potrazuje ?? 0) - (pocetnaStavka?.potrazuje ?? 0);
+
   return (
     <div className="space-y-4">
       {/* Naslov */}
@@ -412,7 +426,7 @@ export function KarticaPartnera() {
       <div className="w-full lg:w-[30%] flex-shrink-0">
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex flex-col items-stretch gap-3">
+        <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
             <label className="block text-xs font-semibold text-gray-500 dark:text-[#a99fc2] mb-1">
               Partner
@@ -495,7 +509,7 @@ export function KarticaPartnera() {
             type="button"
             onClick={ucitajKarticu}
             disabled={!odabraniPartner || loading}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+            className="flex flex-shrink-0 items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
             style={{ background: PRIMARY }}
           >
             <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
@@ -607,33 +621,43 @@ export function KarticaPartnera() {
           )}
 
           {(imaKupca || imaDobavljaca) && (
-            <>
-              {/* Statistika */}
+            <div className="relative flex flex-col lg:flex-row gap-4 items-start">
+              {/* Statistika — vertikalno sa lijeve strane. Apsolutno pozicionirana
+                  (na lg) da NE rezerviše prostor u flex redu — inače bi tabela
+                  (flex-1 mx-auto) bila centrirana samo u preostalom prostoru,
+                  a ne na cijelom ekranu. */}
               {aktivnaKartica && (
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 w-full lg:w-64 lg:absolute lg:left-[5%] lg:top-[calc(10px+2%)]">
                   <StatTile
-                    icon={<CreditCard size={16} />}
-                    vrijednost={formatIznos(aktivnaKartica.ukupno_duguje)}
-                    naziv="Ukupno duguje"
+                    icon={<Wallet size={16} />}
+                    vrijednost={formatIznos(pocetnoStanje)}
+                    naziv="Početno stanje"
+                    boja={PRIMARY}
+                  />
+                  <StatTile
+                    icon={<TrendingUp size={16} />}
+                    vrijednost={formatIznos(stvarnoZaduzenje)}
+                    naziv="Zaduženje"
                     boja="#ef4444"
                   />
                   <StatTile
-                    icon={<CreditCard size={16} />}
-                    vrijednost={formatIznos(aktivnaKartica.ukupno_potrazuje)}
-                    naziv="Ukupno potražuje"
+                    icon={<TrendingDown size={16} />}
+                    vrijednost={formatIznos(stvarnoRazduzenje)}
+                    naziv="Razduženje"
                     boja={ACCENT}
                   />
                   <StatTile
-                    icon={<Wallet size={16} />}
+                    icon={<CreditCard size={16} />}
                     vrijednost={formatIznos(aktivnaKartica.saldo)}
-                    naziv="Trenutno stanje"
+                    naziv="Saldo"
                     boja={PRIMARY}
                   />
                 </div>
               )}
 
-              {/* Tabela */}
-              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u preostalom prostoru */}
+              <div className="flex-1 min-w-0">
+              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto origin-top scale-105">
                 {stavke.length === 0 && (
                   <div className="flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
                     <CreditCard size={28} />
@@ -645,53 +669,53 @@ export function KarticaPartnera() {
 
                 {stavke.length > 0 && (
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className="table-auto">
                       <thead>
                         <tr style={{ background: `${PRIMARY}1f` }}>
                           <th
-                            className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Rb
                           </th>
                           <th
-                            className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Datum
                           </th>
                           <th
-                            className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Vrsta prometa
                           </th>
                           <th
-                            className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Opis
                           </th>
                           <th
-                            className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Ref.
                           </th>
                           <th
-                            className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Duguje
                           </th>
                           <th
-                            className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Potražuje
                           </th>
                           <th
-                            className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
                             style={{ color: PRIMARY }}
                           >
                             Saldo
@@ -721,13 +745,13 @@ export function KarticaPartnera() {
                                 : "bg-white dark:bg-[#261f38]"
                             }`}
                           >
-                            <td className="px-4 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.rb}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                               {formatDatum(s.datum)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.vrsta_prometa_opis}
                               {s.vrsta_uplate_opis && (
                                 <div
@@ -738,23 +762,23 @@ export function KarticaPartnera() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.opis ?? "–"}
                             </td>
-                            <td className="px-4 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.izvor_id ?? "–"}
                             </td>
-                            <td className="px-4 py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-3 py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
                               {s.duguje ? formatIznos(s.duguje) : "–"}
                             </td>
                             <td
-                              className="px-4 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
+                              className="px-3 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
                               style={{ color: ACCENT }}
                             >
                               {s.potrazuje ? formatIznos(s.potrazuje) : "–"}
                             </td>
                             <td
-                              className="px-4 py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
+                              className="px-3 py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
                               style={{ color: PRIMARY }}
                             >
                               {formatIznos(s.saldo)}
@@ -767,7 +791,8 @@ export function KarticaPartnera() {
                   </div>
                 )}
               </div>
-            </>
+              </div>
+            </div>
           )}
         </>
       )}

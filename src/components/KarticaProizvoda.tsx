@@ -39,10 +39,18 @@ interface KarticaStavka {
   datum: string;
   korisnik: string | null;
   cijena: number | string | null;
+  nabavna_cijena: number | string | null;
   naziv_proizvoda: string;
   jedinica_m: string | null;
   saldo: number | string;
   vreme: string;
+}
+
+// erp.artikli_nabavna_cijena_pregled — trenutna nabavna cijena i VPC
+// proizvoda direktno iz erp.artikli (nezavisno od kartice/prometa).
+interface NabavnaCijenaPodaci {
+  cijena_bez: number | string | null;
+  vpc: number | string | null;
 }
 
 function formatKolicina(v: number | string | null | undefined, jm?: string | null) {
@@ -162,6 +170,11 @@ export function KarticaProizvoda() {
   const [stavke, setStavke] = useState<KarticaStavka[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [greska, setGreska] = useState<string | null>(null);
+  // Trenutna nabavna cijena (cijena_bez) i VPC direktno iz erp.artikli — vidi
+  // erp.artikli_nabavna_cijena_pregled. Prikazuje se odvojeno od kartice, pa
+  // greška pri dohvatu ne smije srušiti prikaz same kartice.
+  const [nabavnaCijenaPodaci, setNabavnaCijenaPodaci] =
+    useState<NabavnaCijenaPodaci | null>(null);
 
   useEffect(() => {
     setProizvodiLoading(true);
@@ -209,28 +222,38 @@ export function KarticaProizvoda() {
     setPretraga("");
     setStavke(null);
     setGreska(null);
+    setNabavnaCijenaPodaci(null);
   };
 
   const ucitajKarticu = () => {
     if (!odabraniProizvod) return;
     setLoading(true);
     setGreska(null);
-    fetch(
-      `${API_URL}/api/kartice/proizvod/${odabraniProizvod.sifra_proizvoda}`,
-      { credentials: "include" },
-    )
-      .then((res) => {
+    const sifra = odabraniProizvod.sifra_proizvoda;
+    Promise.all([
+      fetch(`${API_URL}/api/kartice/proizvod/${sifra}`, {
+        credentials: "include",
+      }).then((res) => {
         if (!res.ok) throw new Error("Greška pri učitavanju kartice proizvoda");
         return res.json();
+      }),
+      // Nabavna cijena/VPC su sporedan podatak — greška pri dohvatu ne smije
+      // srušiti prikaz same kartice, pa se tiho vraća null.
+      fetch(`${API_URL}/api/artikli/nabavna-cijena/${sifra}`, {
+        credentials: "include",
       })
-      .then((json) => {
-        const lista: KarticaStavka[] = (json.data ?? []).map(
+        .then((res) => (res.ok ? res.json() : { data: null }))
+        .catch(() => ({ data: null })),
+    ])
+      .then(([karticaJson, nabavnaJson]) => {
+        const lista: KarticaStavka[] = (karticaJson.data ?? []).map(
           (red: Omit<KarticaStavka, "rb">, i: number) => ({
             ...red,
             rb: i + 1,
           }),
         );
         setStavke(lista);
+        setNabavnaCijenaPodaci(nabavnaJson.data ?? null);
       })
       .catch((err) =>
         setGreska(err instanceof Error ? err.message : "Nepoznata greška"),
@@ -519,10 +542,9 @@ export function KarticaProizvoda() {
           )}
 
           {stavke.length > 0 && (
-            <div className="flex flex-col lg:flex-row gap-4 items-start">
-              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u lijevom dijelu */}
-              <div className="flex-1 min-w-0">
-              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto origin-top scale-105">
+            <div className="relative flex flex-col gap-4 lg:block">
+              {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u odnosu na cijeli ekran */}
+              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full lg:max-w-[calc(100%-18rem)] mx-auto origin-top scale-105">
                 <div className="overflow-x-auto">
                   <table className="table-auto">
                     <thead>
@@ -573,7 +595,13 @@ export function KarticaProizvoda() {
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
-                          Cijena
+                          VPC
+                        </th>
+                        <th
+                          className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                          style={{ color: PRIMARY }}
+                        >
+                          Nabavna
                         </th>
                         <th
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
@@ -633,6 +661,9 @@ export function KarticaProizvoda() {
                             <td className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}>
                               {formatIznos(s.cijena)}
                             </td>
+                            <td className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}>
+                              {formatIznos(s.nabavna_cijena)}
+                            </td>
                             <td
                               className={`px-4 py-2 text-sm text-right font-bold ${border}`}
                               style={{ color: PRIMARY }}
@@ -646,10 +677,9 @@ export function KarticaProizvoda() {
                   </table>
                 </div>
               </div>
-              </div>
 
-              {/* Statistika — vertikalno sa desne strane */}
-              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 lg:mt-[5%]">
+              {/* Statistika — vertikalno, apsolutno pozicionirana gore lijevo (lg+), da tabela ostane centrirana prema cijelom ekranu */}
+              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[5%] lg:absolute lg:top-0 lg:left-[3%] origin-top-left scale-90">
                 <StatTile
                   icon={<Package size={16} />}
                   vrijednost={formatKolicina(pocetnoStanje, jedinicaMjere)}
@@ -681,6 +711,23 @@ export function KarticaProizvoda() {
                   naziv="Saldo finansijski"
                   boja={financijskaVrijednost === 0 ? "#9ca3af" : PRIMARY}
                   prazno={financijskaVrijednost === 0}
+                />
+              </div>
+
+              {/* Nabavna cijena i VPC iz erp.artikli — desno, na istoj udaljenosti
+                  od desne ivice tabele koliko je lijeva statistika od lijeve ivice */}
+              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[calc(5%+119px)] lg:absolute lg:top-0 lg:right-[3%]">
+                <StatTile
+                  icon={<CreditCard size={16} />}
+                  vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez)}
+                  naziv="Nabavna cijena"
+                  boja={PRIMARY}
+                />
+                <StatTile
+                  icon={<Wallet size={16} />}
+                  vrijednost={formatIznos(nabavnaCijenaPodaci?.vpc)}
+                  naziv="VPC"
+                  boja={ACCENT}
                 />
               </div>
             </div>

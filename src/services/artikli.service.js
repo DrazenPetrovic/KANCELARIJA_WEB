@@ -18,6 +18,20 @@ export const getArtikliPregledSve = async () => {
   });
 };
 
+// Trenutna nabavna cijena (cijena_bez) i VPC za proizvod, direktno iz
+// erp.artikli — koristi se u kartici proizvoda (prikaz pored tabele). Vidi
+// erp.artikli_nabavna_cijena_pregled.
+export const getArtikliNabavnaCijena = async (sifraProizvoda) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.artikli_nabavna_cijena_pregled(?)",
+      [sifraProizvoda],
+    );
+    const lista = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return lista[0] ?? null;
+  });
+};
+
 export const getArtikliGrupe = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

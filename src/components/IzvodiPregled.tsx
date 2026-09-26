@@ -54,6 +54,11 @@ interface UplataRed {
   Naziv_radnika: string | null;
   gotovinska_uplata: number | string | null;
   sifra_blagajne: number | string;
+  // 'UPLATA' ili 'TRANSFER' (prenos između računa, ziralni.banka_prenos_sredstava).
+  tip_stavke: string | null;
+  // Samo za transfere: 'IZLAZ' (skidanje sa ovog izvoda) ili 'ULAZ' (prijem).
+  smjer: string | null;
+  sifra_transfera: number | string | null;
 }
 
 // Red iz erp.banke_pregled.
@@ -99,6 +104,26 @@ function vrstaUplateInfo(v: string | number | null | undefined) {
       tip: "uplata" as const,
     }
   );
+}
+
+// Transfer ima vrsta_uplate = -1, pa se smjer novca čita iz `smjer`
+// (ULAZ = uplata na ovaj izvod, IZLAZ = isplata sa ovog izvoda).
+function stavkaInfo(u: UplataRed) {
+  if (String(u.tip_stavke ?? "").toUpperCase() === "TRANSFER") {
+    const ulaz = String(u.smjer ?? "").toUpperCase() === "ULAZ";
+    return {
+      naziv: ulaz ? "Transfer – prijem" : "Transfer – skidanje",
+      tip: ulaz ? ("uplata" as const) : ("isplata" as const),
+      transfer: true,
+    };
+  }
+  return { ...vrstaUplateInfo(u.vrsta_uplate), transfer: false };
+}
+
+// Redoslijed u tabeli: uplate, isplate, pa transferi (prijem, skidanje).
+function redoslijedStavke(u: UplataRed) {
+  const s = stavkaInfo(u);
+  return (s.transfer ? 2 : 0) + (s.tip === "isplata" ? 1 : 0);
 }
 
 function formatKM(v: number | string | null | undefined) {
@@ -221,6 +246,23 @@ export function IzvodiPregled() {
       .catch(() => setBanke([]));
   }, []);
 
+  const nazivBanke = useMemo(() => {
+    const map = new Map<string, string>();
+    banke.forEach((b) => map.set(String(b.sifra_banke), b.naziv_banke));
+    return map;
+  }, [banke]);
+
+  // Kod transfera procedura vraća "Prenos sredstava na/sa banke <sifra_banke>"
+  // — šifra na kraju se zamjenjuje nazivom banke iz erp.banke_pregled.
+  const nazivPartnera = (u: UplataRed) => {
+    if (String(u.tip_stavke ?? "").toUpperCase() === "TRANSFER") {
+      const sifra = String(u.naziv_partnera ?? "").match(/(\d+)\s*$/)?.[1];
+      const naziv = sifra ? nazivBanke.get(sifra) : undefined;
+      if (naziv) return naziv;
+    }
+    return u.naziv_partnera ?? `Partner #${u.sifra_partnera}`;
+  };
+
   // Uplate grupisane po sifra_blagajne — poklapa se sa redni_broj izvoda.
   const uplatePoIzvodu = useMemo(() => {
     const map = new Map<string, UplataRed[]>();
@@ -230,11 +272,12 @@ export function IzvodiPregled() {
       niz.push(u);
       map.set(kljuc, niz);
     });
-    // Prvo uplate pa isplate, unutar svake grupe od najvećeg iznosa ka najmanjem.
+    // Uplate, isplate, prijem transfera, skidanje transfera — unutar svake
+    // grupe od najvećeg iznosa ka najmanjem.
     map.forEach((niz) =>
       niz.sort((a, b) => {
-        const tipA = vrstaUplateInfo(a.vrsta_uplate).tip === "isplata" ? 1 : 0;
-        const tipB = vrstaUplateInfo(b.vrsta_uplate).tip === "isplata" ? 1 : 0;
+        const tipA = redoslijedStavke(a);
+        const tipB = redoslijedStavke(b);
         if (tipA !== tipB) return tipA - tipB;
         return (Number(b.uplaceno) || 0) - (Number(a.uplaceno) || 0);
       }),
@@ -639,7 +682,7 @@ export function IzvodiPregled() {
                                 Isplate
                               </th>
                               <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
-                                Opis / napomena
+                                Opis
                               </th>
                               <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Vrsta
@@ -648,13 +691,25 @@ export function IzvodiPregled() {
                           </thead>
                           <tbody>
                             {uplateIzvoda.map((u, idx) => {
-                              const vrsta = vrstaUplateInfo(u.vrsta_uplate);
-                              const boja = vrsta.tip === "isplata" ? "#ef4444" : ACCENT;
+                              const vrsta = stavkaInfo(u);
+                              const boja = vrsta.transfer
+                                ? "#2563eb"
+                                : vrsta.tip === "isplata"
+                                  ? "#ef4444"
+                                  : ACCENT;
                               return (
                               <tr
-                                key={u.sifra_uplate}
+                                key={
+                                  vrsta.transfer
+                                    ? `T-${u.sifra_transfera}-${u.smjer}`
+                                    : `U-${u.sifra_uplate}`
+                                }
                                 className={`transition-colors ${
-                                  vrsta.tip === "isplata"
+                                  vrsta.transfer
+                                    ? idx % 2 === 1
+                                      ? "bg-blue-100/70 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/40"
+                                      : "bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40"
+                                    : vrsta.tip === "isplata"
                                     ? idx % 2 === 1
                                       ? "bg-red-200/70 hover:bg-red-200 dark:bg-red-900/45 dark:hover:bg-red-900/55"
                                       : "bg-red-100 hover:bg-red-200 dark:bg-red-900/35 dark:hover:bg-red-900/55"
@@ -664,10 +719,10 @@ export function IzvodiPregled() {
                                 }`}
                               >
                                 <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                                  {u.naziv_partnera ?? `Partner #${u.sifra_partnera}`}
+                                  {nazivPartnera(u)}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
-                                  {formatDatum(u.datum_uplate)}
+                                  {formatDatum(u.datum_uplate ?? izvod.datum_izvoda)}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]" style={{ color: ACCENT }}>
                                   {vrsta.tip === "uplata" ? formatKM(u.uplaceno) : ""}
@@ -676,10 +731,12 @@ export function IzvodiPregled() {
                                   {vrsta.tip === "isplata" ? formatKM(u.uplaceno) : ""}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                                  {[u.opis, u.napomena].filter(Boolean).join(" · ") || "–"}
+                                  {u.opis || "–"}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-right font-medium border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap" style={{ color: boja }}>
-                                  {vrsta.naziv} ({u.vrsta_uplate})
+                                  {vrsta.transfer
+                                    ? `${vrsta.naziv} #${u.sifra_transfera}`
+                                    : `${vrsta.naziv} (${u.vrsta_uplate})`}
                                 </td>
                               </tr>
                               );
