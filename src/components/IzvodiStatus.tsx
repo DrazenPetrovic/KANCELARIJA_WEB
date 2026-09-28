@@ -386,12 +386,25 @@ export function IzvodiStatus() {
 
   const brojOtvorenih = banke.filter(jeOtvoren).length;
 
-  // Otvoreni izvodi prvi, pa zatvoreni (i banke bez izvoda); unutar grupe
-  // ostaje redoslijed iz erp.banke_pregled.
-  const sortiraneBanke = [
-    ...banke.filter(jeOtvoren),
-    ...banke.filter((b) => !jeOtvoren(b)),
-  ];
+  // Otvoreni izvodi prvi (redoslijed iz erp.banke_pregled), pa zatvoreni —
+  // po datumu zatvaranja unosa (najnoviji prvi), pa po nazivu banke; banke
+  // bez ijednog izvoda na kraju.
+  const zatvorenoVrijeme = (b: BankaStatus) => {
+    const t = new Date(b.zadnji_izvod?.izvod_unos_zatvoren ?? "").getTime();
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  const zatvorene = banke
+    .filter((b) => !jeOtvoren(b))
+    .sort((a, b) => {
+      if (!a.zadnji_izvod !== !b.zadnji_izvod) return a.zadnji_izvod ? -1 : 1;
+      const razlika = zatvorenoVrijeme(b) - zatvorenoVrijeme(a);
+      if (razlika !== 0 && Number.isFinite(razlika)) return razlika;
+      if (zatvorenoVrijeme(a) !== zatvorenoVrijeme(b)) {
+        return Number.isFinite(zatvorenoVrijeme(a)) ? -1 : 1;
+      }
+      return a.naziv_banke.localeCompare(b.naziv_banke, "bs");
+    });
+  const sortiraneBanke = [...banke.filter(jeOtvoren), ...zatvorene];
 
   return (
     <div className="space-y-4">

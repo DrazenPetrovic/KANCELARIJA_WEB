@@ -10,7 +10,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { formatKM, type IzvodRed } from "./IzvodiPregled";
+import {
+  formatDatum,
+  formatKM,
+  stavkaInfo,
+  type IzvodRed,
+  type UplataRed,
+} from "./IzvodiPregled";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -65,6 +71,13 @@ interface Partner {
   skraceni_naziv: string | null;
 }
 
+// Uplata/isplata bez poznatog partnera — u bazu ide sifra_partnera = -1.
+const NEPOZNAT_PARTNER: Partner = {
+  partner_id: -1,
+  naziv: "NEPOZNAT PARTNER",
+  skraceni_naziv: null,
+};
+
 // Red iz erp.racuni_gl_istorija_pojedinacni_pregled (GET /api/racuni/istorija).
 interface RacunKupca {
   sifra_tabele: number;
@@ -73,7 +86,25 @@ interface RacunKupca {
   datum_racuna: string | null;
   vrsta_racuna_novi: string | number | null;
   vrsta_racuna_pod: string | number | null;
+  ukupno?: number | string | null;
+  racun_placen?: number | string | null;
 }
+
+// Neplaćen račun: u ziralni.q_racun_gl racun_placen je "Da"/"Ne" (u
+// tabeli 0/1), pa se prihvataju i "Ne" i 0.
+const racunNeplacen = (r: RacunKupca) => {
+  const v = String(r.racun_placen ?? "").trim().toLowerCase();
+  return v === "ne" || v === "0";
+};
+
+// Oznaka računa kao u unosu računa (racuniZiralni/racuniGotovinski):
+// MP/VP/Drugo-podvrsta-broj / GG (godina iz datuma računa).
+const oznakaRacuna = (r: RacunKupca) => {
+  const vrsta = Number(r.vrsta_racuna_novi);
+  const prefiks = vrsta === 1 ? "MP" : vrsta === 2 ? "VP" : "Drugo";
+  const godina = String(r.datum_racuna ?? "").slice(2, 4);
+  return `${prefiks}-${r.vrsta_racuna_pod ?? 0}-${r.broj_racuna} / ${godina}`;
+};
 
 // "YYYY-MM-DD ..." -> "dd.MM.yyyy"
 const prikazDatumaRacuna = (v: string | null) => {
@@ -144,9 +175,13 @@ const labelCls = "block text-xs text-gray-500 dark:text-[#7d7498] mb-1";
 
 export function IzvodiUnosForma({
   izvod,
+  sacuvaneStavke,
   onSpremljeno,
 }: {
   izvod: IzvodRed;
+  // Stavke koje su već u bazi (erp.izvodi_uplate_pregled) — prikaz desno,
+  // ispod nesačuvanih.
+  sacuvaneStavke: UplataRed[];
   onSpremljeno: () => void;
 }) {
   const [partneri, setPartneri] = useState<Partner[]>([]);
@@ -201,7 +236,9 @@ export function IzvodiUnosForma({
       if (!res.ok || d.success === false) {
         throw new Error(d.error || d.message || "Greška pri učitavanju računa");
       }
-      setRacuni(d.data ?? []);
+      // Za uplatu se nude samo neplaćeni računi. Filtrira se ovdje, a ne u
+      // ruti — /api/racuni/istorija koristi i unos računa (svi računi).
+      setRacuni(((d.data ?? []) as RacunKupca[]).filter(racunNeplacen));
     } catch (e: unknown) {
       setRacuni([]);
       setRacuniGreska(
@@ -215,7 +252,11 @@ export function IzvodiUnosForma({
   const izaberiRacun = (r: RacunKupca) => {
     setIzabraniRacun(r);
     setSifraVeze(String(r.sifra_tabele));
-    if (!opis.trim()) setOpis(`Uplata po računu ${r.broj_racuna}`);
+    if (!opis.trim()) setOpis(`Uplata po računu ${oznakaRacuna(r)}`);
+    const ukupno = Number(r.ukupno);
+    if (!iznos.trim() && Number.isFinite(ukupno) && ukupno > 0) {
+      setIznos(ukupno.toFixed(2));
+    }
     setIzborRacunaOtvoren(false);
   };
 
@@ -223,10 +264,7 @@ export function IzvodiUnosForma({
     const q = pretragaRacuna.trim().toLowerCase();
     if (!q) return racuni;
     return racuni.filter(
-      (r) =>
-        String(r.broj_racuna).includes(q) ||
-        String(r.sifra_tabele).includes(q) ||
-        String(r.vrsta_racuna ?? "").toLowerCase().includes(q),
+      (r) => oznakaRacuna(r).toLowerCase().includes(q),
     );
   }, [racuni, pretragaRacuna]);
 
@@ -317,7 +355,7 @@ export function IzvodiUnosForma({
         sifra_veze: veza,
         veza_prikaz:
           izabraniRacun && String(izabraniRacun.sifra_tabele) === String(veza)
-            ? `Račun ${izabraniRacun.broj_racuna}`
+            ? `Račun ${oznakaRacuna(izabraniRacun)}`
             : null,
         opis: opis.trim(),
         napomena: napomena.trim(),
@@ -339,8 +377,14 @@ export function IzvodiUnosForma({
     .filter((s) => vrstaPoKodu(s.vrsta_uplate).tip === "isplata")
     .reduce((a, s) => a + s.uplaceno, 0);
 
+  // Šalju se samo stavke koje još nisu sačuvane (lista `stavke`); sačuvane
+  // su već u bazi i dolaze kroz sacuvaneStavke. Nakon uspjeha iz liste se
+  // uklanjaju tačno poslane stavke — ako operater doda novu dok čuvanje
+  // traje, ona ostaje nesačuvana i ide tek sa sljedećim "Sačuvaj unos".
   const spremi = async () => {
-    if (stavke.length === 0) return;
+    if (stavke.length === 0 || slanje) return;
+    const zaSlanje = stavke;
+    const poslaniKljucevi = new Set(zaSlanje.map((s) => s.kljuc));
     setSlanje(true);
     setGreskaSlanja(null);
     setUspjeh(null);
@@ -350,7 +394,7 @@ export function IzvodiUnosForma({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stavke: stavke.map((s) => ({
+          stavke: zaSlanje.map((s) => ({
             vrsta_uplate: s.vrsta_uplate,
             sifra_partnera: s.sifra_partnera,
             datum_uplate: s.datum_uplate,
@@ -368,15 +412,15 @@ export function IzvodiUnosForma({
       if (!res.ok || !d.success) {
         throw new Error(d.message || d.error || "Greška pri unosu stavki");
       }
-      const broj = Number(d.broj ?? stavke.length);
+      const broj = Number(d.broj ?? zaSlanje.length);
       setUspjeh(
         d.prvaSifra != null
           ? broj === 1
-            ? `Spremljena 1 stavka (šifra uplate ${d.prvaSifra})`
-            : `Spremljeno stavki: ${broj} (šifre uplata ${d.prvaSifra}–${d.posljednjaSifra})`
-          : `Spremljeno stavki: ${broj}`,
+            ? `Sačuvana 1 stavka (šifra uplate ${d.prvaSifra})`
+            : `Sačuvano stavki: ${broj} (šifre uplata ${d.prvaSifra}–${d.posljednjaSifra})`
+          : `Sačuvano stavki: ${broj}`,
       );
-      setStavke([]);
+      setStavke((prev) => prev.filter((s) => !poslaniKljucevi.has(s.kljuc)));
       onSpremljeno();
     } catch (e: unknown) {
       setGreskaSlanja(
@@ -388,9 +432,9 @@ export function IzvodiUnosForma({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Forma */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+    <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(340px,440px)_1fr] items-start">
+      {/* LIJEVO — unos nove stavke */}
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden lg:sticky lg:top-4">
         <div
           className="px-4 py-2.5 text-[10px] font-bold tracking-widest uppercase"
           style={{ background: `${PRIMARY}0a`, color: PRIMARY }}
@@ -398,16 +442,17 @@ export function IzvodiUnosForma({
           Nova stavka — izvod #{izvod.sifra_izvoda}
         </div>
 
-        <div className="p-4 grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
+        <div className="p-4 grid gap-3 grid-cols-2">
           {/* Vrsta uplate */}
-          <div className="md:col-span-2">
+          <div className="col-span-2">
             <label className={labelCls}>Vrsta uplate</label>
             <select
               value={vrsta}
               onChange={(e) => {
+                // Promjena vrste odmah čisti sva popunjena polja (partner,
+                // iznos, veza, opis, napomena); datum ostaje.
+                ocistiFormu();
                 setVrsta(Number(e.target.value));
-                setSifraVeze("");
-                setIzabraniRacun(null);
               }}
               className={inputCls}
             >
@@ -432,10 +477,26 @@ export function IzvodiUnosForma({
           </div>
 
           {/* Partner */}
-          <div className="md:col-span-2" ref={pretragaRef}>
-            <label className={labelCls}>
-              {OZNAKA_PARTNERA[izabranaVrsta.partner]}
-            </label>
+          <div className="col-span-2" ref={pretragaRef}>
+            <div className="flex items-center justify-between">
+              <label className={labelCls}>
+                {OZNAKA_PARTNERA[izabranaVrsta.partner]}
+              </label>
+              {partner?.partner_id !== NEPOZNAT_PARTNER.partner_id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    izaberiPartnera(NEPOZNAT_PARTNER);
+                    setSifraVeze("");
+                    setIzabraniRacun(null);
+                  }}
+                  className="mb-1 text-[11px] font-semibold hover:underline"
+                  style={{ color: PRIMARY }}
+                >
+                  Nepoznat partner
+                </button>
+              )}
+            </div>
             {partner ? (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#785E9E] bg-[#785E9E0a]">
                 <span className="flex-1 min-w-0 text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
@@ -481,6 +542,15 @@ export function IzvodiUnosForma({
                 />
                 {pokaziListu && !partneriLoading && (
                   <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => izaberiPartnera(NEPOZNAT_PARTNER)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm font-semibold border-b border-gray-100 dark:border-[#2d2648] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                      style={{ color: PRIMARY }}
+                    >
+                      <span className="flex-1">{NEPOZNAT_PARTNER.naziv}</span>
+                      <span className="text-[11px] opacity-70">#-1</span>
+                    </button>
                     {filtriraniPartneri.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-gray-400 dark:text-[#5f5878]">
                         Nema rezultata
@@ -509,7 +579,7 @@ export function IzvodiUnosForma({
           </div>
 
           {/* Veza (račun / kalkulacija / KUF) */}
-          <div className="md:col-span-2">
+          <div className="col-span-2">
             <label className={labelCls}>
               Šifra veze
               {izabranaVrsta.veza && ` (${NAZIV_VEZE[izabranaVrsta.veza]})`}
@@ -528,14 +598,20 @@ export function IzvodiUnosForma({
                 <button
                   type="button"
                   onClick={() => void otvoriIzborRacuna()}
-                  disabled={!partner}
+                  disabled={!partner || partner.partner_id < 0}
                   title={
-                    partner
-                      ? "Pregled računa izabranog kupca"
-                      : "Prvo izaberite kupca"
+                    !partner
+                      ? "Prvo izaberite kupca"
+                      : partner.partner_id < 0
+                        ? "Nepoznat partner nema račune"
+                        : "Pregled računa izabranog kupca"
                   }
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:disabled:border-[#3a3158] dark:disabled:text-[#5f5878] enabled:hover:bg-purple-50 dark:enabled:hover:bg-[#2d2648]"
-                  style={partner ? { borderColor: PRIMARY, color: PRIMARY } : undefined}
+                  style={
+                    partner && partner.partner_id > 0
+                      ? { borderColor: PRIMARY, color: PRIMARY }
+                      : undefined
+                  }
                 >
                   <FileSearch size={13} />
                   Izaberi {NAZIV_VEZE.racun}
@@ -558,7 +634,7 @@ export function IzvodiUnosForma({
             {izabraniRacun &&
               String(izabraniRacun.sifra_tabele) === sifraVeze && (
                 <div className="mt-1 text-[11px]" style={{ color: PRIMARY }}>
-                  Račun {izabraniRacun.broj_racuna} od{" "}
+                  Račun {oznakaRacuna(izabraniRacun)} od{" "}
                   {prikazDatumaRacuna(izabraniRacun.datum_racuna)}
                 </div>
               )}
@@ -592,7 +668,7 @@ export function IzvodiUnosForma({
           </div>
 
           {/* Opis */}
-          <div className="md:col-span-2">
+          <div className="col-span-2">
             <label className={labelCls}>Opis</label>
             <input
               type="text"
@@ -605,7 +681,7 @@ export function IzvodiUnosForma({
           </div>
 
           {/* Napomena */}
-          <div className="md:col-span-2">
+          <div className="col-span-2">
             <label className={labelCls}>Napomena</label>
             <input
               type="text"
@@ -616,7 +692,7 @@ export function IzvodiUnosForma({
             />
           </div>
 
-          <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-3 pt-1">
+          <div className="col-span-2 flex flex-wrap items-center gap-3 pt-1">
             <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-[#9e96b8] cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -665,7 +741,7 @@ export function IzvodiUnosForma({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Računi kupca
+                  Neplaćeni računi kupca
                 </p>
                 <p className="text-xs text-gray-500 dark:text-[#7d7498] truncate">
                   {partner.naziv} · #{partner.partner_id}
@@ -715,7 +791,7 @@ export function IzvodiUnosForma({
               ) : filtriraniRacuni.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400 dark:text-[#5f5878]">
                   {racuni.length === 0
-                    ? "Kupac nema računa."
+                    ? "Kupac nema neplaćenih računa."
                     : "Nema računa za tu pretragu."}
                 </div>
               ) : (
@@ -724,8 +800,7 @@ export function IzvodiUnosForma({
                     <tr className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
                       <th className="text-left px-5 py-2">Broj računa</th>
                       <th className="text-left px-3 py-2">Datum</th>
-                      <th className="text-left px-3 py-2">Vrsta</th>
-                      <th className="text-right px-5 py-2">Šifra</th>
+                      <th className="text-right px-5 py-2">Ukupno</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -742,17 +817,19 @@ export function IzvodiUnosForma({
                               : "hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                           }`}
                         >
-                          <td className="px-5 py-2 font-semibold text-gray-800 dark:text-[#ede9f6]">
-                            {r.broj_racuna}
+                          <td className="px-5 py-2 font-semibold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
+                            {oznakaRacuna(r)}
                           </td>
                           <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] whitespace-nowrap">
                             {prikazDatumaRacuna(r.datum_racuna)}
                           </td>
-                          <td className="px-3 py-2 text-gray-600 dark:text-[#c5bfd8]">
-                            {r.vrsta_racuna ?? "–"}
-                          </td>
-                          <td className="px-5 py-2 text-right text-gray-400 dark:text-[#5f5878]">
-                            {r.sifra_tabele}
+                          {/* sifra_tabele se ne prikazuje — koristi se samo
+                              za sifra_veze pri izboru računa. */}
+                          <td
+                            className="px-5 py-2 text-right font-bold whitespace-nowrap"
+                            style={{ color: PRIMARY }}
+                          >
+                            {r.ukupno == null ? "–" : formatKM(r.ukupno)}
                           </td>
                         </tr>
                       );
@@ -763,83 +840,138 @@ export function IzvodiUnosForma({
             </div>
 
             <div className="px-5 py-2.5 text-[11px] text-gray-400 dark:text-[#5f5878] border-t border-gray-100 dark:border-[#2d2648]">
-              Klik na račun upisuje njegovu šifru u polje „Šifra veze“.
+              Klik na račun ga veže za uplatu (šifra veze) i popunjava iznos
+              ako je prazan.
             </div>
           </div>
         </div>
       )}
 
-      {uspjeh && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400">
-          <CheckCircle2 size={15} />
-          {uspjeh}
+      {/* DESNO — stavke izvoda: nesačuvane (nove) na vrhu, pa sačuvane */}
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div
+          className="px-4 py-2.5 flex items-center gap-3 text-[10px] font-bold tracking-widest uppercase"
+          style={{ background: `${PRIMARY}0a`, color: PRIMARY }}
+        >
+          <span className="flex-1">
+            Stavke izvoda ({sacuvaneStavke.length + stavke.length})
+          </span>
+          {stavke.length > 0 && (
+            <>
+              <span style={{ color: ACCENT }}>+ {formatKM(sumaUplata)}</span>
+              <span className="text-red-500">− {formatKM(sumaIsplata)}</span>
+            </>
+          )}
         </div>
-      )}
 
-      {/* Stavke za slanje */}
-      {stavke.length > 0 && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border-2 shadow-sm overflow-hidden" style={{ borderColor: `${PRIMARY}40` }}>
-          <div
-            className="px-4 py-2.5 flex items-center gap-3 text-[10px] font-bold tracking-widest uppercase"
-            style={{ background: `${PRIMARY}0a`, color: PRIMARY }}
+        {/* Akcije iznad spiska — čuva se samo ono što još nije sačuvano */}
+        <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-b border-gray-100 dark:border-[#2d2648]">
+          <button
+            type="button"
+            onClick={spremi}
+            disabled={slanje || stavke.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: ACCENT }}
           >
-            <span className="flex-1">
-              Za unos ({stavke.length}) — još nije spremljeno
-            </span>
-            <span style={{ color: ACCENT }}>+ {formatKM(sumaUplata)}</span>
-            <span className="text-red-500">− {formatKM(sumaIsplata)}</span>
+            {slanje ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Save size={14} />
+            )}
+            Sačuvaj unos
+            {stavke.length > 0 && ` (${stavke.length})`}
+          </button>
+          {stavke.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setStavke([])}
+              disabled={slanje}
+              className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
+            >
+              Odbaci nesačuvane
+            </button>
+          )}
+          <span className="text-[11px] text-gray-400 dark:text-[#5f5878]">
+            {stavke.length === 0
+              ? "Nema nesačuvanih stavki."
+              : `Nesačuvanih stavki: ${stavke.length}`}
+          </span>
+
+          {greskaSlanja && (
+            <div className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400">
+              <AlertCircle size={13} className="flex-shrink-0" />
+              <span className="flex-1">{greskaSlanja}</span>
+              <button type="button" onClick={() => setGreskaSlanja(null)}>
+                <X size={12} />
+              </button>
+            </div>
+          )}
+          {uspjeh && (
+            <div className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400">
+              <CheckCircle2 size={13} className="flex-shrink-0" />
+              <span className="flex-1">{uspjeh}</span>
+              <button type="button" onClick={() => setUspjeh(null)}>
+                <X size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {stavke.length === 0 && sacuvaneStavke.length === 0 ? (
+          <div className="flex items-center justify-center gap-1.5 py-12 text-gray-400 dark:text-[#5f5878]">
+            <span className="text-xs">Na izvodu još nema stavki</span>
           </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
-                  <th className="text-left px-3 py-2">Vrsta</th>
                   <th className="text-left px-3 py-2">Partner</th>
+                  <th className="text-left px-3 py-2">Vrsta</th>
                   <th className="text-left px-3 py-2">Datum</th>
                   <th className="text-right px-3 py-2">Iznos</th>
-                  <th className="text-left px-3 py-2">Veza</th>
-                  <th className="text-left px-3 py-2">Opis / napomena</th>
+                  <th className="text-left px-3 py-2">Opis</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
+                {/* Nove — još nisu u bazi */}
                 {stavke.map((s) => {
                   const v = vrstaPoKodu(s.vrsta_uplate);
+                  const boja = v.tip === "uplata" ? ACCENT : "#ef4444";
                   return (
                     <tr
-                      key={s.kljuc}
-                      className="border-t border-gray-50 dark:border-[#2d2648] text-sm"
+                      key={`N-${s.kljuc}`}
+                      className="border-t border-gray-50 dark:border-[#2d2648] text-sm bg-amber-50/70 dark:bg-amber-900/15"
                     >
-                      <td
-                        className="px-3 py-2 whitespace-nowrap font-medium"
-                        style={{ color: v.tip === "uplata" ? ACCENT : "#ef4444" }}
-                      >
-                        {v.kod} — {v.naziv}
-                      </td>
                       <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8]">
-                        {s.naziv_partnera}
-                        <span className="text-[11px] text-gray-400 dark:text-[#5f5878]">
-                          {" "}
-                          #{s.sifra_partnera}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 dark:bg-amber-800/60 dark:text-amber-200">
+                            NOVO
+                          </span>
+                          <span className="truncate">{s.naziv_partnera}</span>
+                        </div>
+                        {s.veza_prikaz && (
+                          <div className="text-[11px] text-gray-400 dark:text-[#5f5878]">
+                            {s.veza_prikaz}
+                          </div>
+                        )}
+                      </td>
+                      <td
+                        className="px-3 py-2 whitespace-nowrap text-xs font-medium"
+                        style={{ color: boja }}
+                      >
+                        {v.naziv}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
                         {prikazDatuma(s.datum_uplate)}
                       </td>
                       <td
                         className="px-3 py-2 text-right font-bold whitespace-nowrap"
-                        style={{ color: v.tip === "uplata" ? ACCENT : "#ef4444" }}
+                        style={{ color: boja }}
                       >
                         {v.tip === "isplata" ? "− " : ""}
                         {formatKM(s.uplaceno)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2]">
-                        {s.veza_prikaz ?? (s.sifra_veze || "–")}
-                        {s.veza_prikaz && (
-                          <div className="text-[11px] text-gray-400 dark:text-[#5f5878]">
-                            šifra {s.sifra_veze}
-                          </div>
-                        )}
                       </td>
                       <td className="px-3 py-2 text-gray-600 dark:text-[#c5bfd8]">
                         {s.opis || "–"}
@@ -863,43 +995,57 @@ export function IzvodiUnosForma({
                     </tr>
                   );
                 })}
+
+                {/* Sačuvane — iz erp.izvodi_uplate_pregled */}
+                {sacuvaneStavke.map((u) => {
+                  const v = stavkaInfo(u);
+                  const boja = v.transfer
+                    ? "#2563eb"
+                    : v.tip === "isplata"
+                      ? "#ef4444"
+                      : ACCENT;
+                  return (
+                    <tr
+                      key={
+                        v.transfer
+                          ? `T-${u.sifra_transfera}-${u.smjer}`
+                          : `U-${u.sifra_uplate}`
+                      }
+                      className="border-t border-[#e6def2] dark:border-[#3a3158] text-sm bg-[#f3eefa] hover:bg-[#e9e1f6] dark:bg-[#2c2444] dark:hover:bg-[#342a52]"
+                    >
+                      <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8]">
+                        {Number(u.sifra_partnera) === -1
+                          ? NEPOZNAT_PARTNER.naziv
+                          : (u.naziv_partnera ?? `Partner #${u.sifra_partnera}`)}
+                      </td>
+                      <td
+                        className="px-3 py-2 whitespace-nowrap text-xs font-medium"
+                        style={{ color: boja }}
+                      >
+                        {v.naziv}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
+                        {formatDatum(u.datum_uplate ?? izvod.datum_izvoda)}
+                      </td>
+                      <td
+                        className="px-3 py-2 text-right font-semibold whitespace-nowrap"
+                        style={{ color: boja }}
+                      >
+                        {v.tip === "isplata" ? "− " : ""}
+                        {formatKM(u.uplaceno)}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 dark:text-[#c5bfd8]">
+                        {u.opis || "–"}
+                      </td>
+                      <td className="px-3 py-2" />
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-
-          <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-t border-gray-100 dark:border-[#2d2648]">
-            {greskaSlanja && (
-              <span className="flex items-center gap-1.5 text-xs text-red-500 flex-1">
-                <AlertCircle size={13} className="flex-shrink-0" />
-                {greskaSlanja}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setStavke([])}
-              disabled={slanje}
-              className="ml-auto px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
-            >
-              Odbaci sve
-            </button>
-            <button
-              type="button"
-              onClick={spremi}
-              disabled={slanje}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 disabled:opacity-50"
-              style={{ background: ACCENT }}
-            >
-              {slanje ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Save size={14} />
-              )}
-              Spremi {stavke.length}{" "}
-              {stavke.length === 1 ? "stavku" : "stavki"}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

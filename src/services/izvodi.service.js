@@ -196,7 +196,8 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
     if (!Number.isInteger(vrsta) || vrsta < 1 || vrsta > 12) {
       throw new Error(`Stavka ${redBr}: neispravna vrsta uplate`);
     }
-    if (!Number.isInteger(partner) || partner <= 0) {
+    // -1 = nepoznat partner (dozvoljeno); inače mora biti stvarna šifra.
+    if (!Number.isInteger(partner) || (partner <= 0 && partner !== -1)) {
       throw new Error(`Stavka ${redBr}: partner nije izabran`);
     }
     if (!Number.isFinite(iznos) || iznos <= 0) {

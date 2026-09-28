@@ -13,7 +13,6 @@ import {
   formatDatumVrijeme,
   formatKM,
   redoslijedStavke,
-  stavkaInfo,
   type IzvodRed,
   type UplataRed,
 } from "./IzvodiPregled";
@@ -266,100 +265,14 @@ export function IzvodiUnos() {
             ))}
           </div>
 
-          {/* Forma za unos — key resetuje formu i listu pri promjeni izvoda */}
+          {/* Lijevo unos, desno stavke izvoda (nesačuvane + sačuvane).
+              key resetuje formu i nesačuvane stavke pri promjeni izvoda. */}
           <IzvodiUnosForma
             key={izabrani.redni_broj}
             izvod={izabrani}
+            sacuvaneStavke={stavkeIzabranog}
             onSpremljeno={() => void ucitaj()}
           />
-
-          {/* Postojeće stavke */}
-          <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
-            <div
-              className="px-4 py-2.5 text-[10px] font-bold tracking-widest uppercase"
-              style={{ background: `${PRIMARY}0a`, color: PRIMARY }}
-            >
-              Stavke izvoda ({stavkeIzabranog.length})
-            </div>
-            {stavkeIzabranog.length === 0 ? (
-              <div className="flex items-center justify-center gap-1.5 py-8 text-gray-400 dark:text-[#5f5878]">
-                <Wallet size={16} className="text-gray-300 dark:text-[#3a3158]" />
-                <span className="text-xs">Na izvodu još nema stavki</span>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr style={{ background: PRIMARY }}>
-                      <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide text-white">
-                        Partner
-                      </th>
-                      <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide text-white">
-                        Datum
-                      </th>
-                      <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide text-green-200">
-                        Uplate
-                      </th>
-                      <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-200">
-                        Isplate
-                      </th>
-                      <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide text-white">
-                        Opis
-                      </th>
-                      <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide text-white">
-                        Vrsta
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stavkeIzabranog.map((u) => {
-                      const vrsta = stavkaInfo(u);
-                      const boja = vrsta.transfer
-                        ? "#2563eb"
-                        : vrsta.tip === "isplata"
-                          ? "#ef4444"
-                          : ACCENT;
-                      return (
-                        <tr
-                          key={
-                            vrsta.transfer
-                              ? `T-${u.sifra_transfera}-${u.smjer}`
-                              : `U-${u.sifra_uplate}`
-                          }
-                          className="border-t border-gray-50 dark:border-[#2d2648] hover:bg-purple-50/60 dark:hover:bg-[#271f40]/60"
-                        >
-                          <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8]">
-                            {u.naziv_partnera ?? `Partner #${u.sifra_partnera}`}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] whitespace-nowrap">
-                            {formatDatum(u.datum_uplate ?? izabrani.datum_izvoda)}
-                          </td>
-                          <td
-                            className="px-3 py-2 text-sm text-right font-semibold whitespace-nowrap"
-                            style={{ color: ACCENT }}
-                          >
-                            {vrsta.tip === "uplata" ? formatKM(u.uplaceno) : ""}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-right font-semibold text-red-500 whitespace-nowrap">
-                            {vrsta.tip === "isplata" ? formatKM(u.uplaceno) : ""}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-gray-600 dark:text-[#c5bfd8]">
-                            {u.opis || "–"}
-                          </td>
-                          <td
-                            className="px-3 py-2 text-sm text-right font-medium whitespace-nowrap"
-                            style={{ color: boja }}
-                          >
-                            {vrsta.naziv}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
