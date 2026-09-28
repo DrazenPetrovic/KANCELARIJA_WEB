@@ -25,3 +25,41 @@ export const getKalkulacijaPojedinacna = async (req, res) => {
       .json({ success: false, error: "Greška pri učitavanju kalkulacije" });
   }
 };
+
+export const getKalkulacijeGlavni = async (req, res) => {
+  try {
+    const data = await KalkulacijeService.getKalkulacijeGlavni();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled kalkulacija (glavni) error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju kalkulacija" });
+  }
+};
+
+export const getKalkulacijeZavisniTroskovi = async (req, res) => {
+  try {
+    const data = await KalkulacijeService.getKalkulacijeZavisniTroskovi();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled zavisnih troškova error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju zavisnih troškova",
+    });
+  }
+};
+
+export const getKalkulacijeStavke = async (req, res) => {
+  try {
+    const data = await KalkulacijeService.getKalkulacijeStavke();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled kalkulacija (stavke) error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju stavki kalkulacija",
+    });
+  }
+};

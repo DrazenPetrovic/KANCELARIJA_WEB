@@ -27,6 +27,7 @@ import { TrgovackaKnjigaVeleprodaja } from "./TrgovackaKnjigaVeleprodaja";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { Kuf } from "./Kuf";
+import { KalkulacijePregled } from "./KalkulacijePregled";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { IzvodiStatus } from "./IzvodiStatus";
 import { IzvodiUnos } from "./IzvodiUnos";
@@ -2908,21 +2909,7 @@ export function Dashboard({
             </div>
           )}
 
-          {activeSection === "pregled-kalkulacija" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <Calculator size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Pregled kalkulacija
-                </h2>
-              </div>
-              <p className="text-gray-500 dark:text-[#7d7498]">
-                Prikaz svih kalkulacija.
-              </p>
-            </div>
-          )}
+          {activeSection === "pregled-kalkulacija" && <KalkulacijePregled />}
 
           {activeSection === "narudzbe-pregled" && <OrdersList />}
 

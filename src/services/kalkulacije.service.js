@@ -13,3 +13,37 @@ export const getKalkulacijaPojedinacna = async (sifraKalkulacije) => {
     return rezultatSet[0] ?? null;
   });
 };
+
+// Zaglavlja svih kalkulacija sa podacima dobavljača, za ekran "Pregled
+// kalkulacija" u meniju Pregledi. Vidi erp.kalkulacija_gl_pregled.
+export const getKalkulacijeGlavni = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kalkulacija_gl_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Zavisni troškovi (ZT) — sifra_kalkulacije je KALK na koji se trošak
+// odnosi, a sifra_zavisnog_troska je šifra samog ZT dokumenta (red u
+// kalkulacija_gl_pregled). Vidi erp.kalkulacija_zavisni_trosak_pregled.
+export const getKalkulacijeZavisniTroskovi = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kalkulacija_zavisni_trosak_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Stavke (proizvodi) svih kalkulacija — frontend ih grupiše po
+// sifra_kalkulacije. Vidi erp.kalkulacija_po_pregled.
+export const getKalkulacijeStavke = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kalkulacija_po_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};

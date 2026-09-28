@@ -120,16 +120,19 @@ function KarticaBanke({
       className="bg-white dark:bg-[#261f38] rounded-2xl border-2 shadow-sm overflow-hidden flex flex-col"
       style={{ borderColor: otvoren ? `${ACCENT}80` : "#e5e7eb" }}
     >
-      {/* Zaglavlje banke */}
-      <div className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-[#2d2648]">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
-          <Landmark size={16} style={{ color: PRIMARY }} />
+      {/* Zaglavlje banke — primarna boja, bijeli tekst */}
+      <div
+        className="px-4 py-3 flex items-center gap-3"
+        style={{ background: PRIMARY }}
+      >
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/15">
+          <Landmark size={16} className="text-white" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-sm text-gray-800 dark:text-[#ede9f6] truncate">
+          <div className="font-bold text-sm text-white truncate">
             {banka.naziv_banke}
           </div>
-          <div className="text-[11px] text-gray-400 dark:text-[#5f5878] truncate">
+          <div className="text-[11px] text-white/75 truncate">
             Šifra banke {banka.sifra_banke}
             {banka.broj_racuna && String(banka.broj_racuna) !== "0" && (
               <> · {banka.broj_racuna}</>
@@ -141,8 +144,8 @@ function KarticaBanke({
             className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0"
             style={
               otvoren
-                ? { background: "#e9f7df", color: ACCENT }
-                : { background: "#f3f4f6", color: "#6b7280" }
+                ? { background: "#ffffff", color: ACCENT }
+                : { background: "rgba(255,255,255,0.2)", color: "#ffffff" }
             }
           >
             {otvoren ? <LockOpen size={10} /> : <Lock size={10} />}
