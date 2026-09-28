@@ -53,7 +53,10 @@ interface NabavnaCijenaPodaci {
   vpc: number | string | null;
 }
 
-function formatKolicina(v: number | string | null | undefined, jm?: string | null) {
+function formatKolicina(
+  v: number | string | null | undefined,
+  jm?: string | null,
+) {
   if (v === null || v === undefined) return "–";
   const [cijeliDio, decimalniDio] = Number(v).toFixed(3).split(".");
   const negativan = cijeliDio.startsWith("-");
@@ -268,10 +271,7 @@ export function KarticaProizvoda() {
 
   // Procedura vraća stavke hronološki (od najstarije) — u prikazu ide
   // obrnuto, najnovije prvo.
-  const stavkeZaPrikaz = useMemo(
-    () => [...(stavke ?? [])].reverse(),
-    [stavke],
-  );
+  const stavkeZaPrikaz = useMemo(() => [...(stavke ?? [])].reverse(), [stavke]);
 
   const ukupnoUlaz = useMemo(
     () => (stavke ?? []).reduce((acc, s) => acc + Number(s.ulaz ?? 0), 0),
@@ -293,7 +293,8 @@ export function KarticaProizvoda() {
   // Trenutna cijena — cijena sa posljednje (najnovije) stavke u kartici.
   const trenutnaCijena =
     stavke && stavke.length > 0 ? stavke[stavke.length - 1].cijena : 0;
-  const financijskaVrijednost = Number(trenutnoStanje) * Number(trenutnaCijena ?? 0);
+  const financijskaVrijednost =
+    Number(trenutnoStanje) * Number(trenutnaCijena ?? 0);
 
   // Rekapitulacija po broju stavki (ne po količini): koliko je izlaza
   // evidentirano kao redovan račun, koliko kao storno (izlaz u minusu — vidi
@@ -509,7 +510,11 @@ export function KarticaProizvoda() {
 
       {odabraniProizvod && loading && (
         <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex items-center justify-center py-20 gap-3">
-          <Loader2 size={22} className="animate-spin" style={{ color: PRIMARY }} />
+          <Loader2
+            size={22}
+            className="animate-spin"
+            style={{ color: PRIMARY }}
+          />
           <span className="text-sm text-gray-500 dark:text-[#7d7498]">
             Učitavanje...
           </span>
@@ -618,29 +623,39 @@ export function KarticaProizvoda() {
                         // Izlaz koji ide u minus (npr. KO — knjižno odobrenje/povrat)
                         // suštinski povećava zalihe iako je evidentiran kao izlaz —
                         // vizuelno se izdvaja od običnog izlaza (koji ostaje bijeli).
-                        const jeKoPovrat =
-                          !jeUlaz && Number(s.izlaz ?? 0) < 0;
+                        const jeKoPovrat = !jeUlaz && Number(s.izlaz ?? 0) < 0;
                         const rowBg = jeUlaz
                           ? "bg-[#eaf7db] dark:bg-[#1c3016]"
                           : jeKoPovrat
                             ? "bg-[#fdf0d8] dark:bg-[#3a2c12]"
                             : "bg-white dark:bg-[#261f38]";
-                        const border = "border-t border-gray-300 dark:border-gray-700";
+                        const border =
+                          "border-t border-gray-300 dark:border-gray-700";
                         return (
                           <tr key={s.rb} className={rowBg}>
-                            <td className={`px-4 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] ${border}`}>
+                            <td
+                              className={`px-4 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] ${border}`}
+                            >
                               {s.rb}
                             </td>
-                            <td className={`px-4 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] ${border}`}>
+                            <td
+                              className={`px-4 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] ${border}`}
+                            >
                               {formatDatum(s.datum)}
                             </td>
-                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                            <td
+                              className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}
+                            >
                               {s.broj_racuna ?? "–"}
                             </td>
-                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                            <td
+                              className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}
+                            >
                               {s.korisnik ?? "–"}
                             </td>
-                            <td className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}>
+                            <td
+                              className={`px-1 py-2 text-sm text-gray-500 dark:text-[#a99fc2] ${border}`}
+                            >
                               {s.jedinica_m ?? "–"}
                             </td>
                             <td
@@ -658,10 +673,14 @@ export function KarticaProizvoda() {
                             >
                               {s.izlaz ? formatKolicina(s.izlaz) : "–"}
                             </td>
-                            <td className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}>
+                            <td
+                              className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
+                            >
                               {formatIznos(s.cijena)}
                             </td>
-                            <td className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}>
+                            <td
+                              className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
+                            >
                               {formatIznos(s.nabavna_cijena)}
                             </td>
                             <td

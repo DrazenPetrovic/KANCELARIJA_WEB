@@ -3,7 +3,7 @@ import { withConnection } from "./db.service.js";
 export const getIstorijaRacuna = async (sifraPartnera) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL erp.sp_racuni_gl_istorija(?)",
+      "CALL erp.racuni_gl_istorija_pojedinacni_pregled(?)",
       [sifraPartnera],
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];

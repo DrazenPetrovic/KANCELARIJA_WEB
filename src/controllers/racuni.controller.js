@@ -9,13 +9,15 @@ export const getIstorijaRacuna = async (req, res) => {
         .json({ success: false, error: "Sifra partnera je obavezna" });
     }
     const data = await RacuniService.getIstorijaRacuna(sifraPartnera);
-    const poslednjih = [...data]
-      .sort(
-        (a, b) =>
-          new Date(b.datum_racuna).getTime() -
-          new Date(a.datum_racuna).getTime(),
-      )
-      .slice(0, 6);
+    // Unos računa prikazuje samo zadnjih 6; ?sve=1 (izbor računa kod unosa
+    // uplata na izvod) vraća sve račune partnera, najnoviji prvi.
+    const sortirano = [...data].sort(
+      (a, b) =>
+        new Date(b.datum_racuna).getTime() -
+        new Date(a.datum_racuna).getTime(),
+    );
+    const poslednjih =
+      req.query.sve === "1" ? sortirano : sortirano.slice(0, 6);
     return res.json({
       success: true,
       data: poslednjih,

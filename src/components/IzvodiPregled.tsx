@@ -21,7 +21,7 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
 // Red iz erp.izvodi_pregled.
-interface IzvodRed {
+export interface IzvodRed {
   redni_broj: number;
   sifra_izvoda: number | string;
   sifra_banke: number | string;
@@ -40,7 +40,7 @@ interface IzvodRed {
 
 // Red iz erp.izvodi_uplate_pregled — sifra_blagajne se poklapa sa
 // redni_broj iz izvodi_pregled.
-interface UplataRed {
+export interface UplataRed {
   sifra_uplate: number;
   vrsta_uplate: string | number | null;
   sifra_partnera: number | string | null;
@@ -108,7 +108,7 @@ function vrstaUplateInfo(v: string | number | null | undefined) {
 
 // Transfer ima vrsta_uplate = -1, pa se smjer novca čita iz `smjer`
 // (ULAZ = uplata na ovaj izvod, IZLAZ = isplata sa ovog izvoda).
-function stavkaInfo(u: UplataRed) {
+export function stavkaInfo(u: UplataRed) {
   if (String(u.tip_stavke ?? "").toUpperCase() === "TRANSFER") {
     const ulaz = String(u.smjer ?? "").toUpperCase() === "ULAZ";
     return {
@@ -121,19 +121,19 @@ function stavkaInfo(u: UplataRed) {
 }
 
 // Redoslijed u tabeli: uplate, isplate, pa transferi (prijem, skidanje).
-function redoslijedStavke(u: UplataRed) {
+export function redoslijedStavke(u: UplataRed) {
   const s = stavkaInfo(u);
   return (s.transfer ? 2 : 0) + (s.tip === "isplata" ? 1 : 0);
 }
 
-function formatKM(v: number | string | null | undefined) {
+export function formatKM(v: number | string | null | undefined) {
   if (v === null || v === undefined || v === "") return "–";
   const n = Number(v);
   if (Number.isNaN(n)) return "–";
   return `${formatBroj(n)} KM`;
 }
 
-function formatDatum(v: string | null | undefined) {
+export function formatDatum(v: string | null | undefined) {
   if (!v) return "–";
   const d = new Date(v);
   if (isNaN(d.getTime())) return v;
@@ -143,7 +143,7 @@ function formatDatum(v: string | null | undefined) {
 }
 
 // izvod_unos_otvoren / izvod_unos_zatvoren — datum i vrijeme otvaranja/zatvaranja unosa.
-function formatDatumVrijeme(v: string | number | null | undefined) {
+export function formatDatumVrijeme(v: string | number | null | undefined) {
   if (v === null || v === undefined || v === "") return "–";
   const d = new Date(v as string);
   if (isNaN(d.getTime())) return String(v);

@@ -28,6 +28,8 @@ import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { Kuf } from "./Kuf";
 import { IzvodiPregled } from "./IzvodiPregled";
+import { IzvodiStatus } from "./IzvodiStatus";
+import { IzvodiUnos } from "./IzvodiUnos";
 import { BlagajnaPregled } from "./BlagajnaPregled";
 import { BlagajnaStatus } from "./BlagajnaStatus";
 import { useBlagajna } from "../context/BlagajnaContext";
@@ -166,6 +168,8 @@ type MenuSection =
   | "narudzbe-lokalno"
   | "narudzbe-zavrsene-lokalno"
   | "finansije-izvodi-pregled"
+  | "finansije-izvodi-status"
+  | "finansije-izvodi-unos"
   | "finansije-blagajna-pregled"
   | "finansije-blagajna-status"
   | "finansije-blagajna-unos"
@@ -205,6 +209,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "narudzbe-lokalno": "Unos narudžbe lokalno",
   "narudzbe-zavrsene-lokalno": "Završene lokalne narudžbe",
   "finansije-izvodi-pregled": "Pregled izvoda",
+  "finansije-izvodi-status": "Status izvoda",
+  "finansije-izvodi-unos": "Unos uplata / isplata",
   "finansije-blagajna-pregled": "Pregled blagajne",
   "finansije-blagajna-status": "Status blagajne",
   "finansije-blagajna-unos": "Unos uplata/isplata",
@@ -1952,6 +1958,63 @@ export function Dashboard({
                               />
                               Pregled izvoda
                             </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange("finansije-izvodi-status")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "finansije-izvodi-status"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "finansije-izvodi-status"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Lock
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "finansije-izvodi-status"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Status izvoda
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange("finansije-izvodi-unos")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "finansije-izvodi-unos"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "finansije-izvodi-unos"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Wallet
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection === "finansije-izvodi-unos"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Unos uplata / isplata
+                            </button>
                           </div>
                         )}
 
@@ -2868,6 +2931,8 @@ export function Dashboard({
           {activeSection === "narudzbe-lokalno" && <NarudzbeUnosLokalno />}
 
           {activeSection === "finansije-izvodi-pregled" && <IzvodiPregled />}
+          {activeSection === "finansije-izvodi-status" && <IzvodiStatus />}
+          {activeSection === "finansije-izvodi-unos" && <IzvodiUnos />}
 
           {activeSection === "finansije-blagajna-pregled" && (
             <BlagajnaPregled />

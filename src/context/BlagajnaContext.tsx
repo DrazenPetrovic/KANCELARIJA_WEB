@@ -55,8 +55,11 @@ export function BlagajnaProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
-  const refresh = async () => {
-    setLoading(true);
+  // tiho = pozadinsko osvježavanje (polling) — ne pali `loading`, inače
+  // BlagajnaStatus svakih POLL_MS zamijeni cijelu karticu spinnerom (i
+  // poništi fokus/unos u formi za zatvaranje).
+  const ucitaj = async (tiho: boolean) => {
+    if (!tiho) setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/blagajna/stanje`, {
         credentials: "include",
@@ -64,16 +67,20 @@ export function BlagajnaProvider({ children }: { children: ReactNode }) {
       const d = await res.json();
       if (mountedRef.current) setStanje(d.success ? d.stanje : null);
     } catch {
-      if (mountedRef.current) setStanje(null);
+      // Prolazna mrežna greška pri tihom osvježavanju ne smije "zatvoriti"
+      // blagajnu u meniju — zadržava se zadnje poznato stanje.
+      if (mountedRef.current && !tiho) setStanje(null);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && !tiho) setLoading(false);
     }
   };
 
+  const refresh = () => ucitaj(false);
+
   useEffect(() => {
     mountedRef.current = true;
-    void refresh();
-    const intervalId = setInterval(() => void refresh(), POLL_MS);
+    void ucitaj(false);
+    const intervalId = setInterval(() => void ucitaj(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(intervalId);
