@@ -159,7 +159,11 @@ function StatTile({
   );
 }
 
-export function KarticaProizvoda() {
+export function KarticaProizvoda({
+  initialSifraProizvoda,
+}: {
+  initialSifraProizvoda?: string | null;
+}) {
   const [proizvodi, setProizvodi] = useState<Proizvod[]>([]);
   const [proizvodiLoading, setProizvodiLoading] = useState(true);
 
@@ -200,6 +204,21 @@ export function KarticaProizvoda() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Otvaranje u novom tabu (npr. iz pregleda artikala) šalje šifru proizvoda
+  // koju treba odmah odabrati čim se lista proizvoda učita.
+  const initialSifraPrimijenjena = useRef(false);
+  useEffect(() => {
+    if (initialSifraPrimijenjena.current) return;
+    if (!initialSifraProizvoda || proizvodi.length === 0) return;
+    const proizvod = proizvodi.find(
+      (p) => String(p.sifra_proizvoda) === initialSifraProizvoda,
+    );
+    if (proizvod) {
+      initialSifraPrimijenjena.current = true;
+      odaberiProizvod(proizvod);
+    }
+  }, [proizvodi, initialSifraProizvoda]);
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();

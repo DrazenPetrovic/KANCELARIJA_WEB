@@ -274,7 +274,25 @@ export function Dashboard({
     ucitavanje: boolean;
   } | null>(null);
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
-  const [activeSection, setActiveSection] = useState<MenuSection>(null);
+  // Nema URL rutiranja u aplikaciji — ovo je jedini izuzetak: dugme "otvori u
+  // novom tabu" (npr. kod pregleda artikala) šalje ?section=...&sifra=... da
+  // novi tab odmah otvori taj ekran sa unaprijed odabranim proizvodom. Query
+  // string se čita samo jednom pri pokretanju i odmah briše iz adresne trake.
+  const [initSifraKartica] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("sifra"),
+  );
+  const [activeSection, setActiveSection] = useState<MenuSection>(() => {
+    const section = new URLSearchParams(window.location.search).get(
+      "section",
+    );
+    return section === "artikli-kartica" ? "artikli-kartica" : null;
+  });
+
+  useEffect(() => {
+    if (window.location.search) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
   const [openMenu, setOpenMenu] = useState<
     | "file"
     | "radnici"
@@ -2883,7 +2901,9 @@ export function Dashboard({
 
           {activeSection === "artikli-pregled" && <ArtikliPregled />}
 
-          {activeSection === "artikli-kartica" && <KarticaProizvoda />}
+          {activeSection === "artikli-kartica" && (
+            <KarticaProizvoda initialSifraProizvoda={initSifraKartica} />
+          )}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 

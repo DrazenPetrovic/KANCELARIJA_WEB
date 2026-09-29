@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   CheckCircle2,
+  CreditCard,
   Loader2,
   Package,
   Pencil,
@@ -302,6 +303,14 @@ export function ArtikliPregled() {
 
   const zatvoriIzmjenu = () => {
     setArtikalZaIzmjenu(null);
+  };
+
+  // Otvara Karticu artikla u novom tabu, sa unaprijed odabranim proizvodom.
+  // Aplikacija nema URL rutiranje — stanje ekrana (aktivna sekcija, izabrani
+  // proizvod) se čita iz query stringa pri pokretanju (vidi Dashboard.tsx).
+  const otvoriKarticuNovomTabu = (a: Artikal) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL}?section=artikli-kartica&sifra=${encodeURIComponent(a.sifra_proizvoda)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const handleSacuvajIzmjenu = async () => {
@@ -650,15 +659,26 @@ export function ArtikliPregled() {
                       </span>
                     </TD>
                     <TD center>
-                      <button
-                        type="button"
-                        onClick={() => otvoriIzmjenu(a)}
-                        title="Izmijeni artikal"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
-                        style={{ color: PRIMARY }}
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => otvoriIzmjenu(a)}
+                          title="Izmijeni artikal"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                          style={{ color: PRIMARY }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => otvoriKarticuNovomTabu(a)}
+                          title="Otvori karticu artikla u novom tabu"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                          style={{ color: PRIMARY }}
+                        >
+                          <CreditCard size={14} />
+                        </button>
+                      </div>
                     </TD>
                   </tr>
                 ))}
