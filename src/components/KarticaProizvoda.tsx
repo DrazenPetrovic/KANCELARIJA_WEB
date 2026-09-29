@@ -129,7 +129,7 @@ function StatTile({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[150px] ${
+      className={`flex items-center gap-3 rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[150px] min-h-[60px] ${
         prazno
           ? "bg-gray-100 dark:bg-[#1a1626] border-2 border-red-300 dark:border-red-900/70"
           : "bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648]"
@@ -143,7 +143,7 @@ function StatTile({
       </div>
       <div className="min-w-0">
         <div
-          className={`text-lg font-bold leading-tight ${
+          className={`text-lg font-bold leading-tight whitespace-nowrap ${
             prazno
               ? "text-gray-400 dark:text-[#7d7498]"
               : "text-gray-800 dark:text-[#ede9f6]"
@@ -308,12 +308,13 @@ export function KarticaProizvoda({
   );
   const trenutnoStanje =
     stavke && stavke.length > 0 ? stavke[stavke.length - 1].saldo : 0;
-  const jedinicaMjere = odabraniProizvod?.jm ?? stavke?.[0]?.jedinica_m ?? "";
-  // Trenutna cijena — cijena sa posljednje (najnovije) stavke u kartici.
-  const trenutnaCijena =
-    stavke && stavke.length > 0 ? stavke[stavke.length - 1].cijena : 0;
-  const financijskaVrijednost =
-    Number(trenutnoStanje) * Number(trenutnaCijena ?? 0);
+  // Saldo (količinski) po nabavnoj cijeni i po VPC-u — koriste trenutnu
+  // nabavnu cijenu/VPC iz erp.artikli (vidi nabavnaCijenaPodaci), ne cijenu
+  // sa posljednje stavke prometa.
+  const saldoNabavni =
+    Number(trenutnoStanje) * Number(nabavnaCijenaPodaci?.cijena_bez ?? 0);
+  const saldoProdajni =
+    Number(trenutnoStanje) * Number(nabavnaCijenaPodaci?.vpc ?? 0);
 
   // Rekapitulacija po broju stavki (ne po količini): koliko je izlaza
   // evidentirano kao redovan račun, koliko kao storno (izlaz u minusu — vidi
@@ -619,13 +620,13 @@ export function KarticaProizvoda({
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
-                          VPC
+                          Nabavna
                         </th>
                         <th
-                          className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
+                          className="text-center px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
                           style={{ color: PRIMARY }}
                         >
-                          Nabavna
+                          VPC
                         </th>
                         <th
                           className="text-right px-4 py-2.5 text-xs font-bold uppercase tracking-wide"
@@ -695,12 +696,12 @@ export function KarticaProizvoda({
                             <td
                               className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
                             >
-                              {formatIznos(s.cijena)}
+                              {formatIznos(s.nabavna_cijena, 3)}
                             </td>
                             <td
-                              className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
+                              className={`px-4 py-2 text-sm text-center text-gray-600 dark:text-[#c5bfd8] ${border}`}
                             >
-                              {formatIznos(s.nabavna_cijena, 3)}
+                              {formatIznos(s.cijena)}
                             </td>
                             <td
                               className={`px-4 py-2 text-sm text-right font-bold ${border}`}
@@ -718,43 +719,49 @@ export function KarticaProizvoda({
 
               {/* Statistika — vertikalno, apsolutno pozicionirana gore lijevo (lg+), da tabela ostane centrirana prema cijelom ekranu */}
               <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[5%] lg:absolute lg:top-0 lg:left-[3%] origin-top-left scale-90">
+                <div
+                  className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
+                  style={{ background: PRIMARY }}
+                >
+                  Količinsko stanje
+                </div>
                 <StatTile
                   icon={<Package size={16} />}
-                  vrijednost={formatKolicina(pocetnoStanje, jedinicaMjere)}
+                  vrijednost={formatKolicina(pocetnoStanje)}
                   naziv="Početno stanje"
                   boja={PRIMARY}
                 />
                 <StatTile
                   icon={<TrendingUp size={16} />}
-                  vrijednost={formatKolicina(stvarniUlaz, jedinicaMjere)}
+                  vrijednost={formatKolicina(stvarniUlaz)}
                   naziv="Zaduženje"
                   boja={ACCENT}
                 />
                 <StatTile
                   icon={<TrendingDown size={16} />}
-                  vrijednost={formatKolicina(ukupnoIzlaz, jedinicaMjere)}
+                  vrijednost={formatKolicina(ukupnoIzlaz)}
                   naziv="Razduženje"
                   boja="#ef4444"
                 />
                 <StatTile
                   icon={<Boxes size={16} />}
-                  vrijednost={formatKolicina(trenutnoStanje, jedinicaMjere)}
+                  vrijednost={formatKolicina(trenutnoStanje)}
                   naziv="Saldo količinski"
                   boja={Number(trenutnoStanje) === 0 ? "#9ca3af" : PRIMARY}
                   prazno={Number(trenutnoStanje) === 0}
                 />
-                <StatTile
-                  icon={<Wallet size={16} />}
-                  vrijednost={formatIznos(financijskaVrijednost)}
-                  naziv="Saldo finansijski"
-                  boja={financijskaVrijednost === 0 ? "#9ca3af" : PRIMARY}
-                  prazno={financijskaVrijednost === 0}
-                />
               </div>
 
-              {/* Nabavna cijena i VPC iz erp.artikli — desno, na istoj udaljenosti
-                  od desne ivice tabele koliko je lijeva statistika od lijeve ivice */}
-              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[calc(5%+119px)] lg:absolute lg:top-0 lg:right-[3%]">
+              {/* Nabavna cijena, VPC i njihovi saldo iznosi — desno, na istoj
+                  udaljenosti od desne ivice tabele koliko je lijeva statistika
+                  od lijeve ivice, i na istoj visini (isti mt kao lijevo) */}
+              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[5%] lg:absolute lg:top-0 lg:right-[3%]">
+                <div
+                  className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
+                  style={{ background: PRIMARY }}
+                >
+                  Financijsko stanje
+                </div>
                 <StatTile
                   icon={<CreditCard size={16} />}
                   vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez, 3)}
@@ -763,9 +770,23 @@ export function KarticaProizvoda({
                 />
                 <StatTile
                   icon={<Wallet size={16} />}
+                  vrijednost={formatIznos(saldoNabavni)}
+                  naziv="Saldo nabavni"
+                  boja={saldoNabavni === 0 ? "#9ca3af" : PRIMARY}
+                  prazno={saldoNabavni === 0}
+                />
+                <StatTile
+                  icon={<CreditCard size={16} />}
                   vrijednost={formatIznos(nabavnaCijenaPodaci?.vpc)}
                   naziv="VPC"
                   boja={ACCENT}
+                />
+                <StatTile
+                  icon={<Wallet size={16} />}
+                  vrijednost={formatIznos(saldoProdajni)}
+                  naziv="Saldo prodajni"
+                  boja={saldoProdajni === 0 ? "#9ca3af" : ACCENT}
+                  prazno={saldoProdajni === 0}
                 />
               </div>
             </div>

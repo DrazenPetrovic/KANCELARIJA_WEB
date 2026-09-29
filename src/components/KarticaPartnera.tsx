@@ -406,25 +406,24 @@ export function KarticaPartnera() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+      <div className="relative flex flex-col lg:flex-row lg:items-center gap-3">
+      {/* Naslov — centriran na sredini ekrana (desktop), iznad pretrage na mobilnom */}
+      <div className="order-1 lg:order-2 flex items-center gap-3 lg:absolute lg:left-1/2 lg:top-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:pointer-events-none">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] flex-shrink-0">
           <CreditCard size={20} style={{ color: PRIMARY }} />
         </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
             Kartica partnera
           </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+          <p className="text-xs text-gray-400 dark:text-[#5f5878] whitespace-nowrap">
             Pregled stanja duguje/potražuje po partneru od početka godine
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-      {/* Lijevi stub (30%) — izbor partnera */}
-      <div className="w-full lg:w-[30%] flex-shrink-0">
-      {/* Filteri */}
+      {/* Izbor partnera — lijevi ugao, u istoj visini kao naslov */}
+      <div className="order-2 lg:order-1 w-full lg:w-[30%] flex-shrink-0">
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
@@ -518,62 +517,6 @@ export function KarticaPartnera() {
         </div>
       </div>
       </div>
-
-      {/* Desni stub (70%) — prekidač kupac/dobavljač */}
-      <div className="w-full lg:w-[70%] flex-1 min-w-0">
-      {odabraniPartner && !loading && !greska && imaKupca && imaDobavljaca && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 flex justify-center">
-          <div className="flex items-start gap-4">
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAktivnaVrsta("kupac")}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
-                style={
-                  aktivnaVrsta === "kupac"
-                    ? { background: PRIMARY, color: "white" }
-                    : { color: PRIMARY }
-                }
-              >
-                <Users size={14} />
-                Kupac
-              </button>
-              <div className="text-center">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
-                  Trenutno stanje
-                </div>
-                <div className="text-sm font-bold" style={{ color: PRIMARY }}>
-                  {formatIznos(kartica?.kupac?.saldo ?? null)}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAktivnaVrsta("dobavljac")}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
-                style={
-                  aktivnaVrsta === "dobavljac"
-                    ? { background: PRIMARY, color: "white" }
-                    : { color: PRIMARY }
-                }
-              >
-                <Truck size={14} />
-                Dobavljač
-              </button>
-              <div className="text-center">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
-                  Trenutno stanje
-                </div>
-                <div className="text-sm font-bold" style={{ color: PRIMARY }}>
-                  {formatIznos(kartica?.dobavljac?.saldo ?? null)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      </div>
       </div>
 
       {!odabraniPartner && (
@@ -627,31 +570,84 @@ export function KarticaPartnera() {
                   (flex-1 mx-auto) bila centrirana samo u preostalom prostoru,
                   a ne na cijelom ekranu. */}
               {aktivnaKartica && (
-                <div className="flex flex-col gap-3 w-full lg:w-64 lg:absolute lg:left-[5%] lg:top-[calc(10px+2%)]">
-                  <StatTile
-                    icon={<Wallet size={16} />}
-                    vrijednost={formatIznos(pocetnoStanje)}
-                    naziv="Početno stanje"
-                    boja={PRIMARY}
-                  />
-                  <StatTile
-                    icon={<TrendingUp size={16} />}
-                    vrijednost={formatIznos(stvarnoZaduzenje)}
-                    naziv="Zaduženje"
-                    boja="#ef4444"
-                  />
-                  <StatTile
-                    icon={<TrendingDown size={16} />}
-                    vrijednost={formatIznos(stvarnoRazduzenje)}
-                    naziv="Razduženje"
-                    boja={ACCENT}
-                  />
-                  <StatTile
-                    icon={<CreditCard size={16} />}
-                    vrijednost={formatIznos(aktivnaKartica.saldo)}
-                    naziv="Saldo"
-                    boja={PRIMARY}
-                  />
+                <div className="flex flex-col w-full lg:w-64 lg:absolute lg:left-[5%] lg:top-[10px]">
+                  {imaKupca && imaDobavljaca && (
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setAktivnaVrsta("kupac")}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                          style={
+                            aktivnaVrsta === "kupac"
+                              ? { background: PRIMARY, color: "white" }
+                              : { color: PRIMARY }
+                          }
+                        >
+                          <Users size={14} />
+                          Kupac
+                        </button>
+                        <div className="text-center mt-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                            Trenutno stanje
+                          </div>
+                          <div className="text-sm font-bold" style={{ color: PRIMARY }}>
+                            {formatIznos(kartica?.kupac?.saldo ?? null)}
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setAktivnaVrsta("dobavljac")}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                          style={
+                            aktivnaVrsta === "dobavljac"
+                              ? { background: PRIMARY, color: "white" }
+                              : { color: PRIMARY }
+                          }
+                        >
+                          <Truck size={14} />
+                          Dobavljač
+                        </button>
+                        <div className="text-center mt-1">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                            Trenutno stanje
+                          </div>
+                          <div className="text-sm font-bold" style={{ color: PRIMARY }}>
+                            {formatIznos(kartica?.dobavljac?.saldo ?? null)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Vidljiv razmak između dugmadi i rekapitulacije */}
+                  <div className="flex flex-col gap-3 mt-6 lg:translate-y-[5%]">
+                    <StatTile
+                      icon={<Wallet size={16} />}
+                      vrijednost={formatIznos(pocetnoStanje)}
+                      naziv="Početno stanje"
+                      boja={PRIMARY}
+                    />
+                    <StatTile
+                      icon={<TrendingUp size={16} />}
+                      vrijednost={formatIznos(stvarnoZaduzenje)}
+                      naziv="Zaduženje"
+                      boja="#ef4444"
+                    />
+                    <StatTile
+                      icon={<TrendingDown size={16} />}
+                      vrijednost={formatIznos(stvarnoRazduzenje)}
+                      naziv="Razduženje"
+                      boja={ACCENT}
+                    />
+                    <StatTile
+                      icon={<CreditCard size={16} />}
+                      vrijednost={formatIznos(aktivnaKartica.saldo)}
+                      naziv="Saldo"
+                      boja={PRIMARY}
+                    />
+                  </div>
                 </div>
               )}
 
