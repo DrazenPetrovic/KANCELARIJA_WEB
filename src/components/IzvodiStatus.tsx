@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
+  CalendarDays,
   Landmark,
   Loader2,
   Lock,
@@ -15,8 +16,8 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
 // NAPOMENA: status se čita iz erp.izvodi_pregled (zadnji izvod svake banke).
-// Otvaranje (POST /api/izvodi/otvori) zove erp.izvod_otvaranje() koja još
-// nije napravljena u bazi; zatvaranje izvoda i unos stavki su sljedeći korak.
+// Otvaranje (POST /api/izvodi/otvori) zove erp.izvodi_otvaranje_izvoda(p_json);
+// zatvaranje (POST /api/izvodi/zatvori) još čeka proceduru u bazi.
 
 interface ZadnjiIzvod {
   redni_broj: number;
@@ -58,16 +59,36 @@ const fmtDatumVrijeme = (dt: string | null) => {
 const fmtKM = (n: number) =>
   n.toLocaleString("bs-BA", { minimumFractionDigits: 2 }) + " KM";
 
+// sifra_izvoda u ziralni.izvodi je "broj/godina" (npr. "193/2026") i broji
+// se posebno za svaku banku; redni_broj je AUTO_INCREMENT i ne unosi se.
+const parseSifraIzvoda = (s: string | number | null | undefined) => {
+  const m = String(s ?? "").match(/^\s*(\d+)\s*\/\s*(\d{4})\s*$/);
+  return m ? { broj: Number(m[1]), godina: Number(m[2]) } : null;
+};
+
+// Prijedlog broja novog izvoda: zadnji broj te banke + 1 u istoj godini,
+// a u novoj godini numeracija kreće od 1.
+const predloziBrojIzvoda = (b: BankaStatus, godina: number) => {
+  const zadnji = parseSifraIzvoda(b.zadnji_izvod?.sifra_izvoda);
+  return zadnji && zadnji.godina === godina ? zadnji.broj + 1 : 1;
+};
+
+// "yyyy-MM-dd" -> "dd.MM.yyyy"
+const isoUPrikaz = (iso: string) => {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : "";
+};
+
 const danasISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-// Početno stanje novog izvoda = krajnje stanje zadnjeg izvoda te banke.
+// Početno stanje novog izvoda = krajnje stanje zadnjeg izvoda te banke (0
+// ako ga nema) — isto pravilo kao na serveru (otvoriIzvod u
+// izvodi.service.js), koji taj iznos i upisuje.
 const pocetnoNovog = (b: BankaStatus) =>
-  b.zadnji_izvod
-    ? (b.zadnji_izvod.krajnje_stanje ?? b.zadnji_izvod.tekuci_obracun)
-    : 0;
+  b.zadnji_izvod ? (b.zadnji_izvod.krajnje_stanje ?? 0) : 0;
 
 const RedIznos = ({
   label,
@@ -283,6 +304,8 @@ export function IzvodiStatus() {
   const [otvaranjeZa, setOtvaranjeZa] = useState<BankaStatus | null>(null);
   const [brojIzvoda, setBrojIzvoda] = useState("");
   const [datumIzvoda, setDatumIzvoda] = useState(danasISO());
+  const [brojRucno, setBrojRucno] = useState(false);
+  const datumPickerRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [greskaModal, setGreskaModal] = useState<string | null>(null);
   const [zatvaranjeZa, setZatvaranjeZa] = useState<BankaStatus | null>(null);
@@ -310,12 +333,38 @@ export function IzvodiStatus() {
     void ucitaj();
   }, []);
 
+  const godinaIzvoda = Number(datumIzvoda.slice(0, 4)) || new Date().getFullYear();
+
   const pokreniOtvaranje = (b: BankaStatus) => {
-    const zadnjiBroj = Number(b.zadnji_izvod?.sifra_izvoda);
-    setBrojIzvoda(Number.isFinite(zadnjiBroj) ? String(zadnjiBroj + 1) : "1");
-    setDatumIzvoda(danasISO());
+    const danas = danasISO();
+    setDatumIzvoda(danas);
+    setBrojIzvoda(String(predloziBrojIzvoda(b, Number(danas.slice(0, 4)))));
+    setBrojRucno(false);
     setGreskaModal(null);
     setOtvaranjeZa(b);
+  };
+
+  // Promjena datuma u drugu godinu mijenja i prijedlog broja — osim ako ga
+  // je operater već sam upisao.
+  const promijeniDatumIzvoda = (iso: string) => {
+    if (!iso) return;
+    setDatumIzvoda(iso);
+    if (otvaranjeZa && !brojRucno) {
+      setBrojIzvoda(
+        String(predloziBrojIzvoda(otvaranjeZa, Number(iso.slice(0, 4)))),
+      );
+    }
+  };
+
+  const otvoriKalendar = () => {
+    const el = datumPickerRef.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+      el.click();
+    }
   };
 
   const handleOtvori = async () => {
@@ -325,10 +374,11 @@ export function IzvodiStatus() {
       setGreskaModal("Unesite ispravan broj izvoda");
       return;
     }
-    if (!datumIzvoda) {
-      setGreskaModal("Unesite datum izvoda");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datumIzvoda)) {
+      setGreskaModal("Izaberite datum izvoda");
       return;
     }
+    const sifraIzvoda = `${broj}/${godinaIzvoda}`;
     setSubmitting(true);
     setGreskaModal(null);
     try {
@@ -338,7 +388,7 @@ export function IzvodiStatus() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sifraBanke: otvaranjeZa.sifra_banke,
-          sifraIzvoda: broj,
+          sifraIzvoda,
           datumIzvoda,
         }),
       });
@@ -355,9 +405,32 @@ export function IzvodiStatus() {
     }
   };
 
-  const pokreniZatvaranje = (b: BankaStatus) => {
+  // Prije potvrde se status ponovo učita — da operater vidi iznose sa svim
+  // stavkama unesenim u međuvremenu (server ih pri zatvaranju ionako
+  // računa iznova iz stavki).
+  const pokreniZatvaranje = async (b: BankaStatus) => {
     setGreskaModal(null);
-    setZatvaranjeZa(b);
+    let svjeza = b;
+    try {
+      const res = await fetch(`${API_URL}/api/izvodi/status`, {
+        credentials: "include",
+      });
+      const d = await res.json();
+      if (d.success) {
+        const noveBanke: BankaStatus[] = d.banke ?? [];
+        setBanke(noveBanke);
+        svjeza =
+          noveBanke.find(
+            (x) => String(x.sifra_banke) === String(b.sifra_banke),
+          ) ?? b;
+      }
+    } catch {
+      // ostaju već učitani podaci
+    }
+    // Ako je izvod u međuvremenu zatvoren (npr. s drugog računara),
+    // osvježena kartica to već pokazuje — modal se ne otvara.
+    if (svjeza.zadnji_izvod?.status !== "otvoren") return;
+    setZatvaranjeZa(svjeza);
   };
 
   const handleZatvori = async () => {
@@ -549,6 +622,10 @@ export function IzvodiStatus() {
                 separator
               />
             </div>
+            <p className="mt-2 text-[11px] text-gray-400 dark:text-[#5f5878]">
+              Uplate, isplate i krajnje stanje računaju se iz stavki izvoda i
+              pri zatvaranju upisuju u izvod.
+            </p>
 
             {greskaModal && (
               <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-xs">
@@ -591,7 +668,10 @@ export function IzvodiStatus() {
       {/* Otvaranje novog izvoda */}
       {otvaranjeZa && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] shadow-2xl p-5">
+          <div
+            className="w-full max-w-md rounded-2xl border-2 bg-white dark:bg-[#261f38] shadow-2xl p-5"
+            style={{ borderColor: PRIMARY }}
+          >
             <div className="flex items-start gap-3">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -604,12 +684,7 @@ export function IzvodiStatus() {
                   Otvaranje izvoda — {otvaranjeZa.naziv_banke}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-[#7d7498] mt-1">
-                  Početno stanje:{" "}
-                  <strong style={{ color: PRIMARY }}>
-                    {fmtKM(pocetnoNovog(otvaranjeZa))}
-                  </strong>
-                  {otvaranjeZa.zadnji_izvod &&
-                    ` (krajnje stanje izvoda #${otvaranjeZa.zadnji_izvod.sifra_izvoda})`}
+                  Unesite broj i datum izvoda iz banke.
                 </p>
               </div>
             </div>
@@ -617,29 +692,100 @@ export function IzvodiStatus() {
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-[#7d7498] mb-1">
-                  Broj izvoda
+                  Broj izvoda (od banke)
                 </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={brojIzvoda}
-                  onChange={(e) => setBrojIzvoda(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                  autoFocus
-                />
+                <div className="flex items-center rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1c1828] focus-within:border-[#785E9E] overflow-hidden">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={brojIzvoda}
+                    onChange={(e) => {
+                      setBrojIzvoda(e.target.value.replace(/\D/g, ""));
+                      setBrojRucno(true);
+                    }}
+                    className="w-full min-w-0 px-3 py-2 text-sm bg-transparent text-gray-800 dark:text-[#ede9f6] font-bold focus:outline-none text-right"
+                    autoFocus
+                  />
+                  <span className="pr-3 text-sm font-bold text-gray-400 dark:text-[#5f5878] whitespace-nowrap">
+                    / {godinaIzvoda}
+                  </span>
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-[#7d7498] mb-1">
                   Datum izvoda
                 </label>
-                <input
-                  type="date"
-                  value={datumIzvoda}
-                  onChange={(e) => setDatumIzvoda(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6]"
-                />
+                {/* Prikaz dd.MM.yyyy; klik bilo gdje u polje otvara kalendar
+                    (skriveni native date input ispod služi samo za picker). */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    readOnly
+                    value={isoUPrikaz(datumIzvoda)}
+                    onClick={otvoriKalendar}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        otvoriKalendar();
+                      }
+                    }}
+                    placeholder="dd.MM.yyyy"
+                    className="w-full px-3 py-2 pr-9 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] cursor-pointer"
+                  />
+                  <CalendarDays
+                    size={15}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: PRIMARY }}
+                  />
+                  <input
+                    ref={datumPickerRef}
+                    type="date"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    value={datumIzvoda}
+                    onChange={(e) => promijeniDatumIzvoda(e.target.value)}
+                    className="absolute left-0 bottom-0 w-full h-0 opacity-0 pointer-events-none"
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Početno stanje — samo prikaz, ne može se mijenjati. Server ga
+                pri otvaranju sam računa iz krajnjeg stanja zadnjeg izvoda. */}
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 dark:text-[#7d7498] mb-1">
+                Početno stanje (KM)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={fmtKM(pocetnoNovog(otvaranjeZa))}
+                  title="Početno stanje se preuzima iz krajnjeg stanja prethodnog izvoda i ne može se mijenjati"
+                  className="w-full px-3 py-2 pr-9 text-sm text-right font-bold border border-gray-200 dark:border-[#3a3158] rounded-xl bg-gray-100 dark:bg-[#1a1626] cursor-not-allowed"
+                  style={{ color: PRIMARY }}
+                />
+                <Lock
+                  size={13}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878] pointer-events-none"
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#5f5878]">
+                {otvaranjeZa.zadnji_izvod
+                  ? `Preuzeto iz krajnjeg stanja izvoda ${otvaranjeZa.zadnji_izvod.sifra_izvoda}.`
+                  : "Banka nema prethodnih izvoda — početno stanje je 0,00 KM."}
+              </p>
+            </div>
+
+            <p className="mt-2 text-[11px] text-gray-500 dark:text-[#7d7498]">
+              Šifra izvoda:{" "}
+              <strong style={{ color: PRIMARY }}>
+                {brojIzvoda || "?"}/{godinaIzvoda}
+              </strong>
+              {otvaranjeZa.zadnji_izvod &&
+                ` · zadnji izvod banke: ${otvaranjeZa.zadnji_izvod.sifra_izvoda}`}
+            </p>
 
             {greskaModal && (
               <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-xs">

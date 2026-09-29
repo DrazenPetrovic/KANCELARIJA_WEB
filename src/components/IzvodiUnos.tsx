@@ -13,6 +13,7 @@ import {
   formatDatumVrijeme,
   formatKM,
   redoslijedStavke,
+  stavkaInfo,
   type IzvodRed,
   type UplataRed,
 } from "./IzvodiPregled";
@@ -90,10 +91,27 @@ export function IzvodiUnos() {
     uplate.filter((u) => String(u.sifra_blagajne) === String(redniBroj))
       .length;
 
+  // Ovdje su samo otvoreni izvodi — njihova ukupno_uplata/ukupno_isplata u
+  // tabeli su 0 dok se izvod ne zatvori, pa se zbirovi računaju iz stavki
+  // (isto pravilo kao na serveru pri zatvaranju).
+  const totaliPoIzvodu = useMemo(() => {
+    const mapa = new Map<string, { uplate: number; isplate: number }>();
+    uplate.forEach((u) => {
+      const kljuc = String(u.sifra_blagajne);
+      const t = mapa.get(kljuc) ?? { uplate: 0, isplate: 0 };
+      const iznos = Number(u.uplaceno) || 0;
+      if (stavkaInfo(u).tip === "uplata") t.uplate += iznos;
+      else t.isplate += iznos;
+      mapa.set(kljuc, t);
+    });
+    return mapa;
+  }, [uplate]);
+
+  const totali = (i: IzvodRed) =>
+    totaliPoIzvodu.get(String(i.redni_broj)) ?? { uplate: 0, isplate: 0 };
+
   const obracunato = (i: IzvodRed) =>
-    (Number(i.pocetno_stanje) || 0) +
-    (Number(i.ukupno_uplata) || 0) -
-    (Number(i.ukupno_isplata) || 0);
+    (Number(i.pocetno_stanje) || 0) + totali(i).uplate - totali(i).isplate;
 
   return (
     <div className="space-y-4">
@@ -209,7 +227,7 @@ export function IzvodiUnos() {
                       Uplate
                     </div>
                     <div className="font-semibold" style={{ color: ACCENT }}>
-                      {formatKM(i.ukupno_uplata)}
+                      {formatKM(totali(i).uplate)}
                     </div>
                   </div>
                   <div>
@@ -217,7 +235,7 @@ export function IzvodiUnos() {
                       Isplate
                     </div>
                     <div className="font-semibold text-red-500">
-                      {formatKM(i.ukupno_isplata)}
+                      {formatKM(totali(i).isplate)}
                     </div>
                   </div>
                   <div className="text-right">
@@ -244,8 +262,8 @@ export function IzvodiUnos() {
           <div className="flex flex-wrap gap-3">
             {[
               { naziv: "Početno stanje", v: izabrani.pocetno_stanje, boja: undefined },
-              { naziv: "Uplate", v: izabrani.ukupno_uplata, boja: ACCENT },
-              { naziv: "Isplate", v: izabrani.ukupno_isplata, boja: "#ef4444" },
+              { naziv: "Uplate", v: totali(izabrani).uplate, boja: ACCENT },
+              { naziv: "Isplate", v: totali(izabrani).isplate, boja: "#ef4444" },
               { naziv: "Obračunato stanje", v: obracunato(izabrani), boja: PRIMARY },
             ].map((s) => (
               <div

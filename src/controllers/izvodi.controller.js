@@ -90,8 +90,8 @@ export const zatvoriIzvod = async (req, res) => {
       .json({ success: false, message: "Redni broj izvoda je obavezan" });
   }
   try {
-    await IzvodiService.zatvoriIzvod({ redniBroj });
-    return res.json({ success: true });
+    const izvod = await IzvodiService.zatvoriIzvod({ redniBroj });
+    return res.json({ success: true, izvod });
   } catch (error) {
     console.error("zatvoriIzvod error:", error);
     return res.status(500).json({
