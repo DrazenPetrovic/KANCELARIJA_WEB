@@ -3879,7 +3879,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                     <span>
                       Nabavna (test):{" "}
                       <b className="text-gray-700 dark:text-[#c5bfd8]">
-                        {nabavna.toFixed(2)} KM
+                        {nabavna.toFixed(3)} KM
                       </b>
                     </span>
                     <span>

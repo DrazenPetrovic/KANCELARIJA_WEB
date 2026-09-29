@@ -2,13 +2,13 @@ import { withConnection } from "./db.service.js";
 
 export const getArtikli = async () => {
   return withConnection(async (connection) => {
-    const [rows] = await connection.execute("CALL erp.sp_artikli_pregled()");
+    const [rows] = await connection.execute("CALL erp.artikli_bez_sirovine_pregled()");
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
   });
 };
 
 // Potpuna lista artikala — uključuje i artikle definisane kao sirovina
-// (sp_artikli_pregled ih ne vraća). Koristi se za izbor proizvoda u kartici
+// (artikli_bez_sirovine_pregled ih ne vraća). Koristi se za izbor proizvoda u kartici
 // proizvoda, gdje operater mora moći odabrati i sirovine. Vidi
 // erp.artikli_pregled_sve.
 export const getArtikliPregledSve = async () => {

@@ -915,11 +915,11 @@ export function KalkulacijePregled() {
                             </div>
                           </TD>
                           <TD right>{formatBroj(s.kolicina, 3)}</TD>
-                          <TD right>{formatBroj(s.cijena)}</TD>
+                          <TD right>{formatBroj(s.cijena, 3)}</TD>
                           <TD right>{formatBroj(s.rabat)}</TD>
                           <TD right>{formatBroj(s.akcijski_rabat)}</TD>
-                          <TD right>{formatBroj(s.fakturisana_cijena)}</TD>
-                          <TD right>{formatBroj(s.nasa_ulazna_cijena)}</TD>
+                          <TD right>{formatBroj(s.fakturisana_cijena, 3)}</TD>
+                          <TD right>{formatBroj(s.nasa_ulazna_cijena, 3)}</TD>
                           <TD right>{formatBroj(s.vpc)}</TD>
                           <TD right bold>
                             {formatIznos(

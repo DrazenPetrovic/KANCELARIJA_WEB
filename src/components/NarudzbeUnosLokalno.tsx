@@ -1376,9 +1376,7 @@ export function NarudzbeUnosLokalno() {
                                       {item.product_name}
                                     </td>
                                     <td className="px-2 py-2 text-right font-semibold text-gray-700 dark:text-[#c5bfd8]">
-                                      {Number(item.quantity) % 1 === 0
-                                        ? Number(item.quantity).toFixed(0)
-                                        : Number(item.quantity).toFixed(3)}
+                                      {Number(item.quantity).toFixed(3)}
                                     </td>
                                     <td className="px-2 py-2 text-gray-500 dark:text-[#7d7498]">
                                       {item.product_uom}

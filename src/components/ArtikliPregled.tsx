@@ -151,10 +151,10 @@ const TD = ({
   </td>
 );
 
-const formatBroj = (v: number | string | undefined) => {
+const formatBroj = (v: number | string | undefined, decimale = 2) => {
   const n = Number(v);
   if (!Number.isFinite(n)) return "–";
-  return n.toLocaleString("bs-BA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("bs-BA", { minimumFractionDigits: decimale, maximumFractionDigits: decimale });
 };
 
 // Marža = koliko je VPC veći od nabavne cijene, u procentima.
@@ -287,7 +287,7 @@ export function ArtikliPregled() {
           ? String(jediniceMjere[0].sifra)
           : "",
     );
-    // Ovi podaci nisu dio pregleda artikala (sp_artikli_pregled), pa se
+    // Ovi podaci nisu dio pregleda artikala (artikli_bez_sirovine_pregled), pa se
     // otvaraju sa podrazumijevanim vrijednostima — korisnik ih po potrebi
     // popravi prije snimanja. Vrsta se otvara kao "Nije definisano" da
     // operater mora eksplicitno potvrditi pravu vrstu prije snimanja.
@@ -621,13 +621,13 @@ export function ArtikliPregled() {
                     <TD center>
                       {Number(a.kolicina_proizvoda) > 0 ? (
                         <span className="font-bold text-green-700 dark:text-green-400">
-                          {formatBroj(a.kolicina_proizvoda)}
+                          {formatBroj(a.kolicina_proizvoda, 3)}
                         </span>
                       ) : (
-                        formatBroj(a.kolicina_proizvoda)
+                        formatBroj(a.kolicina_proizvoda, 3)
                       )}
                     </TD>
-                    <TD center>{formatBroj(a.nabavna_cijena)}</TD>
+                    <TD center>{formatBroj(a.nabavna_cijena, 3)}</TD>
                     <TD center>{formatBroj(a.vpc)}</TD>
                     <TD center>
                       {(() => {

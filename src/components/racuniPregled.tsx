@@ -399,12 +399,18 @@ const formatDatumVrijemeDMY = (v: unknown): string => {
 // (round2 vraća čist JS broj, koji bi bez ovoga izgubio ".00" za cijele iznose).
 const KOLONE_UVIJEK_DECIMALNE = ["ukupno", "prodajna_vrednost"];
 
+// Količina i nabavna cijena se uvijek prikazuju sa 3 decimale.
+const KOLONE_TRI_DECIMALE = ["kolicina", "nabavna_cijena"];
+
 const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   if (kljuc === "datum_racuna") return formatDatumDMY(v);
   if (kljuc === "datum_vreme_fiskalnog") return formatDatumVrijemeDMY(v);
   if (v === null || v === undefined || v === "") return "–";
   if (izgledaKaoBroj(v)) {
     const n = Number(v);
+    if (kljuc !== undefined && KOLONE_TRI_DECIMALE.includes(kljuc)) {
+      return n.toFixed(3);
+    }
     // DECIMAL kolone dolaze iz baze kao string sa tačkom (npr. "150.00") čak i
     // kad je vrijednost cio broj — zadrži 2 decimale u tom slučaju. INT kolone
     // dolaze kao broj (bez tačke u zapisu) i ostaju prikazane bez decimala.

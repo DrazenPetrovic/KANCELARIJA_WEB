@@ -26,7 +26,7 @@ interface JedinicaMjereOpcija {
 }
 
 // Za provjeru duplikata prilikom unosa — isti podaci koje vraća
-// erp.sp_artikli_pregled() (pregled artikala, /api/artikli).
+// erp.artikli_bez_sirovine_pregled() (pregled artikala, /api/artikli).
 interface PostojeciArtikal {
   sifra_proizvoda: string | number;
   naziv_proizvoda: string;
@@ -90,7 +90,7 @@ export function ArtikliUnos() {
   const [ucitavanjeJm, setUcitavanjeJm] = useState(true);
 
   // Postojeći artikli — povučeni istom procedurom kao pregled artikala
-  // (erp.sp_artikli_pregled), da se pri unosu izbjegne dupliranje proizvoda.
+  // (erp.artikli_bez_sirovine_pregled), da se pri unosu izbjegne dupliranje proizvoda.
   const [postojeciArtikli, setPostojeciArtikli] = useState<PostojeciArtikal[]>(
     [],
   );

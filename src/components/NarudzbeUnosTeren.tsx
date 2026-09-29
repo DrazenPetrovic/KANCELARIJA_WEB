@@ -1751,7 +1751,7 @@ export function NarudzbeUnosTeren() {
                                       className="px-6 py-4 whitespace-nowrap text-sm font-semibold"
                                       style={{ color: "#8FC74A" }}
                                     >
-                                      {proizvod.kolicina}
+                                      {Number(proizvod.kolicina).toFixed(3)}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-[#9e96b8]">
                                       {proizvod.napomena || "-"}

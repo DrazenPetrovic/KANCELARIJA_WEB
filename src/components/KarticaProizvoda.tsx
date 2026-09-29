@@ -66,9 +66,9 @@ function formatKolicina(
   return `${negativan ? "-" : ""}${grupisano}.${decimalniDio}${jedinica}`;
 }
 
-function formatIznos(v: number | string | null | undefined) {
+function formatIznos(v: number | string | null | undefined, decimale = 2) {
   if (v === null || v === undefined) return "–";
-  const [cijeliDio, decimalniDio] = Number(v).toFixed(2).split(".");
+  const [cijeliDio, decimalniDio] = Number(v).toFixed(decimale).split(".");
   const negativan = cijeliDio.startsWith("-");
   const cijeliBezZnaka = negativan ? cijeliDio.slice(1) : cijeliDio;
   const grupisano = cijeliBezZnaka.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -681,7 +681,7 @@ export function KarticaProizvoda() {
                             <td
                               className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
                             >
-                              {formatIznos(s.nabavna_cijena)}
+                              {formatIznos(s.nabavna_cijena, 3)}
                             </td>
                             <td
                               className={`px-4 py-2 text-sm text-right font-bold ${border}`}
@@ -738,7 +738,7 @@ export function KarticaProizvoda() {
               <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[calc(5%+119px)] lg:absolute lg:top-0 lg:right-[3%]">
                 <StatTile
                   icon={<CreditCard size={16} />}
-                  vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez)}
+                  vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez, 3)}
                   naziv="Nabavna cijena"
                   boja={PRIMARY}
                 />
