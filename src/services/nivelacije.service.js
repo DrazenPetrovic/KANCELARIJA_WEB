@@ -17,6 +17,20 @@ export const unosNivelacije = async ({
   });
 };
 
+// Trajna nivelacija više proizvoda odjednom (ekran Artikli -> Nivelacija ->
+// Unos nivelacije). Cijeli dokument (zaglavlje + stavke) ide kao jedan JSON,
+// vidi erp.artikli_nivelacija_unos(p_json).
+export const unosNivelacijeArtikala = async (podaci) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      "CALL erp.artikli_nivelacija_unos(?)",
+      [JSON.stringify(podaci)],
+    );
+    const rezultat = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    return rezultat[0] ?? null;
+  });
+};
+
 export const getNivelacijeAktivne = async () => {
   return withConnection(async (connection) => {
     // Stara procedura (koristi je i ERP program) - ne dirati.

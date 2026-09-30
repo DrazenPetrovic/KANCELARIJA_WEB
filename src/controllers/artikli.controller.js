@@ -74,14 +74,15 @@ export const unosArtikla = async (req, res) => {
 
     const nazivProizvoda =
       typeof body.naziv_proizvoda === "string" ? body.naziv_proizvoda.trim() : "";
-    const jm = Number(body.jm);
+    // erp.artikli.jm je VARCHAR (npr. "kg") — ne šifra iz tabele jedinica mjere.
+    const jm = typeof body.jm === "string" ? body.jm.trim() : "";
 
     if (!nazivProizvoda) {
       return res
         .status(400)
         .json({ success: false, error: "Naziv proizvoda je obavezan" });
     }
-    if (!Number.isFinite(jm) || jm <= 0) {
+    if (!jm) {
       return res
         .status(400)
         .json({ success: false, error: "Jedinica mjere (JM) je obavezna" });
@@ -122,7 +123,8 @@ export const izmjenaArtikla = async (req, res) => {
     const sifraProizvoda = Number(body.sifra_proizvoda);
     const nazivProizvoda =
       typeof body.naziv_proizvoda === "string" ? body.naziv_proizvoda.trim() : "";
-    const jm = Number(body.jm);
+    // erp.artikli.jm je VARCHAR (npr. "kg") — ne šifra iz tabele jedinica mjere.
+    const jm = typeof body.jm === "string" ? body.jm.trim() : "";
 
     if (!Number.isFinite(sifraProizvoda) || sifraProizvoda <= 0) {
       return res
@@ -134,7 +136,7 @@ export const izmjenaArtikla = async (req, res) => {
         .status(400)
         .json({ success: false, error: "Naziv proizvoda je obavezan" });
     }
-    if (!Number.isFinite(jm) || jm <= 0) {
+    if (!jm) {
       return res
         .status(400)
         .json({ success: false, error: "Jedinica mjere (JM) je obavezna" });

@@ -82,6 +82,43 @@ interface KalkulacijaGrupa {
 
 const ZT_BOJA = "#E0913A";
 
+// Brzi filteri iznad tabele — primjenjuju se odmah, bez klika na "Prikaži".
+type BrziFilter =
+  | "sve"
+  | "sa-zt"
+  | "bez-zt"
+  | "neplacene"
+  | "sirovina"
+  | "roba"
+  | "ko";
+
+const KO_BOJA = "#2A9D8F";
+
+const jeKo = (k: { vrsta_kalkulacije: string | null }) =>
+  (k.vrsta_kalkulacije ?? "").trim().toUpperCase() === "KO";
+
+const BRZI_FILTERI: { kod: BrziFilter; naziv: string; boja: string }[] = [
+  { kod: "sve", naziv: "Sve", boja: PRIMARY },
+  { kod: "sa-zt", naziv: "Sa ZT", boja: ZT_BOJA },
+  { kod: "bez-zt", naziv: "Bez ZT", boja: PRIMARY },
+  { kod: "neplacene", naziv: "Neplaćene", boja: "#e0564f" },
+  { kod: "sirovina", naziv: "Sirovina", boja: "#b45309" },
+  { kod: "roba", naziv: "Roba", boja: ACCENT },
+  { kod: "ko", naziv: "KO", boja: KO_BOJA },
+];
+
+// Artikal iz erp.artikli_pregled_sve — treba samo oznaka sirovine (1 = sirovina).
+interface ArtikalSirovina {
+  sifra_proizvoda: number;
+  sirovina?: number | string | null;
+}
+
+// ZT-ovi grupe u redoslijedu prikaza (iznad KALK-a): opadajuće po šifri.
+const ztOdozgo = (g: KalkulacijaGrupa) =>
+  [...g.zt].sort(
+    (a, b) => Number(b.sifra_kalkulacije) - Number(a.sifra_kalkulacije),
+  );
+
 const jeZt = (k: KalkulacijaGlavni) =>
   (k.vrsta_kalkulacije ?? "").trim().toUpperCase() === "ZT";
 
@@ -214,12 +251,14 @@ export function KalkulacijePregled() {
   const [primenjeniOd, setPrimenjeniOd] = useState(datumOd);
   const [primenjeniDo, setPrimenjeniDo] = useState(datumDo);
   const [pretraga, setPretraga] = useState("");
+  const [brziFilter, setBrziFilter] = useState<BrziFilter>("sve");
   const [kalkulacije, setKalkulacije] = useState<KalkulacijaGlavni[]>([]);
   const [stavke, setStavke] = useState<KalkulacijaStavka[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
   const [odabrana, setOdabrana] = useState<KalkulacijaGlavni | null>(null);
   const [zavisniTroskovi, setZavisniTroskovi] = useState<ZavisniTrosak[]>([]);
+  const [artikli, setArtikli] = useState<ArtikalSirovina[]>([]);
   const datumOdRef = useRef<HTMLInputElement>(null);
   const datumDoRef = useRef<HTMLInputElement>(null);
 
@@ -258,11 +297,17 @@ export function KalkulacijePregled() {
         "/api/kalkulacije/zavisni-troskovi",
         "Greška pri učitavanju zavisnih troškova",
       ),
+      // Oznaka sirovine po artiklu — za brze filtere Sirovina / Roba.
+      dohvati<ArtikalSirovina>(
+        "/api/artikli/pregled-sve",
+        "Greška pri učitavanju artikala",
+      ),
     ])
-      .then(([gl, po, zt]) => {
+      .then(([gl, po, zt, art]) => {
         setKalkulacije(gl);
         setStavke(po);
         setZavisniTroskovi(zt);
+        setArtikli(art);
       })
       .catch((err) =>
         setGreska(err instanceof Error ? err.message : "Nepoznata greška"),
@@ -297,6 +342,27 @@ export function KalkulacijePregled() {
     }
     return m;
   }, [stavke]);
+
+  // Sastav kalkulacije po nestorniranim stavkama: ima li sirovina i/ili robe
+  // (artikal koji nije sirovina). Mješovita kalkulacija ima oba i pojavljuje
+  // se i pod filterom Sirovina i pod filterom Roba.
+  const sastavKalkulacije = useMemo(() => {
+    const sirovine = new Set<number>();
+    for (const a of artikli) {
+      if (Number(a.sirovina) === 1) sirovine.add(Number(a.sifra_proizvoda));
+    }
+    const m = new Map<number, { sirovina: boolean; roba: boolean }>();
+    for (const [sifra, lista] of stavkePoKalkulaciji) {
+      const sastav = { sirovina: false, roba: false };
+      for (const s of lista) {
+        if (jeDa(s.stornirano)) continue;
+        if (sirovine.has(Number(s.sifra_proizvoda))) sastav.sirovina = true;
+        else sastav.roba = true;
+      }
+      m.set(sifra, sastav);
+    }
+    return m;
+  }, [artikli, stavkePoKalkulaciji]);
 
   // Troškovi po šifri ZT dokumenta (za modal) i veza ZT → KALK.
   const troskoviPoZt = useMemo(() => {
@@ -367,6 +433,17 @@ export function KalkulacijePregled() {
         if (isNaN(d.getTime())) return false;
         if (od && d < od) return false;
         if (doo && d > doo) return false;
+        if (brziFilter === "sa-zt" && g.zt.length === 0) return false;
+        if (brziFilter === "bez-zt" && g.zt.length > 0) return false;
+        if (brziFilter === "neplacene" && jeDa(g.glavna.racun_placen))
+          return false;
+        if (brziFilter === "ko" && !jeKo(g.glavna)) return false;
+        if (brziFilter === "sirovina" || brziFilter === "roba") {
+          const sastav = sastavKalkulacije.get(
+            Number(g.glavna.sifra_kalkulacije),
+          );
+          if (!sastav?.[brziFilter]) return false;
+        }
         if (!q) return true;
         return odgovara(g.glavna) || g.zt.some(odgovara);
       })
@@ -381,10 +458,17 @@ export function KalkulacijePregled() {
           b.glavna.sifra_kalkulacije - a.glavna.sifra_kalkulacije
         );
       });
-  }, [grupe, primenjeniOd, primenjeniDo, pretraga]);
+  }, [
+    grupe,
+    primenjeniOd,
+    primenjeniDo,
+    pretraga,
+    brziFilter,
+    sastavKalkulacije,
+  ]);
 
   const filtrirano = useMemo(
-    () => grupeFiltrirano.flatMap((g) => [g.glavna, ...g.zt]),
+    () => grupeFiltrirano.flatMap((g) => [...ztOdozgo(g), g.glavna]),
     [grupeFiltrirano],
   );
 
@@ -501,7 +585,7 @@ export function KalkulacijePregled() {
               </span>
             )}
           </button>
-          <div className="flex-1 min-w-[220px]">
+          <div className="flex-1 min-w-[180px]">
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
               Pretraga
             </span>
@@ -517,6 +601,31 @@ export function KalkulacijePregled() {
                 placeholder="Dobavljač, broj računa ili šifra kalkulacije"
                 className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6]"
               />
+            </div>
+          </div>
+          <div className="flex-1 min-w-[180px]">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
+              Brzi filter
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {BRZI_FILTERI.map((f) => {
+                const aktivan = brziFilter === f.kod;
+                return (
+                  <button
+                    key={f.kod}
+                    type="button"
+                    onClick={() => setBrziFilter(f.kod)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${aktivan ? "text-white" : "bg-white dark:bg-[#1e1a2d] border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:border-[#785E9E]"}`}
+                    style={
+                      aktivan
+                        ? { background: f.boja, borderColor: f.boja }
+                        : undefined
+                    }
+                  >
+                    {f.naziv}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -615,7 +724,9 @@ export function KalkulacijePregled() {
                     (s, z) => s + Number(z.ukupno_km || 0),
                     0,
                   );
-                  return [g.glavna, ...g.zt].map((k, i) => {
+                  // ZT redovi idu iznad, opadajuće po šifri, tako da je najmanji
+                  // ZT odmah iznad nosećeg KALK-a na dnu grupe (… 834, 833, 832).
+                  return [...ztOdozgo(g), g.glavna].map((k, i) => {
                     const zt = jeZt(k);
                     const prviUGrupi = i === 0;
                     // KALK koji ima ZT dijeli pozadinu sa svojim ZT redovima,
@@ -639,7 +750,7 @@ export function KalkulacijePregled() {
                         borderLeft: `4px solid ${zt ? ZT_BOJA : PRIMARY}`,
                       }}
                     >
-                      {zt && !prviUGrupi ? (
+                      {zt && k !== g.glavna ? (
                         <span className="pl-3" style={{ color: ZT_BOJA }}>
                           ↳ {k.sifra_kalkulacije}
                         </span>
@@ -689,7 +800,7 @@ export function KalkulacijePregled() {
                       {k.vrsta_kalkulacije ? (
                         <Znacka
                           tekst={k.vrsta_kalkulacije.trim().toUpperCase()}
-                          boja={zt ? ZT_BOJA : PRIMARY}
+                          boja={zt ? ZT_BOJA : jeKo(k) ? KO_BOJA : PRIMARY}
                         />
                       ) : (
                         "—"
@@ -709,7 +820,7 @@ export function KalkulacijePregled() {
                     </TD>
                     <TD right bold naglaseno={kalkSaZt}>
                       <div>{formatIznos(k.ukupno_km)}</div>
-                      {prviUGrupi && g.zt.length > 0 && (
+                      {k === g.glavna && g.zt.length > 0 && (
                         <div
                           className="text-[10px] font-semibold"
                           style={{ color: ZT_BOJA }}

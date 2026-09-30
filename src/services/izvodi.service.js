@@ -279,13 +279,18 @@ const sadaLokalno = () => {
 // erp.izvodi_uplate_unos(p_json) kao JSON niz. sifra_radnika i vreme_uplate
 // postavlja server (prijavljeni operater, trenutno vrijeme) — ne vjeruje se
 // onome što pošalje klijent. sifra_blagajne je redni_broj izvoda i svaka
-// stavka mora ići na izvod koji je trenutno otvoren.
+// stavka mora ići na izvod koji je trenutno otvoren. datum_uplate se
+// definiše na nivou izvoda — uvijek je datum_izvoda tog izvoda.
 export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
   const izvodi = await getIzvodiPregled();
-  const otvoreni = new Set(
+  // redni_broj otvorenog izvoda -> datum izvoda ("yyyy-MM-dd")
+  const otvoreni = new Map(
     izvodi
       .filter((i) => Number(i.izvod_zatvoren) !== 1)
-      .map((i) => String(i.redni_broj)),
+      .map((i) => [
+        String(i.redni_broj),
+        String(i.datum_izvoda ?? "").slice(0, 10),
+      ]),
   );
 
   const vreme = sadaLokalno();
@@ -304,18 +309,19 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
     if (!Number.isFinite(iznos) || iznos <= 0) {
       throw new Error(`Stavka ${redBr}: iznos mora biti veći od 0`);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s.datum_uplate ?? ""))) {
-      throw new Error(`Stavka ${redBr}: neispravan datum uplate`);
-    }
     if (!otvoreni.has(String(s.sifra_blagajne))) {
       throw new Error(
         `Stavka ${redBr}: izvod ${s.sifra_blagajne} nije otvoren za unos`,
       );
     }
+    const datumIzvoda = otvoreni.get(String(s.sifra_blagajne));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datumIzvoda)) {
+      throw new Error(`Stavka ${redBr}: izvod nema ispravan datum`);
+    }
     return {
       vrsta_uplate: vrsta,
       sifra_partnera: partner,
-      datum_uplate: s.datum_uplate,
+      datum_uplate: datumIzvoda,
       vreme_uplate: vreme,
       uplaceno: Math.round(iznos * 100) / 100,
       sifra_veze: Number(s.sifra_veze) || 0,

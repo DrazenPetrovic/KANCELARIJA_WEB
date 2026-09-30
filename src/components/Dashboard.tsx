@@ -20,6 +20,7 @@ import { RadniciPrisutnostUnos } from "./RadniciPrisutnostUnos";
 import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { ArtikliUnos } from "./ArtikliUnos";
+import { NivelacijaUnos } from "./NivelacijaUnos";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
 import { KarticaProizvoda } from "./KarticaProizvoda";
@@ -159,6 +160,8 @@ type MenuSection =
   | "artikli-unos"
   | "artikli-pregled"
   | "artikli-kartica"
+  | "artikli-nivelacija-unos"
+  | "artikli-nivelacija-pregled"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
@@ -198,6 +201,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "partneri-pregled": "Partneri – pregled",
   "artikli-unos": "Unos artikla",
   "artikli-pregled": "Artikli – pregled",
+  "artikli-nivelacija-unos": "Unos nivelacije",
+  "artikli-nivelacija-pregled": "Pregled nivelacija",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
@@ -311,6 +316,7 @@ export function Dashboard({
   const [trgovackeKnjigeExpanded, setTrgovackeKnjigeExpanded] =
     useState(false);
   const [izvodiExpanded, setIzvodiExpanded] = useState(false);
+  const [nivelacijaExpanded, setNivelacijaExpanded] = useState(false);
   const [blagajnaExpanded, setBlagajnaExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
@@ -632,6 +638,7 @@ export function Dashboard({
     setOpenMenu((prev) => (prev === menu ? null : menu));
     if (menu !== "file") setArchiveExpanded(false);
     if (menu !== "proizvodnja") setKliseExpanded(false);
+    if (menu !== "artikli") setNivelacijaExpanded(false);
     if (menu !== "finansije") {
       setIzvodiExpanded(false);
       setBlagajnaExpanded(false);
@@ -644,6 +651,7 @@ export function Dashboard({
     setOpenMenu(null);
     setArchiveExpanded(false);
     setKliseExpanded(false);
+    setNivelacijaExpanded(false);
     setIzvodiExpanded(false);
     setBlagajnaExpanded(false);
     setTrgovackeKnjigeExpanded(false);
@@ -1515,6 +1523,88 @@ export function Dashboard({
                           </span>
                           Kartica artikla
                         </button>
+
+                        {/* Nivelacija toggle */}
+                        <button
+                          onClick={() => setNivelacijaExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <Tags size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Nivelacija
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${nivelacijaExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {nivelacijaExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            <button
+                              onClick={() =>
+                                handleSectionChange("artikli-nivelacija-unos")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "artikli-nivelacija-unos"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "artikli-nivelacija-unos"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <FilePlus
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "artikli-nivelacija-unos"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Unos nivelacije
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleSectionChange("artikli-nivelacija-pregled")
+                              }
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                activeSection === "artikli-nivelacija-pregled"
+                                  ? "font-bold"
+                                  : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                              }`}
+                              style={
+                                activeSection === "artikli-nivelacija-pregled"
+                                  ? { color: PRIMARY }
+                                  : {}
+                              }
+                            >
+                              <Eye
+                                size={12}
+                                className="flex-shrink-0"
+                                style={{
+                                  color:
+                                    activeSection ===
+                                    "artikli-nivelacija-pregled"
+                                      ? PRIMARY
+                                      : "#9ca3af",
+                                }}
+                              />
+                              Pregled nivelacije
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>,
                     document.body,
@@ -2903,6 +2993,14 @@ export function Dashboard({
 
           {activeSection === "artikli-kartica" && (
             <KarticaProizvoda initialSifraProizvoda={initSifraKartica} />
+          )}
+
+          {activeSection === "artikli-nivelacija-unos" && <NivelacijaUnos />}
+
+          {activeSection === "artikli-nivelacija-pregled" && (
+            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#3a3158] p-10 text-center text-sm text-gray-500 dark:text-[#9e96b8]">
+              Pregled nivelacija je u izradi.
+            </div>
           )}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}

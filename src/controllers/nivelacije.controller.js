@@ -33,6 +33,56 @@ export const createNivelacija = async (req, res) => {
   }
 };
 
+export const unosNivelacijeArtikala = async (req, res) => {
+  try {
+    const { datum_nivelacije, nivelacija_robe, sifra_knjizenja, stavke } = req.body;
+
+    if (
+      !datum_nivelacije ||
+      nivelacija_robe === undefined ||
+      !Array.isArray(stavke) ||
+      stavke.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaju obavezni podaci (datum_nivelacije, nivelacija_robe, stavke)",
+      });
+    }
+
+    const neispravna = stavke.find(
+      (s) =>
+        !s ||
+        s.sifra_proizvoda === undefined ||
+        !Number.isFinite(Number(s.kolicina_proizvoda)) ||
+        !Number.isFinite(Number(s.cijena_stara)) ||
+        !(Number(s.cijena_nova) > 0),
+    );
+    if (neispravna) {
+      return res.status(400).json({ success: false, error: "Neispravna stavka nivelacije" });
+    }
+
+    const data = await NivelacijeService.unosNivelacijeArtikala({
+      datum_nivelacije,
+      nivelacija_robe: Number(nivelacija_robe),
+      sifra_knjizenja: Number(sifra_knjizenja) || 0,
+      stavke: stavke.map((s) => ({
+        sifra_proizvoda: Number(s.sifra_proizvoda),
+        kolicina_proizvoda: Number(s.kolicina_proizvoda),
+        cijena_stara: Number(s.cijena_stara),
+        cijena_nova: Number(s.cijena_nova),
+      })),
+    });
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos nivelacije artikala error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.sqlMessage || "Greška pri unosu nivelacije",
+    });
+  }
+};
+
 export const getNivelacijeAktivne = async (req, res) => {
   try {
     const data = await NivelacijeService.getNivelacijeAktivne();

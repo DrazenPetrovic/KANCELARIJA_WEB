@@ -18,7 +18,8 @@ interface ArtikalGrupaOpcija {
   [key: string]: unknown;
 }
 
-// Jedinica mjere — sifra ide u JSON (polje "jm"), naziv_jm je tekst za operatera.
+// Jedinica mjere — erp.artikli.jm je VARCHAR, pa se u JSON šalje naziv_jm
+// (tekst, npr. "kg"), a ne šifra iz posebne tabele jedinica mjere (INT).
 interface JedinicaMjereOpcija {
   sifra: string | number;
   naziv_jm: string;
@@ -114,7 +115,7 @@ export function ArtikliUnos() {
       .then((json) => {
         const podaci: JedinicaMjereOpcija[] = json.data ?? [];
         setJediniceMjere(podaci);
-        if (podaci.length > 0) setJm(String(podaci[0].sifra));
+        if (podaci.length > 0) setJm(podaci[0].naziv_jm);
       })
       .catch(() => setJediniceMjere([]))
       .finally(() => setUcitavanjeJm(false));
@@ -157,7 +158,7 @@ export function ArtikliUnos() {
 
   const resetujFormu = () => {
     setNazivProizvoda("");
-    setJm(jediniceMjere.length > 0 ? String(jediniceMjere[0].sifra) : "");
+    setJm(jediniceMjere.length > 0 ? jediniceMjere[0].naziv_jm : "");
     setBarkod("");
     setGrupaProizvoda("0");
     setVrsta(VRSTA_NIJE_DEFINISANO);
@@ -176,7 +177,7 @@ export function ArtikliUnos() {
       setGreska("Naziv proizvoda je obavezan");
       return;
     }
-    if (!Number.isFinite(Number(jm)) || Number(jm) <= 0) {
+    if (!jm.trim()) {
       setGreska("Jedinica mjere (JM) je obavezna");
       return;
     }
@@ -193,7 +194,7 @@ export function ArtikliUnos() {
 
     const payload = {
       naziv_proizvoda: nazivProizvoda.trim(),
-      jm: Number(jm),
+      jm: jm.trim(),
       // Količina, nabavna cijena i VPC se ne unose ovim putem — dolaze kasnije
       // kroz nivelaciju/kalkulaciju, ne kroz unos novog artikla.
       kolicina_proizvoda: 0,
@@ -284,7 +285,7 @@ export function ArtikliUnos() {
             >
               {jediniceMjere.length === 0 && <option value="">–</option>}
               {jediniceMjere.map((j) => (
-                <option key={j.sifra} value={String(j.sifra)}>
+                <option key={j.sifra} value={j.naziv_jm}>
                   {j.naziv_jm}
                 </option>
               ))}

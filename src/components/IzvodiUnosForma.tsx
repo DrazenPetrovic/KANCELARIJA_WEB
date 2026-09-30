@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileSearch,
   Loader2,
+  Lock,
   Plus,
   Save,
   Search,
@@ -132,36 +133,11 @@ interface NovaStavka {
   konto_knjizenja: number;
 }
 
-// Današnji datum u formatu dd.MM.yyyy.
-const danasTekst = () => {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
-};
-
-// Maska dok operater kuca: samo cifre, tačke se ubacuju automatski
-// (ddMMyyyy -> dd.MM.yyyy).
-const maskirajDatum = (unos: string) => {
-  const c = unos.replace(/\D/g, "").slice(0, 8);
-  if (c.length <= 2) return c;
-  if (c.length <= 4) return `${c.slice(0, 2)}.${c.slice(2)}`;
-  return `${c.slice(0, 2)}.${c.slice(2, 4)}.${c.slice(4)}`;
-};
-
-// "dd.MM.yyyy" -> "yyyy-MM-dd" za server; null ako datum ne postoji
-// (npr. 31.02.2026).
-const tekstUIso = (t: string) => {
-  const m = t.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (!m) return null;
-  const [, dd, mm, yyyy] = m;
-  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-  if (
-    d.getFullYear() !== Number(yyyy) ||
-    d.getMonth() !== Number(mm) - 1 ||
-    d.getDate() !== Number(dd)
-  ) {
-    return null;
-  }
-  return `${yyyy}-${mm}-${dd}`;
+// Datum izvoda iz baze ("yyyy-MM-dd" ili "yyyy-MM-dd HH:mm:ss") ->
+// "yyyy-MM-dd"; null ako ga nema. Svaka stavka dobija datum izvoda.
+const datumIzvodaIso = (v: string | null) => {
+  const m = String(v ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
 };
 
 const prikazDatuma = (iso: string) => {
@@ -192,9 +168,9 @@ export function IzvodiUnosForma({
   const [partner, setPartner] = useState<Partner | null>(null);
   const [pretraga, setPretraga] = useState("");
   const [pokaziListu, setPokaziListu] = useState(false);
-  // Uvijek počinje od današnjeg datuma; operater ga može izmijeniti, a
-  // izmijenjeni datum ostaje i za sljedeće stavke.
-  const [datum, setDatum] = useState(danasTekst);
+  // Datum uplate se definiše na nivou izvoda — sve stavke dobijaju datum
+  // izvoda i ne mijenja se po stavci.
+  const datumUplate = datumIzvodaIso(izvod.datum_izvoda);
   const [iznos, setIznos] = useState("");
   const [sifraVeze, setSifraVeze] = useState("");
   const [opis, setOpis] = useState("");
@@ -333,9 +309,8 @@ export function IzvodiUnosForma({
       setGreskaForme("Unesite iznos veći od 0");
       return;
     }
-    const datumIso = tekstUIso(datum);
-    if (!datumIso) {
-      setGreskaForme("Datum uplate mora biti u formatu dd.MM.yyyy");
+    if (!datumUplate) {
+      setGreskaForme("Izvod nema upisan datum — provjerite izvod");
       return;
     }
     const veza = sifraVeze.trim() === "" ? 0 : parseInt(sifraVeze, 10);
@@ -350,7 +325,7 @@ export function IzvodiUnosForma({
         vrsta_uplate: vrsta,
         sifra_partnera: partner.partner_id,
         naziv_partnera: partner.naziv,
-        datum_uplate: datumIso,
+        datum_uplate: datumUplate,
         uplaceno: Math.round(iznosBroj * 100) / 100,
         sifra_veze: veza,
         veza_prikaz:
@@ -640,18 +615,23 @@ export function IzvodiUnosForma({
               )}
           </div>
 
-          {/* Datum */}
+          {/* Datum — uvijek datum izvoda, ne može se mijenjati */}
           <div>
             <label className={labelCls}>Datum uplate</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={datum}
-              onChange={(e) => setDatum(maskirajDatum(e.target.value))}
-              placeholder="dd.MM.yyyy"
-              maxLength={10}
-              className={inputCls}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                readOnly
+                disabled
+                value={datumUplate ? prikazDatuma(datumUplate).replace(/\.$/, "") : "–"}
+                title="Datum uplate je datum izvoda i ne mijenja se po stavci"
+                className={`${inputCls} pr-8 bg-gray-100 dark:bg-[#1a1626] cursor-not-allowed`}
+              />
+              <Lock
+                size={13}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878] pointer-events-none"
+              />
+            </div>
           </div>
 
           {/* Iznos */}

@@ -44,6 +44,9 @@ interface Artikal {
   kolicinaNaStanju: number;
   grupa_proizvoda: string;
   naziv_grupe: string;
+  // erp.artikli_pregled_sve — 1 ako je artikal sirovina (artikli_bez_sirovine_pregled
+  // ih ne vraća, zato se ovdje koristi "sve" varijanta).
+  sirovina?: number | string | null;
   [key: string]: unknown;
 }
 
@@ -53,7 +56,9 @@ interface ArtikalGrupa {
   [key: string]: unknown;
 }
 
-// Jedinica mjere za formu izmjene — sifra ide u JSON, naziv_jm je tekst za operatera.
+// Jedinica mjere za formu izmjene — erp.artikli.jm je VARCHAR, pa se u JSON
+// šalje naziv_jm (tekst, npr. "kg"), a ne šifra iz posebne tabele jedinica
+// mjere (INT).
 interface JedinicaMjereOpcija {
   sifra: string | number;
   naziv_jm: string;
@@ -235,7 +240,7 @@ export function ArtikliPregled() {
   const ucitajArtikle = async () => {
     try {
       const [artikliRes, grupeRes] = await Promise.all([
-        fetch(`${API_URL}/api/artikli`, { credentials: "include" }),
+        fetch(`${API_URL}/api/artikli/pregled-sve`, { credentials: "include" }),
         fetch(`${API_URL}/api/artikli/grupe`, { credentials: "include" }),
       ]);
       if (!artikliRes.ok) throw new Error("Greška pri učitavanju artikala");
@@ -283,10 +288,8 @@ export function ArtikliPregled() {
     );
     setJmIzmjena(
       poklapanjeJm
-        ? String(poklapanjeJm.sifra)
-        : jediniceMjere[0]
-          ? String(jediniceMjere[0].sifra)
-          : "",
+        ? poklapanjeJm.naziv_jm
+        : a.jm || jediniceMjere[0]?.naziv_jm || "",
     );
     // Ovi podaci nisu dio pregleda artikala (artikli_bez_sirovine_pregled), pa se
     // otvaraju sa podrazumijevanim vrijednostima — korisnik ih po potrebi
@@ -321,7 +324,7 @@ export function ArtikliPregled() {
       setGreskaIzmjena("Naziv proizvoda je obavezan");
       return;
     }
-    if (!Number.isFinite(Number(jmIzmjena)) || Number(jmIzmjena) <= 0) {
+    if (!jmIzmjena.trim()) {
       setGreskaIzmjena("Jedinica mjere (JM) je obavezna");
       return;
     }
@@ -333,7 +336,7 @@ export function ArtikliPregled() {
     const payload = {
       sifra_proizvoda: Number(artikalZaIzmjenu.sifra_proizvoda),
       naziv_proizvoda: nazivIzmjena.trim(),
-      jm: Number(jmIzmjena),
+      jm: jmIzmjena.trim(),
       kolicina_proizvoda: Number(kolicinaIzmjena) || 0,
       cijena_bez: Number(cijenaBezIzmjena) || 0,
       vpc: Number(vpcIzmjena) || 0,
@@ -592,12 +595,19 @@ export function ArtikliPregled() {
                       </span>
                     </TD>
                     <TD padLeft={0}>
-                      <span
-                        className="block max-w-[421px] truncate font-medium"
-                        title={a.naziv_proizvoda}
-                      >
-                        {a.naziv_proizvoda}
-                      </span>
+                      <div className="flex items-center gap-1.5 max-w-[421px]">
+                        <span
+                          className="min-w-0 truncate font-medium"
+                          title={a.naziv_proizvoda}
+                        >
+                          {a.naziv_proizvoda}
+                        </span>
+                        {Number(a.sirovina) === 1 && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                            Sirovina
+                          </span>
+                        )}
+                      </div>
                     </TD>
                     <TD center padLeft={0} padRight={0}>
                       {Number(a.kolicina_proizvoda) === 0 ? (
@@ -792,7 +802,7 @@ export function ArtikliPregled() {
                         <option value="">–</option>
                       )}
                       {jediniceMjere.map((j) => (
-                        <option key={j.sifra} value={String(j.sifra)}>
+                        <option key={j.sifra} value={j.naziv_jm}>
                           {j.naziv_jm}
                         </option>
                       ))}

@@ -79,6 +79,10 @@ const bezStrelicaClass =
   "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+// Za cijena_proizvoda/nabavna_cijena_proizvoda — kataloška nabavna cijena zna
+// imati stvarnu preciznost i preko 2 decimale (erp.artikli.cijena_bez je
+// decimal(13,5)), pa se ovdje ne zaokružuje na 2 kao ostala novčana polja.
+const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 // Prepoznaje poruke koje erp.sp_racuni_unos vraća kad na stanju nema dovoljno
@@ -1278,7 +1282,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       }
       return {
         sifra_proizvoda: sifraProizvoda,
-        cijena_proizvoda: round2(s.nabavna_cijena),
+        cijena_proizvoda: round3(s.nabavna_cijena),
         // Osnova + PDV (ako se PDV obračunava za ovu stavku) — koristi već
         // sačuvano s.ukupno/s.kolicina umjesto ponovnog računanja preko
         // STOPA_PDV, da vrijednost bude tačna i kad podgrupa ne obračunava PDV.
@@ -1299,7 +1303,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         // nabavna_cijena_proizvoda umjesto kataloške nabavne cijene; ako
         // proizvoda nema u toj listi, ide 0 (cijena_proizvoda iznad se NE
         // mijenja u oba slučaja).
-        nabavna_cijena_proizvoda: round2(
+        nabavna_cijena_proizvoda: round3(
           radniNalogMap.get(sifraProizvoda) ?? 0,
         ),
       };
