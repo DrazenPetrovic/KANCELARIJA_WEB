@@ -151,12 +151,15 @@ function StatTile({
 const TH = ({
   children,
   right,
+  center,
 }: {
   children: React.ReactNode;
   right?: boolean;
+  center?: boolean;
 }) => (
   <th
-    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap bg-[#faf9fc] dark:bg-[#1e1a2d] text-gray-400 dark:text-[#5f5878] ${right ? "text-right" : "text-left"}`}
+    className={`px-[13px] py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${right ? "text-right" : center ? "text-center" : "text-left"}`}
+    style={{ background: PRIMARY }}
   >
     {children}
   </th>
@@ -173,16 +176,18 @@ const BROJ_KOLONA = 10;
 const TD = ({
   children,
   right,
+  center,
   bold,
   boja,
 }: {
   children: React.ReactNode;
   right?: boolean;
+  center?: boolean;
   bold?: boolean;
   boja?: string;
 }) => (
   <td
-    className={`px-3 py-2.5 whitespace-nowrap ${right ? "text-right" : "text-left"} ${bold ? "font-bold" : "text-gray-600 dark:text-[#c5bfd8]"}`}
+    className={`px-[13px] py-2.5 whitespace-nowrap ${right ? "text-right" : center ? "text-center" : "text-left"} ${bold ? "font-bold" : "text-gray-600 dark:text-[#c5bfd8]"}`}
     style={boja ? { color: boja } : undefined}
   >
     {children}
@@ -330,7 +335,7 @@ export function Kif() {
           <BookMarked size={20} style={{ color: PRIMARY }} />
         </div>
         <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+          <h2 className="text-xl font-bold" style={{ color: PRIMARY }}>
             KIF
           </h2>
           <p className="text-xs text-gray-400 dark:text-[#5f5878]">
@@ -496,7 +501,7 @@ export function Kif() {
       )}
 
       {!loading && !greska && redoviFiltrirano.length > 0 && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="w-fit max-w-full mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             ref={jeVirtualizovano ? scrollRef : undefined}
             className="overflow-x-auto"
@@ -506,17 +511,17 @@ export function Kif() {
                 : undefined
             }
           >
-            <table className="w-full text-sm">
+            <table className="table-auto w-auto text-sm">
               <thead>
                 <tr
                   className={`border-b border-gray-100 dark:border-[#2d2648] ${jeVirtualizovano ? "sticky top-0 z-10" : ""}`}
                 >
                   <TH>#</TH>
                   <TH>Datum</TH>
-                  <TH>Broj računa</TH>
+                  <TH center>Broj računa</TH>
                   <TH>Partner</TH>
-                  <TH>JIB / PIB</TH>
-                  <TH>Entitet</TH>
+                  <TH center>JIB / PIB</TH>
+                  <TH center>Entitet</TH>
                   <TH>Tip</TH>
                   <TH right>Vrijednost / Rabat</TH>
                   <TH right>Osnovica / PDV</TH>
@@ -547,7 +552,7 @@ export function Kif() {
                         {formatDatumDMY(r.datum_racuna) ?? "—"}
                       </span>
                     </TD>
-                    <TD>
+                    <TD center>
                       <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
                         {r.broj_racuna}
                       </div>
@@ -566,13 +571,13 @@ export function Kif() {
                           .join(", ")}
                       </div>
                     </TD>
-                    <TD>
+                    <TD center>
                       <div>{formatSifru(r.jib)}</div>
                       <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
                         {formatSifru(r.pib)}
                       </div>
                     </TD>
-                    <TD>{r.entitet || "—"}</TD>
+                    <TD center>{r.entitet || "—"}</TD>
                     <TD>{r.el_kif_tip || "—"}</TD>
                     <TD right>
                       <div className="font-bold" style={{ color: PRIMARY }}>

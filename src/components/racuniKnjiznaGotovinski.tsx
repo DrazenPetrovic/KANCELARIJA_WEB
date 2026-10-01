@@ -530,7 +530,7 @@ export function KnjiznaGotovinski() {
   }, [mpRacuni, pretraga]);
 
   const th =
-    "px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648] whitespace-nowrap";
+    "px-4 py-2.5 font-semibold border-b border-[#5f4a80] whitespace-nowrap";
 
   return (
     <div className="flex flex-col items-center">
@@ -540,8 +540,14 @@ export function KnjiznaGotovinski() {
             <BookOpen size={20} style={{ color: PRIMARY }} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
+            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6] flex items-center gap-2">
               Knjižna gotovinski
+              <span
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider text-white"
+                style={{ background: PRIMARY }}
+              >
+                MALOPRODAJA
+              </span>
             </h2>
             {!loading && !greska && (
               <p className="text-xs text-gray-400 dark:text-[#5f5878] flex items-center gap-1.5">
@@ -564,7 +570,10 @@ export function KnjiznaGotovinski() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+        <div
+          className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] border-l-4 shadow-sm p-4"
+          style={{ borderLeftColor: PRIMARY }}
+        >
           <div className="relative max-w-xs">
             <Search
               size={14}
@@ -580,7 +589,10 @@ export function KnjiznaGotovinski() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div
+          className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] border-l-4 shadow-sm overflow-hidden"
+          style={{ borderLeftColor: PRIMARY }}
+        >
           {loading ? (
             <div className="flex items-center justify-center py-10 px-16 gap-2 text-gray-400">
               <Loader2 size={16} className="animate-spin" />
@@ -599,7 +611,7 @@ export function KnjiznaGotovinski() {
           ) : (
             <table className="w-auto text-sm border-collapse">
               <thead>
-                <tr className="bg-[#f4f1f9] dark:bg-[#1e1a2d] text-gray-500 dark:text-[#7d7498]">
+                <tr className="text-white" style={{ background: PRIMARY }}>
                   <th className={`${th} text-left`}>Broj računa</th>
                   <th className={`${th} text-left`}>Datum</th>
                   <th className={`${th} text-left`}>Partner</th>

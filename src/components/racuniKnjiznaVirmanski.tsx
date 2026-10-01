@@ -5,6 +5,7 @@ import {
   BookMarked,
   CheckCircle2,
   Loader2,
+  Lock,
   Package,
   Search,
   X,
@@ -15,6 +16,9 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 const DANGER = "#ef4444";
+// Raspored je isti kao u racuniKnjiznaGotovinski.tsx (storno MP), ali je
+// pregled namjerno u drugoj boji da operater odmah vidi da je na storno VP.
+const VP_BOJA = "#0f766e";
 
 // Storno je uvijek za cijeli žiralni (VP) račun — vidi
 // racuniZiralni.tsx (VRSTA_RACUNA/VRSTA_RACUNA_NOVI=2 za normalan unos).
@@ -34,6 +38,16 @@ const formatDatumDMY = (v: unknown): string => {
   if (isNaN(d.getTime())) return String(v);
   return `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}.`;
 };
+const formatDatumVrijemeDMY = (v: unknown): string => {
+  if (v === null || v === undefined || v === "") return "–";
+  const d = new Date(String(v));
+  if (isNaN(d.getTime())) return String(v);
+  return `${formatDatumDMY(v)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+// Fallback na "stornirano" isto kao u racuniPregled.tsx (procedura zna
+// vratiti kolonu i pod tim imenom).
+const jeStorniran = (r: { storniran_racun?: unknown; stornirano?: unknown }) =>
+  Number(r.storniran_racun ?? r.stornirano) === 1;
 
 // Red vraćen sa erp.sp_racuni_gl_pregled (GET /api/pregledi/racuna) — isti
 // izvor kao racuniPregled.tsx. Polja ovdje su samo ona koja nam trebaju za
@@ -150,6 +164,8 @@ export function KnjiznaVirmanski() {
   const [racuni, setRacuni] = useState<RacunPregledRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
+  const [ucitavaStarije, setUcitavaStarije] = useState(false);
+  const [greskaStarije, setGreskaStarije] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
 
   const [odabraniRacun, setOdabraniRacun] = useState<RacunPregledRed | null>(
@@ -167,22 +183,70 @@ export function KnjiznaVirmanski() {
     null,
   );
 
+  // GET /api/pregledi/racuna (sp_racuni_gl_pregled) vraća samo zadnjih 200
+  // računa SVIH vrsta — zato isto dvofazno učitavanje kao racuniPregled.tsx i
+  // racuniKnjiznaGotovinski.tsx: stats -> granica = max_sifra - 200 ->
+  // "glavna" (najnoviji, odmah prikazani) pa "pozadina" (svi stariji, dopisuju
+  // se kad stignu). U state ulaze samo VP računi.
+  const samoVp = (redovi: RacunPregledRed[]) =>
+    redovi.filter((r) => Number(r.vrsta_racuna_novi) === VRSTA_RACUNA_NOVI_VP);
+
   const ucitajRacune = async () => {
     setLoading(true);
     setGreska(null);
+    setGreskaStarije(null);
     try {
-      const res = await fetch(`${API_URL}/api/pregledi/racuna`, {
+      const statsRes = await fetch(`${API_URL}/api/pregledi/racuna/stats`, {
         credentials: "include",
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        setGreska(json.error || json.message || "Greška pri učitavanju računa");
+      const statsJson = await statsRes.json();
+      if (!statsRes.ok || !statsJson.success) {
+        setGreska(
+          statsJson.error || statsJson.message || "Greška pri učitavanju računa",
+        );
+        setLoading(false);
         return;
       }
-      setRacuni(json.data ?? []);
+      const granica = (Number(statsJson.data?.max_sifra) || 0) - 200;
+
+      const glavnaRes = await fetch(
+        `${API_URL}/api/pregledi/racuna/glavna?granica=${granica}`,
+        { credentials: "include" },
+      );
+      const glavnaJson = await glavnaRes.json();
+      if (!glavnaRes.ok || !glavnaJson.success) {
+        setGreska(
+          glavnaJson.error || glavnaJson.message || "Greška pri učitavanju računa",
+        );
+        setLoading(false);
+        return;
+      }
+      setRacuni(samoVp(glavnaJson.data ?? []));
+      setLoading(false);
+
+      setUcitavaStarije(true);
+      try {
+        const pozadinaRes = await fetch(
+          `${API_URL}/api/pregledi/racuna/pozadina?granica=${granica}`,
+          { credentials: "include" },
+        );
+        const pozadinaJson = await pozadinaRes.json();
+        if (pozadinaRes.ok && pozadinaJson.success) {
+          setRacuni((prev) => [...prev, ...samoVp(pozadinaJson.data ?? [])]);
+        } else {
+          setGreskaStarije(
+            pozadinaJson.error ||
+              pozadinaJson.message ||
+              "Greška pri učitavanju starijih računa",
+          );
+        }
+      } catch {
+        setGreskaStarije("Greška pri učitavanju starijih računa");
+      } finally {
+        setUcitavaStarije(false);
+      }
     } catch {
       setGreska("Greška pri učitavanju računa");
-    } finally {
       setLoading(false);
     }
   };
@@ -191,26 +255,23 @@ export function KnjiznaVirmanski() {
     void ucitajRacune();
   }, []);
 
-  // Kandidati za storno — samo normalni VP računi koji još nisu storniran.
-  const kandidati = useMemo(
-    () =>
-      racuni.filter(
-        (r) =>
-          Number(r.vrsta_racuna_novi) === VRSTA_RACUNA_NOVI_VP &&
-          Number(r.storniran_racun) !== 1,
-      ),
-    [racuni],
+  // Prikazuju se svi VP računi — i već stornirani, ali zaključani (katanac,
+  // klik ne otvara storno).
+  const vpRacuni = racuni;
+  const brojStorniranih = useMemo(
+    () => vpRacuni.filter(jeStorniran).length,
+    [vpRacuni],
   );
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
-    if (!q) return kandidati;
-    return kandidati.filter((r) =>
+    if (!q) return vpRacuni;
+    return vpRacuni.filter((r) =>
       [r.naziv_partnera, r.broj_racuna, r.vrsta_racuna_novo, r.br_fiskalnog]
         .filter((v) => v !== null && v !== undefined)
         .some((v) => String(v).toLowerCase().includes(q)),
     );
-  }, [kandidati, pretraga]);
+  }, [vpRacuni, pretraga]);
 
   const zatvoriModal = () => {
     setPokaziModal(false);
@@ -221,6 +282,7 @@ export function KnjiznaVirmanski() {
   };
 
   const handleKlikRacun = (r: RacunPregledRed) => {
+    if (jeStorniran(r)) return;
     setOdabraniRacun(r);
     setPokaziModal(true);
     setStorniranjeGreska(null);
@@ -392,126 +454,168 @@ export function KnjiznaVirmanski() {
     }
   };
 
+  const th =
+    "px-4 py-2.5 font-semibold border-b border-teal-800 whitespace-nowrap";
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <BookMarked size={20} style={{ color: PRIMARY }} />
+    <div className="flex flex-col items-center">
+      <div className="w-fit max-w-full space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-teal-50 dark:bg-teal-500/15">
+            <BookMarked size={20} style={{ color: VP_BOJA }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6] flex items-center gap-2">
+              Knjižna virmanski
+              <span
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider text-white"
+                style={{ background: VP_BOJA }}
+              >
+                VELEPRODAJA
+              </span>
+            </h2>
+            {!loading && !greska && (
+              <p className="text-xs text-gray-400 dark:text-[#5f5878] flex items-center gap-1.5">
+                VP računi: {filtrirani.length} / {vpRacuni.length} · stornirano:{" "}
+                {brojStorniranih}
+                {ucitavaStarije && (
+                  <>
+                    <Loader2 size={11} className="animate-spin" />
+                    učitavanje starijih računa...
+                  </>
+                )}
+              </p>
+            )}
+            {greskaStarije && (
+              <p className="text-xs text-amber-500 flex items-center gap-1">
+                <AlertTriangle size={11} />
+                {greskaStarije} — prikazani su samo najnoviji računi.
+              </p>
+            )}
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Knjižna virmanski
-          </h2>
-          {!loading && !greska && (
-            <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-              Računi za storno: {filtrirani.length} / {kandidati.length}
-            </p>
+
+        <div
+          className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] border-l-4 shadow-sm p-4"
+          style={{ borderLeftColor: VP_BOJA }}
+        >
+          <div className="relative max-w-xs">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+            />
+            <input
+              type="text"
+              placeholder="Pretraži VP račune..."
+              value={pretraga}
+              onChange={(e) => setPretraga(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-teal-600 transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
+            />
+          </div>
+        </div>
+
+        <div
+          className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] border-l-4 shadow-sm overflow-hidden"
+          style={{ borderLeftColor: VP_BOJA }}
+        >
+          {loading ? (
+            <div className="flex items-center justify-center py-10 px-16 gap-2 text-gray-400">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Učitavanje...</span>
+            </div>
+          ) : greska ? (
+            <div className="flex flex-col items-center justify-center py-10 px-16 gap-2 text-red-500">
+              <AlertTriangle size={24} />
+              <span className="text-sm">{greska}</span>
+            </div>
+          ) : filtrirani.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 px-16 gap-2 text-gray-400 dark:text-[#5f5878]">
+              <Package size={24} className="text-gray-300 dark:text-[#3a3158]" />
+              <span className="text-sm">Nema VP računa</span>
+            </div>
+          ) : (
+            <table className="w-auto text-sm border-collapse">
+              <thead>
+                <tr className="text-white" style={{ background: VP_BOJA }}>
+                  <th className={`${th} text-left`}>Broj računa</th>
+                  <th className={`${th} text-left`}>Datum</th>
+                  <th className={`${th} text-left`}>Partner</th>
+                  <th className={`${th} text-right`}>UKUPNO</th>
+                  <th className={`${th} text-left`}>Br. fiskalnog</th>
+                  <th className={`${th} text-left`}>Datum fiskalnog</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrirani.map((r, i) => {
+                  const imaFiskalni =
+                    r.br_fiskalnog !== null &&
+                    r.br_fiskalnog !== undefined &&
+                    String(r.br_fiskalnog).trim() !== "";
+                  const storniran = jeStorniran(r);
+                  return (
+                    <tr
+                      key={r.sifra_tabele}
+                      onClick={storniran ? undefined : () => handleKlikRacun(r)}
+                      title={
+                        storniran
+                          ? "Račun je već storniran — ne može se ponovo stornirati"
+                          : undefined
+                      }
+                      className={`border-b border-gray-100 dark:border-[#2a2340] transition-colors ${
+                        storniran
+                          ? "cursor-not-allowed opacity-60"
+                          : "cursor-pointer hover:bg-teal-50 dark:hover:bg-teal-500/15"
+                      } ${
+                        i % 2 === 0
+                          ? "bg-white dark:bg-[#1a1528]"
+                          : "bg-[#f3faf9] dark:bg-[#1e1a2d]"
+                      }`}
+                    >
+                      <td
+                        className={`px-4 py-2 font-semibold whitespace-nowrap ${
+                          storniran
+                            ? "text-red-500"
+                            : "text-teal-700 dark:text-teal-400"
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          {storniran && <Lock size={13} className="flex-shrink-0" />}
+                          {r.vrsta_racuna_novo ?? r.broj_racuna}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-[#c5bfd8] whitespace-nowrap">
+                        {formatDatumDMY(r.datum_racuna)}
+                      </td>
+                      <td className="px-4 py-2 text-gray-800 dark:text-[#ede9f6]">
+                        {r.naziv_partnera}
+                      </td>
+                      <td className="px-4 py-2 text-right font-semibold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
+                        {Number(r.ukupno).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {imaFiskalni ? (
+                          <span className="text-gray-600 dark:text-[#c5bfd8]">
+                            {r.br_fiskalnog}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-amber-500 text-xs">
+                            <AlertTriangle size={12} />
+                            Nema fiskalnog
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-[#c5bfd8] whitespace-nowrap">
+                        {imaFiskalni
+                          ? formatDatumVrijemeDMY(r.datum_vreme_fiskalnog)
+                          : "–"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
-      </div>
-
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="relative max-w-xs">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
-          />
-          <input
-            type="text"
-            placeholder="Pretraži VP račune..."
-            value={pretraga}
-            onChange={(e) => setPretraga(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
-          />
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Učitavanje...</span>
-          </div>
-        ) : greska ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2 text-red-500">
-            <AlertTriangle size={24} />
-            <span className="text-sm">{greska}</span>
-          </div>
-        ) : filtrirani.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400 dark:text-[#5f5878]">
-            <Package size={24} className="text-gray-300 dark:text-[#3a3158]" />
-            <span className="text-sm">Nema VP računa za storno</span>
-          </div>
-        ) : (
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-[#f4f1f9] dark:bg-[#1e1a2d] text-gray-500 dark:text-[#7d7498]">
-                <th className="text-left px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
-                  Broj računa
-                </th>
-                <th className="text-left px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
-                  Datum
-                </th>
-                <th className="text-left px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
-                  Partner
-                </th>
-                <th className="text-left px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
-                  Br. fiskalnog
-                </th>
-                <th className="text-right px-4 py-2.5 font-semibold border-b border-gray-200 dark:border-[#2d2648]">
-                  Ukupno
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrirani.map((r, i) => {
-                const imaFiskalni =
-                  r.br_fiskalnog !== null &&
-                  r.br_fiskalnog !== undefined &&
-                  String(r.br_fiskalnog).trim() !== "";
-                return (
-                  <tr
-                    key={r.sifra_tabele}
-                    onClick={() => handleKlikRacun(r)}
-                    className={`cursor-pointer border-b border-gray-100 dark:border-[#2a2340] hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] transition-colors ${
-                      i % 2 === 0
-                        ? "bg-white dark:bg-[#1a1528]"
-                        : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
-                    }`}
-                  >
-                    <td
-                      className="px-4 py-2 font-semibold"
-                      style={{ color: PRIMARY }}
-                    >
-                      {r.vrsta_racuna_novo ?? r.broj_racuna}
-                    </td>
-                    <td className="px-4 py-2 text-gray-600 dark:text-[#c5bfd8]">
-                      {formatDatumDMY(r.datum_racuna)}
-                    </td>
-                    <td className="px-4 py-2 text-gray-800 dark:text-[#ede9f6]">
-                      {r.naziv_partnera}
-                    </td>
-                    <td className="px-4 py-2">
-                      {imaFiskalni ? (
-                        <span className="text-gray-600 dark:text-[#c5bfd8]">
-                          {r.br_fiskalnog}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-amber-500 text-xs">
-                          <AlertTriangle size={12} />
-                          Nema fiskalnog
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right font-semibold text-gray-800 dark:text-[#ede9f6]">
-                      {Number(r.ukupno).toFixed(2)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
       </div>
 
       {pokaziModal &&
