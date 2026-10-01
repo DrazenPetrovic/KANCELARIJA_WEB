@@ -11,6 +11,7 @@ import { GotovinskiRacuni } from "./racuniGotovinski.tsx";
 import { ZiralniRacuni } from "./racuniZiralni.tsx";
 import { RacuniPregled } from "./racuniPregled.tsx";
 import { KnjiznaVirmanski } from "./racuniKnjiznaVirmanski.tsx";
+import { KnjiznaGotovinski } from "./racuniKnjiznaGotovinski.tsx";
 import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
@@ -3098,16 +3099,7 @@ export function Dashboard({
           {activeSection === "racuni-izvjestaj-teren" && <IzvjestajTeren />}
 
           {activeSection === "racuni-knjizna-gotovinski" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <BookOpen size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Knjižna gotovinski
-                </h2>
-              </div>
-            </div>
+            <KnjiznaGotovinski />
           )}
 
           {activeSection === "racuni-knjizna-virmanski" && <KnjiznaVirmanski />}

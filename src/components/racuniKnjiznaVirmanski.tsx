@@ -20,7 +20,7 @@ const DANGER = "#ef4444";
 // racuniZiralni.tsx (VRSTA_RACUNA/VRSTA_RACUNA_NOVI=2 za normalan unos).
 const VRSTA_RACUNA = "z";
 const VRSTA_RACUNA_NOVI_VP = 2;
-const VRSTA_RACUNA_NOVI_STORNO = 5;
+const VRSTA_RACUNA_NOVI_STORNO = 4;
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -176,9 +176,7 @@ export function KnjiznaVirmanski() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        setGreska(
-          json.error || json.message || "Greška pri učitavanju računa",
-        );
+        setGreska(json.error || json.message || "Greška pri učitavanju računa");
         return;
       }
       setRacuni(json.data ?? []);
@@ -338,8 +336,7 @@ export function KnjiznaVirmanski() {
         json.broj_racuna !== null &&
         String(json.broj_racuna).trim() !== "";
       const affectedRows = Number(json.affected_rows ?? 0);
-      const imaAffectedRows =
-        Number.isFinite(affectedRows) && affectedRows > 0;
+      const imaAffectedRows = Number.isFinite(affectedRows) && affectedRows > 0;
       if (!imaBrojRacuna && !imaAffectedRows) {
         throw new Error("Upis storno računa nije pouzdano potvrđen.");
       }
@@ -353,21 +350,20 @@ export function KnjiznaVirmanski() {
       // upozorenje da original ostaje vidljiv u listi dok se ručno ne provjeri.
       if (json.sifra_tabele) {
         try {
-          const resStorniraj = await fetch(
-            `${API_URL}/api/racuni/storniraj`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                sifra_tabele_originala: odabraniRacun.sifra_tabele,
-                sifra_tabele_storna: json.sifra_tabele,
-              }),
-            },
-          );
+          const resStorniraj = await fetch(`${API_URL}/api/racuni/storniraj`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              sifra_tabele_originala: odabraniRacun.sifra_tabele,
+              sifra_tabele_storna: json.sifra_tabele,
+            }),
+          });
           const jsonStorniraj = await resStorniraj.json().catch(() => null);
           if (!resStorniraj.ok || !jsonStorniraj?.success) {
-            throw new Error(jsonStorniraj?.error || `HTTP ${resStorniraj.status}`);
+            throw new Error(
+              jsonStorniraj?.error || `HTTP ${resStorniraj.status}`,
+            );
           }
           const sifraOriginala = odabraniRacun.sifra_tabele;
           setRacuni((prev) =>
@@ -387,7 +383,9 @@ export function KnjiznaVirmanski() {
       }
     } catch (error) {
       setStorniranjeGreska(
-        error instanceof Error ? error.message : "Greška pri storniranju računa.",
+        error instanceof Error
+          ? error.message
+          : "Greška pri storniranju računa.",
       );
     } finally {
       setStorniranjeLoading(false);
@@ -481,7 +479,10 @@ export function KnjiznaVirmanski() {
                         : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                     }`}
                   >
-                    <td className="px-4 py-2 font-semibold" style={{ color: PRIMARY }}>
+                    <td
+                      className="px-4 py-2 font-semibold"
+                      style={{ color: PRIMARY }}
+                    >
                       {r.vrsta_racuna_novo ?? r.broj_racuna}
                     </td>
                     <td className="px-4 py-2 text-gray-600 dark:text-[#c5bfd8]">
@@ -536,7 +537,9 @@ export function KnjiznaVirmanski() {
                 <AlertTriangle size={18} className="text-white flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="font-bold text-white text-base truncate">
-                    Storno računa {odabraniRacun.vrsta_racuna_novo ?? odabraniRacun.broj_racuna}
+                    Storno računa{" "}
+                    {odabraniRacun.vrsta_racuna_novo ??
+                      odabraniRacun.broj_racuna}
                   </div>
                   <div className="text-white/70 text-xs mt-0.5">
                     {odabraniRacun.naziv_partnera}
@@ -561,11 +564,14 @@ export function KnjiznaVirmanski() {
                   <p className="text-sm text-gray-600 dark:text-[#c5bfd8]">
                     Da li ste sigurni da želite stornirati CIJELI račun br.{" "}
                     <strong>
-                      {odabraniRacun.vrsta_racuna_novo ?? odabraniRacun.broj_racuna}
+                      {odabraniRacun.vrsta_racuna_novo ??
+                        odabraniRacun.broj_racuna}
                     </strong>{" "}
-                    (partner <strong>{odabraniRacun.naziv_partnera}</strong>, iznos{" "}
-                    <strong>{Number(odabraniRacun.ukupno).toFixed(2)}</strong>)? Storniranje
-                    nije moguće djelimično, a akcija se ne može poništiti.
+                    (partner <strong>{odabraniRacun.naziv_partnera}</strong>,
+                    iznos{" "}
+                    <strong>{Number(odabraniRacun.ukupno).toFixed(2)}</strong>)?
+                    Storniranje nije moguće djelimično, a akcija se ne može
+                    poništiti.
                   </p>
                 )}
 
@@ -574,10 +580,13 @@ export function KnjiznaVirmanski() {
                     odabraniRacun.br_fiskalnog === undefined ||
                     String(odabraniRacun.br_fiskalnog).trim() === "") && (
                     <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg p-2.5">
-                      <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                      <AlertTriangle
+                        size={14}
+                        className="flex-shrink-0 mt-0.5"
+                      />
                       <span>
-                        Ovaj račun nema broj fiskalnog računa — fiskalni storno kasnije
-                        neće biti moguć za njega.
+                        Ovaj račun nema broj fiskalnog računa — fiskalni storno
+                        kasnije neće biti moguć za njega.
                       </span>
                     </div>
                   )}

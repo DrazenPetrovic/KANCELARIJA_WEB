@@ -246,6 +246,42 @@ export const oznaciRacunStorniran = async (req, res) => {
   }
 };
 
+export const unosStornoRacuna = async (req, res) => {
+  try {
+    const sifraTabele = Number(req.body?.sifra_tabele);
+    if (!Number.isInteger(sifraTabele) || sifraTabele <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaje ili je neispravna sifra_tabele originalnog računa",
+      });
+    }
+
+    const rezultat = await RacuniService.unosStornoRacuna(sifraTabele);
+
+    const kod = Number(rezultat.kod);
+    if (kod !== 0) {
+      return res.status(400).json({
+        success: false,
+        kod,
+        error: rezultat.poruka || "Greška pri storniranju računa",
+      });
+    }
+
+    return res.json({
+      success: true,
+      kod,
+      poruka: rezultat.poruka,
+      sifra_tabele: rezultat.sifra_tabele,
+      broj_racuna: rezultat.broj_racuna,
+    });
+  } catch (error) {
+    console.error("Storno računa error:", error);
+    const detalj =
+      error?.sqlMessage || error?.message || "Greška pri storniranju računa";
+    return res.status(500).json({ success: false, error: detalj });
+  }
+};
+
 export const unosRacuna = async (req, res) => {
   try {
     const { header, items } = req.body;

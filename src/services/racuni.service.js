@@ -252,6 +252,27 @@ export const oznaciRacunStorniran = async (
   });
 };
 
+// Storno cijelog računa — erp.racuni_unos_storno(sifra_tabele originala) u
+// jednoj transakciji kopira original kao KO račun (1->3, 2->4, 5->6) sa
+// količinom * -1, vraća robu na lager i postavlja storniran_racun=1 na
+// originalu. Greške (ne postoji / već storniran / pogrešna vrsta) stižu kao
+// SIGNAL -> error.sqlMessage. Uspjeh vraća kod/poruka/sifra_tabele/broj_racuna.
+export const unosStornoRacuna = async (sifraTabele) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query("CALL erp.racuni_unos_storno(?)", [
+      sifraTabele,
+    ]);
+    const odgovor = nadjiOdgovorProcedure(rows);
+    if (!odgovor) {
+      console.error("Svi rezultati procedure storna:", rows);
+      throw new Error(
+        "Procedura storna je izvrsena, ali nije vratila ocekivani odgovor (kod/poruka).",
+      );
+    }
+    return odgovor;
+  });
+};
+
 export const unosRacuna = async (podaci) => {
   return withConnection(async (connection) => {
     try {
