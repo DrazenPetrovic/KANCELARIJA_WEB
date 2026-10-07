@@ -37,6 +37,18 @@ export const getKalkulacijeZavisniTroskovi = async () => {
   });
 };
 
+// Šifarnik vrsta zavisnog troška (prevoz, carinjenje, veterinarski pregled,
+// takse...) za izbor pri unosu kalkulacije. Vraća sifra i
+// naziv_zavisnog_troska. Vidi erp.kalkulacija_zavisan_trosak_vrste.
+export const getZavisanTrosakVrste = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kalkulacija_zavisan_trosak_vrste()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 // Stavke (proizvodi) svih kalkulacija — frontend ih grupiše po
 // sifra_kalkulacije. Vidi erp.kalkulacija_po_pregled.
 export const getKalkulacijeStavke = async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Calculator,
   FileText,
@@ -9,7 +9,6 @@ import {
   Search,
   TrendingUp,
   Truck,
-  X,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -199,16 +198,17 @@ function StatTile({
 const TH = ({
   children,
   right,
-  primarno,
+  sekundarno,
 }: {
   children: React.ReactNode;
   right?: boolean;
-  // Zaglavlje u primarnoj boji sa bijelim tekstom (tabela stavki u modalu).
-  primarno?: boolean;
+  // Zaglavlje glavne tabele je u primarnoj boji; sekundarno (zelena) je za
+  // tabelu stavki / troškova ispod reda.
+  sekundarno?: boolean;
 }) => (
   <th
-    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${primarno ? "text-white" : "bg-[#faf9fc] dark:bg-[#1e1a2d] text-gray-400 dark:text-[#5f5878]"} ${right ? "text-right" : "text-left"}`}
-    style={primarno ? { background: PRIMARY } : undefined}
+    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${right ? "text-right" : "text-left"}`}
+    style={{ background: sekundarno ? ACCENT : PRIMARY }}
   >
     {children}
   </th>
@@ -364,7 +364,7 @@ export function KalkulacijePregled() {
     return m;
   }, [artikli, stavkePoKalkulaciji]);
 
-  // Troškovi po šifri ZT dokumenta (za modal) i veza ZT → KALK.
+  // Troškovi po šifri ZT dokumenta (za detalje reda) i veza ZT → KALK.
   const troskoviPoZt = useMemo(() => {
     const m = new Map<number, ZavisniTrosak[]>();
     for (const t of zavisniTroskovi) {
@@ -504,9 +504,172 @@ export function KalkulacijePregled() {
   const odabraniTroskovi = odabrana
     ? (troskoviPoZt.get(Number(odabrana.sifra_kalkulacije)) ?? [])
     : [];
-  const vezaniKalkOdabranog = odabrana
-    ? kalkZaZt.get(Number(odabrana.sifra_kalkulacije))
-    : undefined;
+
+  // Detalji odabranog reda — stavke kalkulacije ili troškovi ZT-a; prikazuju se
+  // u tabeli odmah ispod kliknutog reda.
+  const detaljiOdabrane = odabranaJeZt ? (
+              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <TH sekundarno>#</TH>
+                      <TH sekundarno>Naziv troška</TH>
+                      <TH sekundarno>Vrsta PDV</TH>
+                      <TH sekundarno right>PDV</TH>
+                      <TH sekundarno right>Ukupno</TH>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {odabraniTroskovi.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
+                        >
+                          Nema podataka o zavisnom trošku.
+                        </td>
+                      </tr>
+                    )}
+                    {odabraniTroskovi.map((t, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-gray-200 dark:border-[#3a3158]"
+                      >
+                        <TD>{i + 1}</TD>
+                        <TD>
+                          <span className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                            {t.naziv_troska || "—"}
+                          </span>
+                        </TD>
+                        <TD>{t.vrsta_pdv ?? "—"}</TD>
+                        <TD right>{formatIznos(t.ukupno_pdv)}</TD>
+                        <TD right bold>
+                          {formatIznos(t.ukupno_km)}
+                        </TD>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {odabraniTroskovi.length > 1 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#1e1a2d]">
+                        <TD bold>Ukupno</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD right>
+                          {formatIznos(
+                            odabraniTroskovi.reduce(
+                              (s, t) => s + Number(t.ukupno_pdv || 0),
+                              0,
+                            ),
+                          )}
+                        </TD>
+                        <TD right bold>
+                          {formatIznos(
+                            odabraniTroskovi.reduce(
+                              (s, t) => s + Number(t.ukupno_km || 0),
+                              0,
+                            ),
+                          )}
+                        </TD>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+              ) : (
+              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <TH sekundarno>#</TH>
+                      <TH sekundarno>Proizvod</TH>
+                      <TH sekundarno right>Količina</TH>
+                      <TH sekundarno right>Cijena</TH>
+                      <TH sekundarno right>Rabat %</TH>
+                      <TH sekundarno right>Akc. rabat %</TH>
+                      <TH sekundarno right>Fakt. cijena</TH>
+                      <TH sekundarno right>Naša ulazna</TH>
+                      <TH sekundarno right>VPC</TH>
+                      <TH sekundarno right>Iznos (fakt.)</TH>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {odabraneStavke.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={10}
+                          className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
+                        >
+                          Kalkulacija nema stavki.
+                        </td>
+                      </tr>
+                    )}
+                    {odabraneStavke.map((s, i) => {
+                      const stornirano = jeDa(s.stornirano);
+                      return (
+                        <tr
+                          key={s.sifra_tbl}
+                          className={`border-b border-gray-200 dark:border-[#3a3158] ${stornirano ? "opacity-50 line-through" : ""}`}
+                        >
+                          <TD>{i + 1}</TD>
+                          <TD>
+                            <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                              {s.naziv_proizvoda || "—"}
+                            </div>
+                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                              šifra {s.sifra_proizvoda}
+                              {s.jm ? ` · ${s.jm}` : ""}
+                              {stornirano ? " · STORNIRANO" : ""}
+                            </div>
+                          </TD>
+                          <TD right>{formatBroj(s.kolicina, 3)}</TD>
+                          <TD right>{formatBroj(s.cijena, 3)}</TD>
+                          <TD right>{formatBroj(s.rabat)}</TD>
+                          <TD right>{formatBroj(s.akcijski_rabat)}</TD>
+                          <TD right>{formatBroj(s.fakturisana_cijena, 3)}</TD>
+                          <TD right>{formatBroj(s.nasa_ulazna_cijena, 3)}</TD>
+                          <TD right>{formatBroj(s.vpc)}</TD>
+                          <TD right bold>
+                            {formatIznos(
+                              Number(s.kolicina || 0) *
+                                Number(s.fakturisana_cijena || 0),
+                            )}
+                          </TD>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {odabraneStavke.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#1e1a2d]">
+                        <TD bold>Ukupno</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD>{""}</TD>
+                        <TD right bold>
+                          {formatIznos(
+                            odabraneStavke
+                              .filter((s) => !jeDa(s.stornirano))
+                              .reduce(
+                                (sum, s) =>
+                                  sum +
+                                  Number(s.kolicina || 0) *
+                                    Number(s.fakturisana_cijena || 0),
+                                0,
+                              ),
+                          )}
+                        </TD>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -733,15 +896,19 @@ export function KalkulacijePregled() {
                     // a tekst mu je bold u primarnoj boji.
                     const kalkSaZt = !zt && g.zt.length > 0;
                     const naglasi = kalkSaZt ? { color: PRIMARY } : undefined;
+                    const otvorena =
+                      odabrana?.sifra_kalkulacije === k.sifra_kalkulacije;
                     return (
+                  <Fragment key={k.sifra_kalkulacije}>
                   <tr
-                    key={k.sifra_kalkulacije}
-                    onClick={() => setOdabrana(k)}
+                    onClick={() => setOdabrana(otvorena ? null : k)}
                     className={`${prviUGrupi ? "border-t-2 border-gray-200 dark:border-[#3a3158]" : "border-t border-dashed border-gray-100 dark:border-[#2d2648]"} transition-colors cursor-pointer ${zt || kalkSaZt ? "hover:brightness-95" : "hover:bg-[#faf9fc] dark:hover:bg-[#1e1a2d]"}`}
                     style={
-                      zt || kalkSaZt
-                        ? { background: `${ZT_BOJA}12` }
-                        : undefined
+                      otvorena
+                        ? { background: `${ACCENT}8c` }
+                        : zt || kalkSaZt
+                          ? { background: `${ZT_BOJA}12` }
+                          : undefined
                     }
                   >
                     <td
@@ -844,6 +1011,18 @@ export function KalkulacijePregled() {
                       </div>
                     </TD>
                   </tr>
+                  {otvorena && (
+                    <tr>
+                      <td
+                        colSpan={11}
+                        className="px-4 py-3 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                        style={{ borderLeft: `4px solid ${PRIMARY}` }}
+                      >
+                        {detaljiOdabrane}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                     );
                   });
                 })}
@@ -866,214 +1045,6 @@ export function KalkulacijePregled() {
                 </tr>
               </tfoot>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Modal sa stavkama kalkulacije */}
-      {odabrana && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOdabrana(null)}
-        >
-          <div
-            className="bg-white dark:bg-[#261f38] rounded-2xl shadow-xl border-2 w-full max-w-6xl max-h-[90vh] flex flex-col"
-            style={{ borderColor: PRIMARY }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="flex items-center gap-3 px-5 py-4 rounded-t-[14px]"
-              style={{ background: PRIMARY }}
-            >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-white/20">
-                <Calculator size={18} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-bold text-white">
-                  {odabranaJeZt
-                    ? `Zavisni trošak ${odabrana.sifra_kalkulacije}`
-                    : `Stavke kalkulacije ${odabrana.sifra_kalkulacije}`}
-                </h3>
-                {odabranaJeZt && vezaniKalkOdabranog !== undefined && (
-                  <p className="text-xs text-white/80">
-                    Vezan za kalkulaciju {vezaniKalkOdabranog}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setOdabrana(null)}
-                className="p-2 rounded-lg text-white/80 hover:text-white hover:bg-white/20"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto p-5">
-              {odabranaJeZt ? (
-              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr>
-                      <TH primarno>#</TH>
-                      <TH primarno>Naziv troška</TH>
-                      <TH primarno>Vrsta PDV</TH>
-                      <TH primarno right>PDV</TH>
-                      <TH primarno right>Ukupno</TH>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {odabraniTroskovi.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
-                        >
-                          Nema podataka o zavisnom trošku.
-                        </td>
-                      </tr>
-                    )}
-                    {odabraniTroskovi.map((t, i) => (
-                      <tr
-                        key={i}
-                        className="border-b border-gray-200 dark:border-[#3a3158]"
-                      >
-                        <TD>{i + 1}</TD>
-                        <TD>
-                          <span className="font-semibold text-gray-800 dark:text-[#ede9f6]">
-                            {t.naziv_troska || "—"}
-                          </span>
-                        </TD>
-                        <TD>{t.vrsta_pdv ?? "—"}</TD>
-                        <TD right>{formatIznos(t.ukupno_pdv)}</TD>
-                        <TD right bold>
-                          {formatIznos(t.ukupno_km)}
-                        </TD>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {odabraniTroskovi.length > 1 && (
-                    <tfoot>
-                      <tr className="border-t-2 border-gray-200 dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#1e1a2d]">
-                        <TD bold>Ukupno</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD right>
-                          {formatIznos(
-                            odabraniTroskovi.reduce(
-                              (s, t) => s + Number(t.ukupno_pdv || 0),
-                              0,
-                            ),
-                          )}
-                        </TD>
-                        <TD right bold>
-                          {formatIznos(
-                            odabraniTroskovi.reduce(
-                              (s, t) => s + Number(t.ukupno_km || 0),
-                              0,
-                            ),
-                          )}
-                        </TD>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-              ) : (
-              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr>
-                      <TH primarno>#</TH>
-                      <TH primarno>Proizvod</TH>
-                      <TH primarno right>Količina</TH>
-                      <TH primarno right>Cijena</TH>
-                      <TH primarno right>Rabat %</TH>
-                      <TH primarno right>Akc. rabat %</TH>
-                      <TH primarno right>Fakt. cijena</TH>
-                      <TH primarno right>Naša ulazna</TH>
-                      <TH primarno right>VPC</TH>
-                      <TH primarno right>Iznos (fakt.)</TH>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {odabraneStavke.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={10}
-                          className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
-                        >
-                          Kalkulacija nema stavki.
-                        </td>
-                      </tr>
-                    )}
-                    {odabraneStavke.map((s, i) => {
-                      const stornirano = jeDa(s.stornirano);
-                      return (
-                        <tr
-                          key={s.sifra_tbl}
-                          className={`border-b border-gray-200 dark:border-[#3a3158] ${stornirano ? "opacity-50 line-through" : ""}`}
-                        >
-                          <TD>{i + 1}</TD>
-                          <TD>
-                            <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
-                              {s.naziv_proizvoda || "—"}
-                            </div>
-                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                              šifra {s.sifra_proizvoda}
-                              {s.jm ? ` · ${s.jm}` : ""}
-                              {stornirano ? " · STORNIRANO" : ""}
-                            </div>
-                          </TD>
-                          <TD right>{formatBroj(s.kolicina, 3)}</TD>
-                          <TD right>{formatBroj(s.cijena, 3)}</TD>
-                          <TD right>{formatBroj(s.rabat)}</TD>
-                          <TD right>{formatBroj(s.akcijski_rabat)}</TD>
-                          <TD right>{formatBroj(s.fakturisana_cijena, 3)}</TD>
-                          <TD right>{formatBroj(s.nasa_ulazna_cijena, 3)}</TD>
-                          <TD right>{formatBroj(s.vpc)}</TD>
-                          <TD right bold>
-                            {formatIznos(
-                              Number(s.kolicina || 0) *
-                                Number(s.fakturisana_cijena || 0),
-                            )}
-                          </TD>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  {odabraneStavke.length > 0 && (
-                    <tfoot>
-                      <tr className="border-t-2 border-gray-200 dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#1e1a2d]">
-                        <TD bold>Ukupno</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD>{""}</TD>
-                        <TD right bold>
-                          {formatIznos(
-                            odabraneStavke
-                              .filter((s) => !jeDa(s.stornirano))
-                              .reduce(
-                                (sum, s) =>
-                                  sum +
-                                  Number(s.kolicina || 0) *
-                                    Number(s.fakturisana_cijena || 0),
-                                0,
-                              ),
-                          )}
-                        </TD>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-              )}
-            </div>
           </div>
         </div>
       )}

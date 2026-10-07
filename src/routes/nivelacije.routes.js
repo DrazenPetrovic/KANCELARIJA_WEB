@@ -5,6 +5,8 @@ const router = Router();
 
 router.post("/", NivelacijeController.createNivelacija);
 router.post("/unos", NivelacijeController.unosNivelacijeArtikala);
+router.get("/glavni", NivelacijeController.getNivelacijeGlavni);
+router.get("/stavke", NivelacijeController.getNivelacijeStavke);
 router.get("/aktivne", NivelacijeController.getNivelacijeAktivne);
 router.post("/trenutno-stanje", NivelacijeController.azurirajTrenutnoStanje);
 

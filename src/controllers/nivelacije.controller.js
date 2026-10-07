@@ -83,6 +83,26 @@ export const unosNivelacijeArtikala = async (req, res) => {
   }
 };
 
+export const getNivelacijeGlavni = async (req, res) => {
+  try {
+    const data = await NivelacijeService.getNivelacijeGlavni();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled nivelacija error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju nivelacija" });
+  }
+};
+
+export const getNivelacijeStavke = async (req, res) => {
+  try {
+    const data = await NivelacijeService.getNivelacijeStavke();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled stavki nivelacija error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju stavki nivelacija" });
+  }
+};
+
 export const getNivelacijeAktivne = async (req, res) => {
   try {
     const data = await NivelacijeService.getNivelacijeAktivne();

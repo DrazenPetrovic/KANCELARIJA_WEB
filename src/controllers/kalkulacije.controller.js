@@ -51,6 +51,19 @@ export const getKalkulacijeZavisniTroskovi = async (req, res) => {
   }
 };
 
+export const getZavisanTrosakVrste = async (req, res) => {
+  try {
+    const data = await KalkulacijeService.getZavisanTrosakVrste();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Vrste zavisnog troška error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju vrsta zavisnog troška",
+    });
+  }
+};
+
 export const getKalkulacijeStavke = async (req, res) => {
   try {
     const data = await KalkulacijeService.getKalkulacijeStavke();

@@ -20,6 +20,22 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
+// Boje ikonice banke — svaka banka dobija svoju, po redoslijedu iz erp.banke_pregled.
+const BOJE_BANAKA = [
+  "#785E9E",
+  "#2563eb",
+  "#ea580c",
+  "#0d9488",
+  "#db2777",
+  "#ca8a04",
+  "#dc2626",
+  "#16a34a",
+  "#0891b2",
+  "#9333ea",
+  "#65a30d",
+  "#475569",
+];
+
 // Red iz erp.izvodi_pregled.
 export interface IzvodRed {
   redni_broj: number;
@@ -252,6 +268,14 @@ export function IzvodiPregled() {
     return map;
   }, [banke]);
 
+  const bojaBanke = useMemo(() => {
+    const map = new Map<string, string>();
+    banke.forEach((b, i) =>
+      map.set(String(b.sifra_banke), BOJE_BANAKA[i % BOJE_BANAKA.length]),
+    );
+    return map;
+  }, [banke]);
+
   // Kod transfera procedura vraća "Prenos sredstava na/sa banke <sifra_banke>"
   // — šifra na kraju se zamjenjuje nazivom banke iz erp.banke_pregled.
   const nazivPartnera = (u: UplataRed) => {
@@ -330,17 +354,28 @@ export function IzvodiPregled() {
     return skup;
   }, [izvodi, filterBanka]);
 
+  // Rekapitulacija prati samo filter banke (ne tekstualnu pretragu) — bez
+  // filtera prikazuje sve banke.
+  const izvodiRekap = useMemo(
+    () =>
+      filterBanka
+        ? izvodi.filter((i) => String(i.sifra_banke) === filterBanka)
+        : izvodi,
+    [izvodi, filterBanka],
+  );
   const brojOtvorenih = useMemo(
-    () => izvodi.filter((i) => Number(i.izvod_zatvoren) !== 1).length,
-    [izvodi],
+    () => izvodiRekap.filter((i) => Number(i.izvod_zatvoren) !== 1).length,
+    [izvodiRekap],
   );
   const sumaUplata = useMemo(
-    () => izvodi.reduce((acc, i) => acc + (Number(i.ukupno_uplata) || 0), 0),
-    [izvodi],
+    () =>
+      izvodiRekap.reduce((acc, i) => acc + (Number(i.ukupno_uplata) || 0), 0),
+    [izvodiRekap],
   );
   const sumaIsplata = useMemo(
-    () => izvodi.reduce((acc, i) => acc + (Number(i.ukupno_isplata) || 0), 0),
-    [izvodi],
+    () =>
+      izvodiRekap.reduce((acc, i) => acc + (Number(i.ukupno_isplata) || 0), 0),
+    [izvodiRekap],
   );
 
   const prekidacProsirenja = (redniBroj: number) => {
@@ -390,7 +425,7 @@ export function IzvodiPregled() {
         <div className="flex flex-wrap gap-3">
           <StatTile
             icon={<Receipt size={16} />}
-            vrijednost={izvodi.length}
+            vrijednost={izvodiRekap.length}
             naziv="Izvoda ukupno"
             boja={PRIMARY}
           />
@@ -510,6 +545,8 @@ export function IzvodiPregled() {
           !greska &&
           sortirani.map((izvod, i) => {
             const otvoreno = prosireno.has(izvod.redni_broj);
+            const bojaIkonice =
+              bojaBanke.get(String(izvod.sifra_banke)) ?? PRIMARY;
             const uplateIzvoda =
               uplatePoIzvodu.get(String(izvod.redni_broj)) ?? [];
 
@@ -552,8 +589,11 @@ export function IzvodiPregled() {
                       transform: otvoreno ? "rotate(90deg)" : "rotate(0deg)",
                     }}
                   />
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
-                    <Landmark size={14} style={{ color: PRIMARY }} />
+                  <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: `${bojaIkonice}2e` }}
+                  >
+                    <Landmark size={14} style={{ color: bojaIkonice }} />
                   </div>
                   <div className="min-w-0 w-48 flex-shrink-0">
                     <div className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6] truncate">

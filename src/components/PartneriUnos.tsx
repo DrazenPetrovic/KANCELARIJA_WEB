@@ -315,6 +315,8 @@ export function PartneriUnos({ username }: { username: string }) {
 
     const nazivGrada = (sifra: string) =>
       gradovi.find((g) => String(g.sifra_grada) === sifra)?.naziv_grada;
+    const nazivDrzave = (sifra: string) =>
+      drzave.find((d) => String(d.sifra_drzave) === sifra)?.naziv_drzave;
 
     const payload: Record<string, unknown> = {
       naziv: naziv.trim(),
@@ -328,7 +330,7 @@ export function PartneriUnos({ username }: { username: string }) {
       adresa: adresa.trim() || undefined,
       grad: nazivGrada(sifraGrada),
       sifra_grada: sifraGrada ? Number(sifraGrada) : undefined,
-      sifra_drzave: sifraDrzave ? Number(sifraDrzave) : undefined,
+      drzava: nazivDrzave(sifraDrzave),
       postanski_broj: postanskiBroj.trim() || undefined,
       valuta_placanja: valutaPlacanja ? Number(valutaPlacanja) : undefined,
       // Nema posebnog polja u formi — uvijek se šalje fiksna vrijednost.
@@ -402,7 +404,7 @@ export function PartneriUnos({ username }: { username: string }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-6xl mx-auto">
       {/* Naslov */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">

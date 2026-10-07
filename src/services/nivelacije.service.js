@@ -31,6 +31,24 @@ export const unosNivelacijeArtikala = async (podaci) => {
   });
 };
 
+// Zaglavlja svih nivelacija, za ekran Artikli -> Nivelacija -> Pregled.
+// Vidi erp.nivelacija_gl_pregled.
+export const getNivelacijeGlavni = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.nivelacija_gl_pregled()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Stavke (proizvodi) svih nivelacija — frontend ih grupiše po
+// sifra_nivelacije. Vidi erp.nivelacija_po_pregled.
+export const getNivelacijeStavke = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute("CALL erp.nivelacija_po_pregled()");
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getNivelacijeAktivne = async () => {
   return withConnection(async (connection) => {
     // Stara procedura (koristi je i ERP program) - ne dirati.

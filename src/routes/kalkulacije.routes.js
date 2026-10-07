@@ -10,5 +10,9 @@ router.get(
   "/zavisni-troskovi",
   KalkulacijeController.getKalkulacijeZavisniTroskovi,
 );
+router.get(
+  "/zavisni-troskovi/vrste",
+  KalkulacijeController.getZavisanTrosakVrste,
+);
 
 export default router;

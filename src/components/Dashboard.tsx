@@ -22,6 +22,7 @@ import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { ArtikliUnos } from "./ArtikliUnos";
 import { NivelacijaUnos } from "./NivelacijaUnos";
+import { NivelacijePregled } from "./NivelacijePregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
 import { KarticaProizvoda } from "./KarticaProizvoda";
@@ -30,6 +31,7 @@ import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { Kuf } from "./Kuf";
 import { KalkulacijePregled } from "./KalkulacijePregled";
+import { KalkulacijaUnos } from "./KalkulacijaUnos";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { IzvodiStatus } from "./IzvodiStatus";
 import { IzvodiUnos } from "./IzvodiUnos";
@@ -163,6 +165,7 @@ type MenuSection =
   | "artikli-kartica"
   | "artikli-nivelacija-unos"
   | "artikli-nivelacija-pregled"
+  | "ulazi-kalkulacija-unos"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
@@ -204,6 +207,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "artikli-pregled": "Artikli – pregled",
   "artikli-nivelacija-unos": "Unos nivelacije",
   "artikli-nivelacija-pregled": "Pregled nivelacija",
+  "ulazi-kalkulacija-unos": "Unos kalkulacija",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
@@ -304,6 +308,7 @@ export function Dashboard({
     | "radnici"
     | "partneri"
     | "artikli"
+    | "ulazi"
     | "pregledi"
     | "narudzbe"
     | "finansije"
@@ -325,6 +330,7 @@ export function Dashboard({
     | "radnici"
     | "partneri"
     | "artikli"
+    | "ulazi"
     | "pregledi"
     | "narudzbe"
     | "finansije"
@@ -350,6 +356,7 @@ export function Dashboard({
   const radniciBtnRef = useRef<HTMLButtonElement>(null);
   const partneriBtnRef = useRef<HTMLButtonElement>(null);
   const artikliBtnRef = useRef<HTMLButtonElement>(null);
+  const ulaziBtnRef = useRef<HTMLButtonElement>(null);
   const preglediBtnRef = useRef<HTMLButtonElement>(null);
   const narudzbeBtnRef = useRef<HTMLButtonElement>(null);
   const finansijeBtnRef = useRef<HTMLButtonElement>(null);
@@ -360,6 +367,7 @@ export function Dashboard({
   const radniciDropRef = useRef<HTMLDivElement>(null);
   const partneriDropRef = useRef<HTMLDivElement>(null);
   const artikliDropRef = useRef<HTMLDivElement>(null);
+  const ulaziDropRef = useRef<HTMLDivElement>(null);
   const preglediDropRef = useRef<HTMLDivElement>(null);
   const narudzbeDropRef = useRef<HTMLDivElement>(null);
   const finansijeDropRef = useRef<HTMLDivElement>(null);
@@ -393,6 +401,8 @@ export function Dashboard({
       const inArtikli =
         artikliBtnRef.current?.contains(t) ||
         artikliDropRef.current?.contains(t);
+      const inUlazi =
+        ulaziBtnRef.current?.contains(t) || ulaziDropRef.current?.contains(t);
       const inPregledi =
         preglediBtnRef.current?.contains(t) ||
         preglediDropRef.current?.contains(t);
@@ -415,6 +425,7 @@ export function Dashboard({
         !inRadnici &&
         !inPartneri &&
         !inArtikli &&
+        !inUlazi &&
         !inPregledi &&
         !inNarudzbe &&
         !inFinansije &&
@@ -605,6 +616,7 @@ export function Dashboard({
       | "radnici"
       | "partneri"
       | "artikli"
+      | "ulazi"
       | "pregledi"
       | "narudzbe"
       | "finansije"
@@ -621,6 +633,8 @@ export function Dashboard({
           ? partneriBtnRef
           : menu === "artikli"
             ? artikliBtnRef
+            : menu === "ulazi"
+            ? ulaziBtnRef
             : menu === "pregledi"
             ? preglediBtnRef
             : menu === "narudzbe"
@@ -664,6 +678,7 @@ export function Dashboard({
       | "radnici"
       | "partneri"
       | "artikli"
+      | "ulazi"
       | "pregledi"
       | "narudzbe"
       | "finansije"
@@ -1773,6 +1788,98 @@ export function Dashboard({
                             />
                           </span>
                           Ugovorene cijene
+                        </button>
+                      </div>
+                    </div>,
+                    document.body,
+                  )}
+              </div>
+
+              {/* ULAZI */}
+              <div>
+                <button
+                  ref={ulaziBtnRef}
+                  onClick={() => toggleMenu("ulazi")}
+                  className={navBtnBase}
+                  style={navBtnStyle(
+                    "ulazi",
+                    !!(
+                      openMenu === "ulazi" ||
+                      activeSection?.startsWith("ulazi-")
+                    ),
+                  )}
+                  onMouseEnter={() => setHoveredBtn("ulazi")}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                >
+                  <span
+                    className="flex items-center justify-center w-6 h-6 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.85)" }}
+                  >
+                    <PackagePlus size={13} style={{ color: "#111" }} />
+                  </span>
+                  Ulazi
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${openMenu === "ulazi" ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {openMenu === "ulazi" &&
+                  ReactDOM.createPortal(
+                    <div
+                      ref={ulaziDropRef}
+                      style={{
+                        position: "fixed",
+                        top: dropPos.top,
+                        left: dropPos.left,
+                        zIndex: 9999,
+                      }}
+                      className={`w-56 rounded-2xl border ${dropBg} shadow-2xl overflow-hidden`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 text-xs font-bold tracking-widest uppercase flex items-center gap-2 ${dropStripeBg}`}
+                        style={{ color: PRIMARY }}
+                      >
+                        <PackagePlus size={12} />
+                        Ulazi
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <button
+                          onClick={() =>
+                            handleSectionChange("ulazi-kalkulacija-unos")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "ulazi-kalkulacija-unos",
+                          )}
+                          style={
+                            activeSection === "ulazi-kalkulacija-unos"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "ulazi-kalkulacija-unos"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "ulazi-kalkulacija-unos"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Calculator
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "ulazi-kalkulacija-unos"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos kalkulacija
                         </button>
                       </div>
                     </div>,
@@ -2999,10 +3106,10 @@ export function Dashboard({
           {activeSection === "artikli-nivelacija-unos" && <NivelacijaUnos />}
 
           {activeSection === "artikli-nivelacija-pregled" && (
-            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#3a3158] p-10 text-center text-sm text-gray-500 dark:text-[#9e96b8]">
-              Pregled nivelacija je u izradi.
-            </div>
+            <NivelacijePregled />
           )}
+
+          {activeSection === "ulazi-kalkulacija-unos" && <KalkulacijaUnos />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 
