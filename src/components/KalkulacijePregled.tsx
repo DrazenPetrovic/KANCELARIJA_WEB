@@ -198,17 +198,13 @@ function StatTile({
 const TH = ({
   children,
   right,
-  sekundarno,
 }: {
   children: React.ReactNode;
   right?: boolean;
-  // Zaglavlje glavne tabele je u primarnoj boji; sekundarno (zelena) je za
-  // tabelu stavki / troškova ispod reda.
-  sekundarno?: boolean;
 }) => (
   <th
     className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${right ? "text-right" : "text-left"}`}
-    style={{ background: sekundarno ? ACCENT : PRIMARY }}
+    style={{ background: PRIMARY }}
   >
     {children}
   </th>
@@ -512,11 +508,11 @@ export function KalkulacijePregled() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr>
-                      <TH sekundarno>#</TH>
-                      <TH sekundarno>Naziv troška</TH>
-                      <TH sekundarno>Vrsta PDV</TH>
-                      <TH sekundarno right>PDV</TH>
-                      <TH sekundarno right>Ukupno</TH>
+                      <TH>#</TH>
+                      <TH>Naziv troška</TH>
+                      <TH>Vrsta PDV</TH>
+                      <TH right>PDV</TH>
+                      <TH right>Ukupno</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -581,16 +577,16 @@ export function KalkulacijePregled() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr>
-                      <TH sekundarno>#</TH>
-                      <TH sekundarno>Proizvod</TH>
-                      <TH sekundarno right>Količina</TH>
-                      <TH sekundarno right>Cijena</TH>
-                      <TH sekundarno right>Rabat %</TH>
-                      <TH sekundarno right>Akc. rabat %</TH>
-                      <TH sekundarno right>Fakt. cijena</TH>
-                      <TH sekundarno right>Naša ulazna</TH>
-                      <TH sekundarno right>VPC</TH>
-                      <TH sekundarno right>Iznos (fakt.)</TH>
+                      <TH>#</TH>
+                      <TH>Proizvod</TH>
+                      <TH right>Količina</TH>
+                      <TH right>Cijena</TH>
+                      <TH right>Rabat %</TH>
+                      <TH right>Akc. rabat %</TH>
+                      <TH right>Fakt. cijena</TH>
+                      <TH right>Naša ulazna</TH>
+                      <TH right>VPC</TH>
+                      <TH right>Iznos (fakt.)</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -609,18 +605,20 @@ export function KalkulacijePregled() {
                       return (
                         <tr
                           key={s.sifra_tbl}
-                          className={`border-b border-gray-200 dark:border-[#3a3158] ${stornirano ? "opacity-50 line-through" : ""}`}
+                          // Kompaktni redovi: manji vertikalni padding, naziv i
+                          // šifra/JM u istom redu.
+                          className={`border-b border-gray-200 dark:border-[#3a3158] [&>td]:py-1 ${stornirano ? "opacity-50 line-through" : ""}`}
                         >
                           <TD>{i + 1}</TD>
                           <TD>
-                            <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                            <span className="font-semibold text-gray-800 dark:text-[#ede9f6]">
                               {s.naziv_proizvoda || "—"}
-                            </div>
-                            <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            </span>
+                            <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
                               šifra {s.sifra_proizvoda}
                               {s.jm ? ` · ${s.jm}` : ""}
                               {stornirano ? " · STORNIRANO" : ""}
-                            </div>
+                            </span>
                           </TD>
                           <TD right>{formatBroj(s.kolicina, 3)}</TD>
                           <TD right>{formatBroj(s.cijena, 3)}</TD>
@@ -1018,7 +1016,10 @@ export function KalkulacijePregled() {
                         className="px-4 py-3 bg-[#faf9fc] dark:bg-[#1e1a2d]"
                         style={{ borderLeft: `4px solid ${PRIMARY}` }}
                       >
-                        {detaljiOdabrane}
+                        {/* Crveni okvir oko otvorenih detalja reda. */}
+                        <div className="rounded-xl border-2 border-red-500 overflow-hidden">
+                          {detaljiOdabrane}
+                        </div>
                       </td>
                     </tr>
                   )}

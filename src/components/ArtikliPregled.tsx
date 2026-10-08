@@ -5,11 +5,16 @@ import {
   ArrowUp,
   ArrowUpDown,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
+  FlaskConical,
   Loader2,
   Package,
   Pencil,
+  Plus,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
@@ -53,6 +58,18 @@ interface Artikal {
 interface ArtikalGrupa {
   sifra_grupe: string | number;
   naziv_grupe: string;
+  [key: string]: unknown;
+}
+
+// Normativ (sastav) proizvoda — koja sirovina i u kojoj količini ulazi u
+// proizvod. Vidi erp.proizvodi_normativi_za_proizvod_pregled.
+interface NormativStavka {
+  sifra_tabele: number;
+  sifra_proizvoda: string | number;
+  sifra_sirovine: string | number;
+  naziv_sirovine: string;
+  jm_sirovine: string;
+  kolicina_sirovine: number | string;
   [key: string]: unknown;
 }
 
@@ -143,15 +160,21 @@ const TD = ({
   center,
   padLeft = 8,
   padRight = 8,
+  borderLeftColor,
 }: {
   children: React.ReactNode;
   center?: boolean;
   padLeft?: number;
   padRight?: number;
+  borderLeftColor?: string;
 }) => (
   <td
     className={`py-2.5 text-sm whitespace-nowrap border-b border-gray-300 dark:border-[#453a68] text-gray-700 dark:text-[#c5bfd8] ${center ? "text-center" : ""}`}
-    style={{ paddingLeft: padLeft, paddingRight: padRight }}
+    style={{
+      paddingLeft: padLeft,
+      paddingRight: padRight,
+      borderLeft: borderLeftColor ? `3px solid ${borderLeftColor}` : undefined,
+    }}
   >
     {children}
   </td>
@@ -194,10 +217,43 @@ export function ArtikliPregled() {
   const [pretraga, setPretraga] = useState("");
   const [grupaFilter, setGrupaFilter] = useState("sve");
   const [sakrijBezStanja, setSakrijBezStanja] = useState(true);
+  const [samoSaNormativom, setSamoSaNormativom] = useState(false);
   const [sortPolje, setSortPolje] = useState<"sifra" | "naziv" | "grupa">(
     "naziv",
   );
   const [sortSmjer, setSortSmjer] = useState<"asc" | "desc">("asc");
+
+  // Normativi (sastav) proizvoda — povučeni odjednom za sve proizvode, pa se
+  // grupišu po sifra_proizvoda (vidi normativiMap niže).
+  const [normativi, setNormativi] = useState<NormativStavka[]>([]);
+  const [prosirenaSifra, setProsirenaSifra] = useState<string | null>(null);
+
+  // Izmjena pojedinačne stavke normativa — modal sa potvrdom prije snimanja.
+  const [stavkaZaIzmjenuNormativa, setStavkaZaIzmjenuNormativa] =
+    useState<NormativStavka | null>(null);
+  const [kolicinaIzmjenaNormativa, setKolicinaIzmjenaNormativa] =
+    useState("");
+  const [cuvanjeNormativa, setCuvanjeNormativa] = useState(false);
+  const [greskaNormativa, setGreskaNormativa] = useState<string | null>(null);
+
+  // Brisanje pojedinačne stavke normativa — modal sa potvrdom prije brisanja.
+  const [stavkaZaBrisanjeNormativa, setStavkaZaBrisanjeNormativa] =
+    useState<NormativStavka | null>(null);
+  const [brisanjeNormativaUToku, setBrisanjeNormativaUToku] = useState(false);
+  const [greskaBrisanjaNormativa, setGreskaBrisanjaNormativa] = useState<
+    string | null
+  >(null);
+
+  // Dodavanje nove sirovine u normativ — modal sa izborom sirovine (samo
+  // artikli sa sirovina=1) i unosom količine (na 3 decimale).
+  const [dodavanjeSirovineZaProizvod, setDodavanjeSirovineZaProizvod] =
+    useState<Artikal | null>(null);
+  const [sirovinaZaDodavanje, setSirovinaZaDodavanje] = useState("");
+  const [kolicinaNovaSirovina, setKolicinaNovaSirovina] = useState("");
+  const [cuvanjeNoveSirovine, setCuvanjeNoveSirovine] = useState(false);
+  const [greskaNoveSirovine, setGreskaNoveSirovine] = useState<string | null>(
+    null,
+  );
 
   // Izmjena artikla — modal sa istim poljima kao unos, minus šifra (koja se
   // samo prikazuje, ne mijenja).
@@ -271,7 +327,21 @@ export function ArtikliPregled() {
       .then((res) => res.json())
       .then((json) => setJediniceMjere(json.data ?? []))
       .catch(() => setJediniceMjere([]));
+
+    void ucitajNormative();
   }, []);
+
+  const ucitajNormative = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/proizvodi/normativi`, {
+        credentials: "include",
+      });
+      const json = await res.json();
+      setNormativi(json.data ?? []);
+    } catch {
+      setNormativi([]);
+    }
+  };
 
   const otvoriIzmjenu = (a: Artikal) => {
     setArtikalZaIzmjenu(a);
@@ -306,6 +376,145 @@ export function ArtikliPregled() {
 
   const zatvoriIzmjenu = () => {
     setArtikalZaIzmjenu(null);
+  };
+
+  const otvoriIzmjenuNormativa = (stavka: NormativStavka) => {
+    setStavkaZaIzmjenuNormativa(stavka);
+    setKolicinaIzmjenaNormativa(String(stavka.kolicina_sirovine ?? ""));
+    setGreskaNormativa(null);
+  };
+
+  const zatvoriIzmjenuNormativa = () => {
+    setStavkaZaIzmjenuNormativa(null);
+  };
+
+  const potvrdiIzmjenuNormativa = async () => {
+    if (!stavkaZaIzmjenuNormativa) return;
+    setGreskaNormativa(null);
+
+    const kolicina = Number(kolicinaIzmjenaNormativa);
+    if (!Number.isFinite(kolicina) || kolicina < 0) {
+      setGreskaNormativa("Količina sirovine mora biti ispravan broj");
+      return;
+    }
+
+    const payload = {
+      sifra_tabele: Number(stavkaZaIzmjenuNormativa.sifra_tabele),
+      sifra_proizvoda: Number(stavkaZaIzmjenuNormativa.sifra_proizvoda),
+      sifra_sirovine: Number(stavkaZaIzmjenuNormativa.sifra_sirovine),
+      kolicina_sirovine: kolicina,
+    };
+
+    setCuvanjeNormativa(true);
+    try {
+      const res = await fetch(`${API_URL}/api/proizvodi/normativi/izmjena`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri izmjeni normativa");
+      }
+      setStavkaZaIzmjenuNormativa(null);
+      await ucitajNormative();
+    } catch (err) {
+      setGreskaNormativa(
+        err instanceof Error ? err.message : "Nepoznata greška",
+      );
+    } finally {
+      setCuvanjeNormativa(false);
+    }
+  };
+
+  const obrisiStavkuNormativa = (stavka: NormativStavka) => {
+    setStavkaZaBrisanjeNormativa(stavka);
+    setGreskaBrisanjaNormativa(null);
+  };
+
+  const zatvoriBrisanjeNormativa = () => {
+    setStavkaZaBrisanjeNormativa(null);
+  };
+
+  const potvrdiBrisanjeNormativa = async () => {
+    if (!stavkaZaBrisanjeNormativa) return;
+    setGreskaBrisanjaNormativa(null);
+    setBrisanjeNormativaUToku(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/proizvodi/normativi/${stavkaZaBrisanjeNormativa.sifra_tabele}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri brisanju normativa");
+      }
+      setStavkaZaBrisanjeNormativa(null);
+      await ucitajNormative();
+    } catch (err) {
+      setGreskaBrisanjaNormativa(
+        err instanceof Error ? err.message : "Nepoznata greška",
+      );
+    } finally {
+      setBrisanjeNormativaUToku(false);
+    }
+  };
+
+  const otvoriDodavanjeSirovine = (a: Artikal) => {
+    setDodavanjeSirovineZaProizvod(a);
+    setSirovinaZaDodavanje(
+      sirovineOpcije[0] ? String(sirovineOpcije[0].sifra_proizvoda) : "",
+    );
+    setKolicinaNovaSirovina("");
+    setGreskaNoveSirovine(null);
+  };
+
+  const zatvoriDodavanjeSirovine = () => {
+    setDodavanjeSirovineZaProizvod(null);
+  };
+
+  const potvrdiDodavanjeSirovine = async () => {
+    if (!dodavanjeSirovineZaProizvod) return;
+    setGreskaNoveSirovine(null);
+
+    if (!sirovinaZaDodavanje) {
+      setGreskaNoveSirovine("Sirovina je obavezna");
+      return;
+    }
+    const kolicina = Number(kolicinaNovaSirovina);
+    if (!Number.isFinite(kolicina) || kolicina < 0) {
+      setGreskaNoveSirovine("Količina sirovine mora biti ispravan broj");
+      return;
+    }
+
+    const payload = {
+      sifra_proizvoda: Number(dodavanjeSirovineZaProizvod.sifra_proizvoda),
+      sifra_sirovine: Number(sirovinaZaDodavanje),
+      kolicina_sirovine: kolicina,
+    };
+
+    setCuvanjeNoveSirovine(true);
+    try {
+      const res = await fetch(`${API_URL}/api/proizvodi/normativi/unos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri unosu normativa");
+      }
+      setDodavanjeSirovineZaProizvod(null);
+      await ucitajNormative();
+    } catch (err) {
+      setGreskaNoveSirovine(
+        err instanceof Error ? err.message : "Nepoznata greška",
+      );
+    } finally {
+      setCuvanjeNoveSirovine(false);
+    }
   };
 
   // Otvara Karticu artikla u novom tabu, sa unaprijed odabranim proizvodom.
@@ -374,10 +583,31 @@ export function ArtikliPregled() {
     }
   };
 
+  // Normativi grupisani po sifra_proizvoda — za obilježavanje proizvoda sa
+  // normativom i prikaz sastava na klik.
+  const normativiMap = useMemo(() => {
+    const mapa = new Map<string, NormativStavka[]>();
+    normativi.forEach((n) => {
+      const kljuc = String(n.sifra_proizvoda);
+      const lista = mapa.get(kljuc);
+      if (lista) lista.push(n);
+      else mapa.set(kljuc, [n]);
+    });
+    return mapa;
+  }, [normativi]);
+
+  // Artikli koji su sirovina — za izbor u modalu "Dodaj sirovinu u normativ".
+  const sirovineOpcije = useMemo(
+    () => data.filter((p) => Number(p.sirovina) === 1),
+    [data],
+  );
+
   const filtrirani = useMemo(() => {
     return data
       .filter((a) => {
         if (sakrijBezStanja && Number(a.kolicina_proizvoda) <= 0) return false;
+        if (samoSaNormativom && !normativiMap.has(String(a.sifra_proizvoda)))
+          return false;
 
         const matchGrupa =
           grupaFilter === "sve" || String(a.grupa_proizvoda) === grupaFilter;
@@ -406,7 +636,16 @@ export function ArtikliPregled() {
         );
         return sortSmjer === "asc" ? cmp : -cmp;
       });
-  }, [data, pretraga, grupaFilter, sakrijBezStanja, sortPolje, sortSmjer]);
+  }, [
+    data,
+    pretraga,
+    grupaFilter,
+    sakrijBezStanja,
+    samoSaNormativom,
+    normativiMap,
+    sortPolje,
+    sortSmjer,
+  ]);
 
   const finVrijednostZaliha = useMemo(
     () =>
@@ -437,6 +676,12 @@ export function ArtikliPregled() {
     if (!boja) return undefined;
     return theme === "dark" ? boja.dark : boja.light;
   };
+
+  // Istaknuta pozadina (sekundarna boja — ACCENT) za trenutno prošireni red +
+  // panel sa normativom — jača od uobičajene boje grupe, da operater
+  // vizuelno poveže oba dijela i odmah vidi za koji je proizvod normativ
+  // otvoren.
+  const bojaProsirenogReda = theme === "dark" ? "#33471f" : "#dcf0bd";
 
   return (
     <div className="space-y-4">
@@ -479,6 +724,16 @@ export function ArtikliPregled() {
                 className="w-4 h-4 rounded accent-[#785E9E]"
               />
               Sakrij artikle bez stanja
+            </label>
+
+            <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={samoSaNormativom}
+                onChange={(e) => setSamoSaNormativom(e.target.checked)}
+                className="w-4 h-4 rounded accent-[#785E9E]"
+              />
+              Samo proizvodi sa normativom
             </label>
           </div>
 
@@ -583,19 +838,46 @@ export function ArtikliPregled() {
                 </tr>
               </thead>
               <tbody>
-                {filtrirani.map((a) => (
+                {filtrirani.map((a) => {
+                  const sifra = String(a.sifra_proizvoda);
+                  const sastavNormativa = normativiMap.get(sifra);
+                  const imaNormativ = !!sastavNormativa;
+                  const prosiren = prosirenaSifra === sifra;
+                  return (
+                  <>
                   <tr
-                    key={a.sifra_proizvoda}
-                    className="transition-colors"
-                    style={{ backgroundColor: bojaZaRed(a) }}
+                    key={sifra}
+                    onClick={
+                      imaNormativ
+                        ? () => setProsirenaSifra(prosiren ? null : sifra)
+                        : undefined
+                    }
+                    className={`transition-colors ${imaNormativ ? "cursor-pointer hover:brightness-95" : ""}`}
+                    style={{
+                      backgroundColor: prosiren
+                        ? bojaProsirenogReda
+                        : bojaZaRed(a),
+                    }}
                   >
-                    <TD padRight={0}>
+                    <TD
+                      padRight={0}
+                      borderLeftColor={prosiren ? ACCENT : undefined}
+                    >
                       <span className="font-mono font-semibold text-xs" style={{ color: PRIMARY }}>
                         {a.sifra_proizvoda}
                       </span>
                     </TD>
                     <TD padLeft={0}>
                       <div className="flex items-center gap-1.5 max-w-[421px]">
+                        {imaNormativ && (
+                          <span
+                            title="Proizvod ima normativ — klikni za sastav"
+                            className="shrink-0 inline-flex items-center"
+                            style={{ color: "#2563eb" }}
+                          >
+                            <FlaskConical size={13} />
+                          </span>
+                        )}
                         <span
                           className="min-w-0 truncate font-medium"
                           title={a.naziv_proizvoda}
@@ -607,6 +889,12 @@ export function ArtikliPregled() {
                             Sirovina
                           </span>
                         )}
+                        {imaNormativ &&
+                          (prosiren ? (
+                            <ChevronUp size={13} className="shrink-0 text-gray-400" />
+                          ) : (
+                            <ChevronDown size={13} className="shrink-0 text-gray-400" />
+                          ))}
                       </div>
                     </TD>
                     <TD center padLeft={0} padRight={0}>
@@ -672,7 +960,10 @@ export function ArtikliPregled() {
                       <div className="inline-flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => otvoriIzmjenu(a)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            otvoriIzmjenu(a);
+                          }}
                           title="Izmijeni artikal"
                           className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
                           style={{ color: PRIMARY }}
@@ -681,7 +972,10 @@ export function ArtikliPregled() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => otvoriKarticuNovomTabu(a)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            otvoriKarticuNovomTabu(a);
+                          }}
                           title="Otvori karticu artikla u novom tabu"
                           className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
                           style={{ color: PRIMARY }}
@@ -691,7 +985,115 @@ export function ArtikliPregled() {
                       </div>
                     </TD>
                   </tr>
-                ))}
+                  {prosiren && sastavNormativa && (() => {
+                    const sastavSortiran = [...sastavNormativa].sort(
+                      (x, y) =>
+                        Number(y.kolicina_sirovine) -
+                        Number(x.kolicina_sirovine),
+                    );
+                    return (
+                    <tr>
+                      <td
+                        colSpan={13}
+                        style={{
+                          padding: 0,
+                          border: "none",
+                          borderLeft: `3px solid ${ACCENT}`,
+                        }}
+                      >
+                        <div
+                          className="flex items-start justify-center gap-4 px-6 py-3 border-b border-gray-300 dark:border-[#453a68]"
+                          style={{ backgroundColor: bojaProsirenogReda }}
+                        >
+                          <div className="flex items-center gap-1.5 shrink-0 pt-3">
+                            <FlaskConical size={13} style={{ color: "#2563eb" }} />
+                            <span
+                              className="text-sm font-bold uppercase tracking-wider"
+                              style={{ color: PRIMARY }}
+                            >
+                              Normativ — sastav proizvoda
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                otvoriDodavanjeSirovine(a);
+                              }}
+                              title="Dodaj sirovinu u normativ"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm transition-all hover:brightness-110 hover:scale-105"
+                              style={{ backgroundColor: ACCENT }}
+                            >
+                              <Plus size={14} strokeWidth={3} />
+                              Dodaj sirovinu
+                            </button>
+                          </div>
+                          <table className="table-auto border-collapse">
+                            <thead>
+                              <tr>
+                                <TH>Šif</TH>
+                                <TH>Naziv sirovine</TH>
+                                <TH center>JM</TH>
+                                <TH center>Količina</TH>
+                                <TH center>Akcije</TH>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sastavSortiran.map((n) => (
+                                <tr key={n.sifra_tabele}>
+                                  <td
+                                    className="px-3 py-1.5 text-sm font-mono border-t-2 border-gray-400 dark:border-[#5a4f80]"
+                                    style={{ color: PRIMARY }}
+                                  >
+                                    {n.sifra_sirovine}
+                                  </td>
+                                  <td className="min-w-[260px] px-3 py-1.5 text-sm text-gray-700 dark:text-[#c5bfd8] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {n.naziv_sirovine}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-sm text-center text-gray-500 dark:text-[#a99fc2] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {n.jm_sirovine}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-sm text-right font-semibold text-gray-700 dark:text-[#c5bfd8] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {formatBroj(n.kolicina_sirovine, 3)}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          otvoriIzmjenuNormativa(n);
+                                        }}
+                                        title="Izmijeni stavku normativa"
+                                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg transition-colors hover:bg-white/60 dark:hover:bg-black/20"
+                                        style={{ color: PRIMARY }}
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          obrisiStavkuNormativa(n);
+                                        }}
+                                        title="Obriši stavku normativa"
+                                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg transition-colors hover:bg-white/60 dark:hover:bg-black/20 text-red-500 dark:text-red-400"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })()}
+                  </>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -928,6 +1330,286 @@ export function ArtikliPregled() {
                   <Pencil size={15} />
                 )}
                 Sačuvaj izmjene
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — izmjena stavke normativa (potvrda prije snimanja) */}
+      {stavkaZaIzmjenuNormativa && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !cuvanjeNormativa) {
+              zatvoriIzmjenuNormativa();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2 border-gray-100 dark:border-[#2d2648]">
+            <div
+              className="px-5 py-4 flex items-center justify-between gap-4"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              <div className="flex items-center gap-2">
+                <Pencil size={17} className="text-white" />
+                <h3 className="text-base font-bold text-white">
+                  Izmjena stavke normativa
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={zatvoriIzmjenuNormativa}
+                disabled={cuvanjeNormativa}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {greskaNormativa && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                  <AlertTriangle size={15} />
+                  {greskaNormativa}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-3 bg-[#faf9fc] dark:bg-[#1e1a2d] text-sm">
+                <p className="text-gray-500 dark:text-[#a99fc2]">Sirovina</p>
+                <p className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                  {stavkaZaIzmjenuNormativa.naziv_sirovine} (šif.{" "}
+                  {stavkaZaIzmjenuNormativa.sifra_sirovine})
+                </p>
+              </div>
+
+              <Field label={`Količina sirovine (${stavkaZaIzmjenuNormativa.jm_sirovine})`}>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={kolicinaIzmjenaNormativa}
+                  onChange={(e) => setKolicinaIzmjenaNormativa(e.target.value)}
+                  className={inputClass}
+                  autoFocus
+                />
+              </Field>
+
+              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+                Potvrdom mijenjaš normativ za ovaj proizvod — provjeri
+                količinu prije snimanja.
+              </p>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-[#2d2648] flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={zatvoriIzmjenuNormativa}
+                disabled={cuvanjeNormativa}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors disabled:opacity-50"
+              >
+                Otkaži
+              </button>
+              <button
+                type="button"
+                onClick={() => void potvrdiIzmjenuNormativa()}
+                disabled={cuvanjeNormativa}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                style={{ background: PRIMARY }}
+              >
+                {cuvanjeNormativa ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                Potvrdi izmjenu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — brisanje stavke normativa (potvrda prije brisanja) */}
+      {stavkaZaBrisanjeNormativa && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !brisanjeNormativaUToku) {
+              zatvoriBrisanjeNormativa();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2 border-red-200 dark:border-red-900">
+            <div className="px-5 py-4 flex items-center justify-between gap-4 bg-red-500">
+              <div className="flex items-center gap-2">
+                <Trash2 size={17} className="text-white" />
+                <h3 className="text-base font-bold text-white">
+                  Brisanje stavke normativa
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={zatvoriBrisanjeNormativa}
+                disabled={brisanjeNormativaUToku}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {greskaBrisanjaNormativa && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                  <AlertTriangle size={15} />
+                  {greskaBrisanjaNormativa}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-3 bg-[#faf9fc] dark:bg-[#1e1a2d] text-sm">
+                <p className="text-gray-500 dark:text-[#a99fc2]">Sirovina</p>
+                <p className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                  {stavkaZaBrisanjeNormativa.naziv_sirovine} (šif.{" "}
+                  {stavkaZaBrisanjeNormativa.sifra_sirovine})
+                </p>
+              </div>
+
+              <p className="text-sm text-gray-700 dark:text-[#c5bfd8]">
+                Da li sigurno želiš obrisati ovu stavku normativa? Ova akcija
+                se ne može poništiti.
+              </p>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-[#2d2648] flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={zatvoriBrisanjeNormativa}
+                disabled={brisanjeNormativaUToku}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors disabled:opacity-50"
+              >
+                Otkaži
+              </button>
+              <button
+                type="button"
+                onClick={() => void potvrdiBrisanjeNormativa()}
+                disabled={brisanjeNormativaUToku}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 transition-all hover:brightness-110 disabled:opacity-50"
+              >
+                {brisanjeNormativaUToku ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                Obriši
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — dodavanje nove sirovine u normativ */}
+      {dodavanjeSirovineZaProizvod && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !cuvanjeNoveSirovine) {
+              zatvoriDodavanjeSirovine();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2 border-gray-100 dark:border-[#2d2648]">
+            <div
+              className="px-5 py-4 flex items-center justify-between gap-4"
+              style={{ backgroundColor: ACCENT }}
+            >
+              <div className="flex items-center gap-2">
+                <Plus size={17} className="text-white" />
+                <h3 className="text-base font-bold text-white">
+                  Dodaj sirovinu u normativ
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={zatvoriDodavanjeSirovine}
+                disabled={cuvanjeNoveSirovine}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {greskaNoveSirovine && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                  <AlertTriangle size={15} />
+                  {greskaNoveSirovine}
+                </div>
+              )}
+
+              {/* Proizvod na koji se normativ vezuje — prikazano i pored
+                  fokusa radi dodatne sigurnosti operatera. */}
+              <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-3 bg-[#faf9fc] dark:bg-[#1e1a2d] text-sm">
+                <p className="text-gray-500 dark:text-[#a99fc2]">
+                  Normativ se dodaje za proizvod
+                </p>
+                <p className="font-semibold text-gray-800 dark:text-[#ede9f6]">
+                  {dodavanjeSirovineZaProizvod.naziv_proizvoda} (šif.{" "}
+                  {dodavanjeSirovineZaProizvod.sifra_proizvoda})
+                </p>
+              </div>
+
+              <Field label="Sirovina *">
+                <select
+                  value={sirovinaZaDodavanje}
+                  onChange={(e) => setSirovinaZaDodavanje(e.target.value)}
+                  className={inputClass}
+                >
+                  {sirovineOpcije.length === 0 && (
+                    <option value="">Nema dostupnih sirovina</option>
+                  )}
+                  {sirovineOpcije.map((s) => (
+                    <option
+                      key={s.sifra_proizvoda}
+                      value={String(s.sifra_proizvoda)}
+                    >
+                      {s.naziv_proizvoda} (šif. {s.sifra_proizvoda})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Količina sirovine (na 3 decimale) *">
+                <input
+                  type="number"
+                  step="0.001"
+                  value={kolicinaNovaSirovina}
+                  onChange={(e) => setKolicinaNovaSirovina(e.target.value)}
+                  placeholder="0.000"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-[#2d2648] flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={zatvoriDodavanjeSirovine}
+                disabled={cuvanjeNoveSirovine}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors disabled:opacity-50"
+              >
+                Otkaži
+              </button>
+              <button
+                type="button"
+                onClick={() => void potvrdiDodavanjeSirovine()}
+                disabled={cuvanjeNoveSirovine}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                style={{ background: ACCENT }}
+              >
+                {cuvanjeNoveSirovine ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Plus size={15} />
+                )}
+                Dodaj
               </button>
             </div>
           </div>
