@@ -49,6 +49,21 @@ export const getZavisanTrosakVrste = async () => {
   });
 };
 
+// Zadnja cijena po kojoj je proizvod ušao kroz kalkulaciju (ili početno
+// stanje) — za polje "Zadnje fakturisano" pri unosu kalkulacije. Vraća
+// { fakturisana_cijena, nasa_ulazna_cijena } ili null ako proizvod nikad nije
+// kalkulisan. Vidi erp.kalkulacija_zadnja_cijena_proizvoda (p_sifra_artikla).
+export const getZadnjaCijenaProizvoda = async (sifraProizvoda) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.kalkulacija_zadnja_cijena_proizvoda(?)",
+      [sifraProizvoda],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return rezultatSet[0] ?? null;
+  });
+};
+
 // Stavke (proizvodi) svih kalkulacija — frontend ih grupiše po
 // sifra_kalkulacije. Vidi erp.kalkulacija_po_pregled.
 export const getKalkulacijeStavke = async () => {

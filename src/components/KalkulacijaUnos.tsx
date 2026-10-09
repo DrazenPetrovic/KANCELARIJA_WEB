@@ -51,6 +51,7 @@ interface Artikal {
   jm: string;
   vpc: number | string;
   nabavna_cijena: number | string;
+  kolicina_proizvoda: number | string;
   barkod: string;
   vrsta_proizvoda: number | string;
   sirovina?: number | string | null;
@@ -116,6 +117,10 @@ interface VezaniTrosak {
 
 const inputClass =
   "w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] disabled:opacity-50";
+// Polja samo za čitanje (nabavna, zadnje fakturisano, zaključana VPC) —
+// prozirna siva podloga bez okvira, da je jasno da se u njih ne unosi.
+const samoCitanjeClass =
+  "w-full px-3 py-2.5 text-sm rounded-xl border border-dashed border-white/50 bg-black/20 text-white/90 tabular-nums cursor-not-allowed select-none focus:outline-none";
 const labelClass =
   "block text-xs font-semibold text-gray-600 dark:text-[#a89fc2] mb-1";
 const karticaClass =
@@ -163,6 +168,8 @@ const dodajDane = (datum: string, dani: number) => {
 // 3 usluga.
 const jeSirovina = (a: Artikal) =>
   Number(a.vrsta_proizvoda) === 0 || Number(a.sirovina ?? 0) === 1;
+
+const imaStanje = (a: Artikal) => broj(a.kolicina_proizvoda) > 0;
 
 // Rabati se obračunavaju kaskadno: prvo redovni, pa akcijski na ostatak.
 const fakturnaCijena = (cijena: number, rabat: number, akcijski: number) =>
@@ -665,6 +672,11 @@ export function KalkulacijaUnos() {
   const [rabat, setRabat] = useState("");
   const [akcijskiRabat, setAkcijskiRabat] = useState("");
   const [vpc, setVpc] = useState("");
+  const [zadnjaCijena, setZadnjaCijena] = useState<
+    | { fakturisana_cijena: number | string; nasa_ulazna_cijena: number | string }
+    | "ucitavanje"
+    | null
+  >(null);
   // Stavka koja se trenutno mijenja (klik na red u tabeli); null = nova.
   const [izmjenaId, setIzmjenaId] = useState<number | null>(null);
 
@@ -792,6 +804,10 @@ export function KalkulacijaUnos() {
     return lista.slice(0, 60);
   }, [artikliVrste, pretraga]);
 
+  // VPC robe operater smije mijenjati samo kad artikla nema na stanju; dok
+  // ima robe, ostaje VPC iz šifarnika (erp.artikli_pregled_sve).
+  const vpcZakljucana = vrsta === "roba" && !!odabrani && imaStanje(odabrani);
+
   // Ista boja kao izabrano dugme Sirovina/Roba u "Podacima o kalkulaciji".
   const bojaVrste = vrsta === "sirovina" ? SIROVINA_BOJA : PRIMARY;
 
@@ -850,6 +866,31 @@ export function KalkulacijaUnos() {
       setDatumValute(dodajDane(val, Number(partner?.valuta_placanja) || 0));
   };
 
+  // Zadnja cijena izabranog proizvoda (erp.kalkulacija_zadnja_cijena_proizvoda)
+  // — učitava se pri svakom izboru artikla; null = nikad nije kalkulisan.
+  const sifraOdabranog = odabrani ? Number(odabrani.sifra_proizvoda) : null;
+  useEffect(() => {
+    if (sifraOdabranog === null) {
+      setZadnjaCijena(null);
+      return;
+    }
+    let ponisteno = false;
+    setZadnjaCijena("ucitavanje");
+    fetch(`${API_URL}/api/kalkulacije/zadnja-cijena/${sifraOdabranog}`, {
+      credentials: "include",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!ponisteno) setZadnjaCijena(json?.data ?? null);
+      })
+      .catch(() => {
+        if (!ponisteno) setZadnjaCijena(null);
+      });
+    return () => {
+      ponisteno = true;
+    };
+  }, [sifraOdabranog]);
+
   const ponistiOdabir = (fokusNaPretragu = true) => {
     setOdabrani(null);
     setPretraga("");
@@ -890,7 +931,13 @@ export function KalkulacijaUnos() {
     setCijena(String(s.cijena));
     setRabat(s.rabat ? String(s.rabat) : "");
     setAkcijskiRabat(s.akcijskiRabat ? String(s.akcijskiRabat) : "");
-    setVpc(vrsta === "roba" ? s.vpc.toFixed(2) : "");
+    setVpc(
+      vrsta !== "roba"
+        ? ""
+        : imaStanje(a)
+          ? broj(a.vpc).toFixed(2)
+          : s.vpc.toFixed(2),
+    );
     setGreska(null);
     setUspjeh(null);
     setTimeout(() => kolicinaRef.current?.select(), 0);
@@ -902,7 +949,14 @@ export function KalkulacijaUnos() {
     const cij = round4(broj(cijena));
     const rab = round2(broj(rabat));
     const akc = round2(broj(akcijskiRabat));
-    const vp = round2(broj(vpc));
+    // Roba sa stanjem zadržava VPC iz šifarnika — operater je ne mijenja.
+    const vp = round2(broj(vpcZakljucana ? odabrani.vpc : vpc));
+    if (vpcZakljucana && !(vp > 0)) {
+      setGreska(
+        "Artikal ima stanje na zalihi, a VPC u šifarniku je 0 — VPC se ne može mijenjati dok ima robe. Ispravite artikal.",
+      );
+      return;
+    }
     if (!(kol > 0)) {
       setGreska("Unesite količinu.");
       kolicinaRef.current?.focus();
@@ -1013,7 +1067,8 @@ export function KalkulacijaUnos() {
     broj_racuna: brojKalkulacije.trim(),
     datum_kalkulacije: datumKalkulacije,
     valuta: datumValute,
-    kalkulacija_robe: vrsta === "roba" ? 1 : 0,
+    // kalkulacija_gl.kalkulacija_robe: 0 zavisni trošak, 1 sirovina, 2 roba.
+    kalkulacija_robe: vrsta === "roba" ? 2 : 1,
     ino_dobavljac: jeIno ? 1 : 0,
     u_sistemu_pdv: uSistemuPdv ? 1 : 0,
     ukupno_km: ukupnoOsnovica,
@@ -1030,6 +1085,7 @@ export function KalkulacijaUnos() {
       vpc: s.vpc,
     })),
     zavisni_troskovi: troskovi.map((t) => ({
+      kalkulacija_robe: 0,
       sifra_vrste_troska: t.sifraVrste,
       sifra_dobavljaca: t.partnerId,
       tip_dokumenta_el_kuf: t.tipDokumenta,
@@ -1071,9 +1127,12 @@ export function KalkulacijaUnos() {
           podaci,
           `kalkulacija_${brojKalkulacije.trim().replace(/[^\w-]+/g, "_")}_${datumKalkulacije}.json`,
         );
+        // Unos se prazni i ekran je spreman za novu kalkulaciju.
+        ponistiSve();
         setUspjeh(
           "TEST: JSON za proceduru je preuzet — ništa nije upisano u bazu.",
         );
+        setTimeout(() => partnerRef.current?.focus(), 0);
         return;
       }
       // TODO: poziv procedure za zaključenje kalkulacije (POST na backend) —
@@ -1581,6 +1640,8 @@ export function KalkulacijaUnos() {
                       className={inputClass}
                     />
                   </Field>
+                  {/* Rabat i akcijski rabat dijele jednu kolonu */}
+                  <div className="grid grid-cols-2 gap-2">
                   <Field label="Rabat %">
                     <input
                       ref={rabatRef}
@@ -1594,7 +1655,7 @@ export function KalkulacijaUnos() {
                       className={inputClass}
                     />
                   </Field>
-                  <Field label="Akcijski rabat %">
+                  <Field label="Akc. rabat %">
                     <input
                       ref={akcijskiRef}
                       type="number"
@@ -1603,21 +1664,74 @@ export function KalkulacijaUnos() {
                       max="100"
                       value={akcijskiRabat}
                       onChange={(e) => setAkcijskiRabat(e.target.value)}
-                      onKeyDown={naEnter(vrsta === "roba" ? vpcRef : undefined)}
+                      onKeyDown={naEnter(
+                        vrsta === "roba" && !vpcZakljucana ? vpcRef : undefined,
+                      )}
                       className={inputClass}
                     />
                   </Field>
+                  </div>
+
+                  {/* Informativno, samo za čitanje */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Nabavna cijena">
+                      <input
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        value={formatBroj(broj(odabrani.nabavna_cijena), 3)}
+                        className={samoCitanjeClass}
+                      />
+                    </Field>
+                    <Field label="Zadnje fakturisano">
+                      <input
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        value={
+                          zadnjaCijena === "ucitavanje"
+                            ? "..."
+                            : zadnjaCijena
+                              ? formatBroj(
+                                  broj(zadnjaCijena.fakturisana_cijena),
+                                  3,
+                                )
+                              : "—"
+                        }
+                        title={
+                          zadnjaCijena && zadnjaCijena !== "ucitavanje"
+                            ? `Fakturna cijena sa zadnje kalkulacije · naša ulazna cijena ${formatBroj(broj(zadnjaCijena.nasa_ulazna_cijena), 3)}`
+                            : "Proizvod još nije ulazio kroz kalkulaciju"
+                        }
+                        className={samoCitanjeClass}
+                      />
+                    </Field>
+                  </div>
                   {vrsta === "roba" && (
-                    <Field label="VPC" className="col-span-2">
+                    <Field
+                      label={
+                        vpcZakljucana
+                          ? `VPC — zaključana (na stanju ${formatBroj(broj(odabrani.kolicina_proizvoda), 3)} ${odabrani.jm ?? ""})`
+                          : "VPC"
+                      }
+                      className="col-span-2"
+                    >
                       <input
                         ref={vpcRef}
                         type="number"
                         step="0.01"
                         min="0"
                         value={vpc}
+                        readOnly={vpcZakljucana}
+                        tabIndex={vpcZakljucana ? -1 : undefined}
+                        title={
+                          vpcZakljucana
+                            ? "VPC se može mijenjati samo kad artikla nema na stanju"
+                            : undefined
+                        }
                         onChange={(e) => setVpc(e.target.value)}
                         onKeyDown={naEnter()}
-                        className={inputClass}
+                        className={vpcZakljucana ? samoCitanjeClass : inputClass}
                       />
                     </Field>
                   )}

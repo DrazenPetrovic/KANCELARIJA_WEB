@@ -14,5 +14,9 @@ router.get(
   "/zavisni-troskovi/vrste",
   KalkulacijeController.getZavisanTrosakVrste,
 );
+router.get(
+  "/zadnja-cijena/:sifraProizvoda",
+  KalkulacijeController.getZadnjaCijenaProizvoda,
+);
 
 export default router;

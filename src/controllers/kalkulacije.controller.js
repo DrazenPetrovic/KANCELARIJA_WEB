@@ -64,6 +64,25 @@ export const getZavisanTrosakVrste = async (req, res) => {
   }
 };
 
+export const getZadnjaCijenaProizvoda = async (req, res) => {
+  try {
+    const sifra = Number(req.params.sifraProizvoda);
+    if (!Number.isInteger(sifra) || sifra <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Neispravna šifra proizvoda" });
+    }
+    const data = await KalkulacijeService.getZadnjaCijenaProizvoda(sifra);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Zadnja cijena proizvoda error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Greška pri učitavanju zadnje cijene proizvoda",
+    });
+  }
+};
+
 export const getKalkulacijeStavke = async (req, res) => {
   try {
     const data = await KalkulacijeService.getKalkulacijeStavke();
