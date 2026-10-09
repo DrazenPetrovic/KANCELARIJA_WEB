@@ -2966,7 +2966,13 @@ export function Dashboard({
       {/* Content */}
       <BazaContext.Provider value={{ isArhiva, godina: aktivnaGodina }}>
         <main
-          className={`mx-[10px] px-[10px] ${activeSection === "racuni-gotovinski" ? "pt-[10px] pb-0" : "py-8"}`}
+          className={`mx-[10px] px-[10px] ${
+            activeSection === "racuni-gotovinski"
+              ? "pt-[10px] pb-0"
+              : activeSection === "ulazi-kalkulacija-unos"
+                ? "pt-[10px] pb-8"
+                : "py-8"
+          }`}
         >
           {activeSection === null && (
             <div className="flex flex-col items-center justify-center py-20 text-center"></div>

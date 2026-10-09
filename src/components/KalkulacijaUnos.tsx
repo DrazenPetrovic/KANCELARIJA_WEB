@@ -15,6 +15,10 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 const SIROVINA_BOJA = "#b45309";
 const PDV_STOPA = 0.17;
+// TEST režim: "Zaključi kalkulaciju" samo preuzima JSON koji bi išao
+// proceduri, bez upisa u bazu. Isključiti (false) čim se procedura poveže —
+// inače bi svako zaključenje ostavljalo fajl u Downloads.
+const TEST_SAMO_JSON = true;
 // Šifra države BiH (domaći partner) — vidi erp.sp_partneri_drzave i
 // SIFRA_DRZAVE_BIH u racuniZiralni. Sve ostale države su ino.
 const SIFRA_DRZAVE_BIH = 1;
@@ -132,6 +136,20 @@ const formatBroj = (v: number, decimale = 2) =>
   });
 
 const p2 = (n: number) => String(n).padStart(2, "0");
+
+const preuzmiJson = (podaci: unknown, nazivFajla: string) => {
+  const blob = new Blob([JSON.stringify(podaci, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nazivFajla;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 // Datum valute = datum kalkulacije + dogovorena valuta partnera (dani).
 const dodajDane = (datum: string, dani: number) => {
@@ -797,11 +815,34 @@ export function KalkulacijaUnos() {
     setTimeout(() => brojRef.current?.focus(), 0);
   };
 
-  const ponistiPartnera = () => {
-    setPartner(null);
-    setPartnerPretraga("");
-    setTimeout(() => partnerRef.current?.focus(), 0);
+  // Sve što je uneseno vezano je za izabranog partnera — promjena ili
+  // brisanje partnera briše cijeli unos, uz potvrdu ako ima šta da se izgubi.
+  const imaUnesenihPodataka =
+    !!brojKalkulacije.trim() ||
+    !!datumKalkulacije ||
+    !!datumValute ||
+    troskovi.length > 0 ||
+    stavke.length > 0 ||
+    !!odabrani;
+
+  const promijeniPartnera = (nastavak: () => void) => {
+    const izvrsi = () => {
+      ponistiSve();
+      nastavak();
+      setTimeout(() => partnerRef.current?.focus(), 0);
+    };
+    if (!partner) return nastavak();
+    if (!imaUnesenihPodataka) return izvrsi();
+    setPotvrda({
+      naslov: "Promjena partnera",
+      poruka:
+        "Promjenom ili brisanjem partnera biće obrisani svi uneseni podaci: podaci o kalkulaciji, vezani troškovi i stavke. Nastaviti?",
+      dugme: "Obriši i promijeni",
+      akcija: izvrsi,
+    });
   };
+
+  const ponistiPartnera = () => promijeniPartnera(() => {});
 
   const promjenaDatuma = (val: string) => {
     setDatumKalkulacije(val);
@@ -1024,12 +1065,21 @@ export function KalkulacijaUnos() {
     setZakljucivanje(true);
     setGreska(null);
     try {
+      const podaci = pripremiPodatke();
+      if (TEST_SAMO_JSON) {
+        preuzmiJson(
+          podaci,
+          `kalkulacija_${brojKalkulacije.trim().replace(/[^\w-]+/g, "_")}_${datumKalkulacije}.json`,
+        );
+        setUspjeh(
+          "TEST: JSON za proceduru je preuzet — ništa nije upisano u bazu.",
+        );
+        return;
+      }
       // TODO: poziv procedure za zaključenje kalkulacije (POST na backend) —
-      // dodaje se kad procedura i nazivi polja budu definisani. Do tada se
-      // ništa ne snima.
-      console.info("Kalkulacija za zaključenje:", pripremiPodatke());
+      // dodaje se kad procedura i nazivi polja budu definisani.
       setGreska(
-        "Kalkulacija je ispravno popunjena, ali zaključenje još nije povezano sa bazom — ništa nije snimljeno.",
+        "Zaključenje još nije povezano sa bazom — ništa nije snimljeno.",
       );
     } finally {
       setZakljucivanje(false);
@@ -1104,10 +1154,9 @@ export function KalkulacijaUnos() {
         />
       )}
 
-      {/* Tabela stoji pored unosa stavke; ako nema mjesta, prelazi ispod. */}
-      <div className="flex flex-col xl:flex-row xl:flex-wrap gap-4 items-start">
-        {/* Lijevo: partner i unos stavke */}
-        <div className="w-full xl:w-[462px] flex-shrink-0 space-y-4">
+      {/* Red 1: partner | podaci o kalkulaciji | vezani troškovi (iste visine)
+          Red 2: nova stavka ispod partnera | unesene stavke ispod podataka */}
+      <div className="grid grid-cols-1 xl:grid-cols-[500px_minmax(0,1fr)_minmax(0,1fr)] gap-4">
           {/* Partner */}
           <div className={karticaClass}>
             <span
@@ -1133,10 +1182,13 @@ export function KalkulacijaUnos() {
                 }
                 disabled={ucitavanje}
                 onChange={(e) => {
-                  setPartnerPretraga(e.target.value);
-                  setPartner(null);
-                  setPartnerLista(true);
-                  setPartnerOznacen(0);
+                  const v = e.target.value;
+                  promijeniPartnera(() => {
+                    setPartnerPretraga(v);
+                    setPartner(null);
+                    setPartnerLista(true);
+                    setPartnerOznacen(0);
+                  });
                 }}
                 onFocus={() => {
                   if (!partner) setPartnerLista(true);
@@ -1230,6 +1282,182 @@ export function KalkulacijaUnos() {
             )}
           </div>
 
+          {/* Zaglavlje kalkulacije */}
+          <div className={karticaClass}>
+            <span
+              className="text-xs font-bold uppercase tracking-wider"
+              style={{ color: PRIMARY }}
+            >
+              Podaci o kalkulaciji
+            </span>
+            {!partner && (
+              <p className="text-xs text-gray-500 dark:text-[#9e96b8]">
+                Prvo izaberite partnera.
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Broj kalkulacije" className="sm:col-span-2">
+                <input
+                  ref={brojRef}
+                  type="text"
+                  value={brojKalkulacije}
+                  disabled={!partner}
+                  onChange={(e) => setBrojKalkulacije(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Datum kalkulacije">
+                <DatumPolje
+                  value={datumKalkulacije}
+                  disabled={!partner}
+                  onChange={promjenaDatuma}
+                />
+              </Field>
+              <Field label="Datum valute">
+                <DatumPolje
+                  value={datumValute}
+                  disabled={!partner}
+                  onChange={(v) => {
+                    setDatumValute(v);
+                    setValutaRucno(!!v);
+                  }}
+                />
+              </Field>
+            </div>
+
+            <Field label="Vrsta kalkulacije">
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { kod: "sirovina", naziv: "Sirovina", boja: SIROVINA_BOJA },
+                    { kod: "roba", naziv: "Roba", boja: PRIMARY },
+                  ] as const
+                ).map((v) => (
+                  <button
+                    key={v.kod}
+                    type="button"
+                    disabled={!partner}
+                    onClick={() => promjenaVrste(v.kod)}
+                    className={`px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all disabled:opacity-50 ${
+                      vrsta === v.kod
+                        ? "text-white"
+                        : "text-gray-600 dark:text-[#c5bfd8] border-gray-200 dark:border-[#3a3158]"
+                    }`}
+                    style={
+                      vrsta === v.kod
+                        ? { background: v.boja, borderColor: v.boja }
+                        : {}
+                    }
+                  >
+                    {v.naziv}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+
+
+          {/* Vezani troškovi */}
+          <div className={karticaClass}>
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: PRIMARY }}
+              >
+                Vezani troškovi
+              </span>
+              <button
+                type="button"
+                disabled={!partner}
+                onClick={() => setTrosakModal("novi")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+                style={{ background: PRIMARY }}
+              >
+                <Plus size={13} />
+                Dodaj trošak
+              </button>
+            </div>
+
+            {troskovi.length === 0 ? (
+              <p className="text-xs text-gray-500 dark:text-[#9e96b8]">
+                Nema vezanih troškova (prevoz, carinjenje, takse...).
+              </p>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  {troskovi.map((t) => (
+                    <div
+                      key={t.id}
+                      onClick={() => setTrosakModal(t)}
+                      title="Klik za izmjenu troška"
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer bg-[#f4f1f9] dark:bg-[#1c1828] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold truncate text-gray-800 dark:text-[#ede9f6]">
+                          {t.nazivVrste}
+                        </div>
+                        <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
+                          {t.nazivPartnera} · rn. {t.brojRacuna} ·{" "}
+                          {formatDatumDMY(t.datum)} · tip {t.tipDokumenta}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <div className="text-sm font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
+                          <span className="mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
+                            Ukupno
+                          </span>
+                          {formatBroj(t.iznos)}
+                          <span className="ml-3 mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
+                            PDV
+                          </span>
+                          {formatBroj(pdvTroska(t))}
+                        </div>
+                        <div
+                          className="text-[11px] font-semibold"
+                          style={{
+                            color:
+                              t.pdv === "bez"
+                                ? "#9ca3af"
+                                : t.pdv === "ino"
+                                  ? SIROVINA_BOJA
+                                  : PRIMARY,
+                          }}
+                        >
+                          {PDV_TROSKA_NAZIV[t.pdv]}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTroskovi((prev) =>
+                            prev.filter((x) => x.id !== t.id),
+                          );
+                        }}
+                        className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Ukloni trošak"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between gap-4 text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
+                  <span>Ukupno troškovi</span>
+                  <span className="tabular-nums">
+                    {formatBroj(ukupnoTroskovi)}
+                    {ukupnoPdvTroskova > 0 && (
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
+                        + PDV {formatBroj(ukupnoPdvTroskova)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        {/* Nova stavka — iste širine kao partner */}
+        <div className="space-y-4 self-start">
           {/* Stavka — pozadina u boji izabrane vrste (dugme Sirovina/Roba) */}
           <div
             className="rounded-2xl shadow-sm p-5 space-y-3 [&_label]:!text-white [&_p]:!text-white"
@@ -1457,186 +1685,8 @@ export function KalkulacijaUnos() {
           )}
         </div>
 
-        {/* Pored: zaglavlje i vezani troškovi */}
-        <div className="w-full xl:w-[420px] flex-shrink-0 space-y-4">
-          {/* Zaglavlje kalkulacije */}
-          <div className={karticaClass}>
-            <span
-              className="text-xs font-bold uppercase tracking-wider"
-              style={{ color: PRIMARY }}
-            >
-              Podaci o kalkulaciji
-            </span>
-            {!partner && (
-              <p className="text-xs text-gray-500 dark:text-[#9e96b8]">
-                Prvo izaberite partnera.
-              </p>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Broj kalkulacije" className="sm:col-span-2">
-                <input
-                  ref={brojRef}
-                  type="text"
-                  value={brojKalkulacije}
-                  disabled={!partner}
-                  onChange={(e) => setBrojKalkulacije(e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Datum kalkulacije">
-                <DatumPolje
-                  value={datumKalkulacije}
-                  disabled={!partner}
-                  onChange={promjenaDatuma}
-                />
-              </Field>
-              <Field label="Datum valute">
-                <DatumPolje
-                  value={datumValute}
-                  disabled={!partner}
-                  onChange={(v) => {
-                    setDatumValute(v);
-                    setValutaRucno(!!v);
-                  }}
-                />
-              </Field>
-            </div>
-
-            <Field label="Vrsta kalkulacije">
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { kod: "sirovina", naziv: "Sirovina", boja: SIROVINA_BOJA },
-                    { kod: "roba", naziv: "Roba", boja: PRIMARY },
-                  ] as const
-                ).map((v) => (
-                  <button
-                    key={v.kod}
-                    type="button"
-                    disabled={!partner}
-                    onClick={() => promjenaVrste(v.kod)}
-                    className={`px-3 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all disabled:opacity-50 ${
-                      vrsta === v.kod
-                        ? "text-white"
-                        : "text-gray-600 dark:text-[#c5bfd8] border-gray-200 dark:border-[#3a3158]"
-                    }`}
-                    style={
-                      vrsta === v.kod
-                        ? { background: v.boja, borderColor: v.boja }
-                        : {}
-                    }
-                  >
-                    {v.naziv}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </div>
-
-
-          {/* Vezani troškovi */}
-          <div className={karticaClass}>
-            <div className="flex items-center justify-between gap-3">
-              <span
-                className="text-xs font-bold uppercase tracking-wider"
-                style={{ color: PRIMARY }}
-              >
-                Vezani troškovi
-              </span>
-              <button
-                type="button"
-                disabled={!partner}
-                onClick={() => setTrosakModal("novi")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
-                style={{ background: PRIMARY }}
-              >
-                <Plus size={13} />
-                Dodaj trošak
-              </button>
-            </div>
-
-            {troskovi.length === 0 ? (
-              <p className="text-xs text-gray-500 dark:text-[#9e96b8]">
-                Nema vezanih troškova (prevoz, carinjenje, takse...).
-              </p>
-            ) : (
-              <>
-                <div className="space-y-1.5">
-                  {troskovi.map((t) => (
-                    <div
-                      key={t.id}
-                      onClick={() => setTrosakModal(t)}
-                      title="Klik za izmjenu troška"
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer bg-[#f4f1f9] dark:bg-[#1c1828] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate text-gray-800 dark:text-[#ede9f6]">
-                          {t.nazivVrste}
-                        </div>
-                        <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
-                          {t.nazivPartnera} · rn. {t.brojRacuna} ·{" "}
-                          {formatDatumDMY(t.datum)} · tip {t.tipDokumenta}
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <div className="text-sm font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
-                          <span className="mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
-                            Ukupno
-                          </span>
-                          {formatBroj(t.iznos)}
-                          <span className="ml-3 mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
-                            PDV
-                          </span>
-                          {formatBroj(pdvTroska(t))}
-                        </div>
-                        <div
-                          className="text-[11px] font-semibold"
-                          style={{
-                            color:
-                              t.pdv === "bez"
-                                ? "#9ca3af"
-                                : t.pdv === "ino"
-                                  ? SIROVINA_BOJA
-                                  : PRIMARY,
-                          }}
-                        >
-                          {PDV_TROSKA_NAZIV[t.pdv]}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTroskovi((prev) =>
-                            prev.filter((x) => x.id !== t.id),
-                          );
-                        }}
-                        className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        title="Ukloni trošak"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between gap-4 text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
-                  <span>Ukupno troškovi</span>
-                  <span className="tabular-nums">
-                    {formatBroj(ukupnoTroskovi)}
-                    {ukupnoPdvTroskova > 0 && (
-                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
-                        + PDV {formatBroj(ukupnoPdvTroskova)}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Desno: unesene stavke */}
-        <div className="w-full xl:w-auto xl:flex-1 xl:min-w-[560px] max-w-full space-y-4">
+        {/* Unesene stavke */}
+        <div className="xl:col-span-2 min-w-0 space-y-4 self-start">
           <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="table-auto w-full">
