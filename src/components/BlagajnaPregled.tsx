@@ -107,11 +107,17 @@ function formatKM(v: number | string | null | undefined) {
   return `${formatBroj(n)} KM`;
 }
 
-// Iz opisa uplate (npr. "MP - 10-4157-G") izvlači broj računa iza "MP -".
+// Iz opisa uplate izvlači broj računa u obliku "MP-10-4157" / "VP-10-4157":
+// prefiks (MP ili VP) se normalizuje bez razmaka, a sufiks "-G" se izbacuje.
+// U bazi postoje oblici "MP-10-5252-G", "MP - 10-4432-G" i "5178-g" (bez prefiksa).
 function izvuciBrojRacunaIzOpisa(opis: string | null | undefined): string {
   if (!opis) return "–";
-  const match = opis.trim().match(/^MP\s*-\s*(.+)$/i);
-  return match ? match[1].trim() : "–";
+  const bezSufiksa = opis.trim().replace(/\s*-\s*G$/i, "");
+  const match = bezSufiksa.match(/^(MP|VP)\s*-\s*(.+)$/i);
+  if (match) return `${match[1].toUpperCase()}-${match[2].trim()}`;
+  // Samo broj sa "-g" (npr. "5178-g") je MP račun iz kase 10 -> "MP-10-5178".
+  if (/^\d+\s*-\s*G$/i.test(opis.trim())) return `MP-10-${bezSufiksa}`;
+  return bezSufiksa || "–";
 }
 
 // Iz napomene uplate izbacuje labelu "Gotovinska uplata:" — ostatak teksta ostaje.
@@ -432,7 +438,7 @@ export function BlagajnaPregled() {
       </div>
 
       {/* Lista naloga blagajne */}
-      <div className="w-[80%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-[84%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -707,28 +713,28 @@ export function BlagajnaPregled() {
                         <table className="table-auto">
                           <thead>
                             <tr style={{ background: PRIMARY }}>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Partner
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Datum
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Broj računa
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-green-200">
+                              <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-green-200">
                                 Uplate
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-200">
+                              <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-red-200">
                                 Isplate
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 PDV
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Napomena
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
+                              <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Vrsta
                               </th>
                             </tr>
@@ -749,22 +755,22 @@ export function BlagajnaPregled() {
                                         : "bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40"
                                   }`}
                                 >
-                                  <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                                  <td className="px-3 py-1 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                                     {t.partner}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
+                                  <td className="px-3 py-1 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
                                     {formatDatum(t.datum)}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
+                                  <td className="px-3 py-1 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
                                     {t.brojRacuna}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]" style={{ color: ACCENT }}>
+                                  <td className="px-3 py-1 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]" style={{ color: ACCENT }}>
                                     {t.tip === "uplata" ? formatKM(t.iznos) : ""}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-right font-semibold text-red-500 border-t border-gray-50 dark:border-[#2d2648]">
+                                  <td className="px-3 py-1 text-sm text-right font-semibold text-red-500 border-t border-gray-50 dark:border-[#2d2648]">
                                     {t.tip === "isplata" ? formatKM(t.iznos) : ""}
                                   </td>
-                                  <td className="px-3 py-2 text-xs text-right border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
+                                  <td className="px-3 py-1 text-xs text-right border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
                                     {t.pdv ? (
                                       (() => {
                                         const iskazani = Number(t.pdv.iskazani) || 0;
@@ -775,31 +781,33 @@ export function BlagajnaPregled() {
                                         const velicina = greska
                                           ? "text-sm font-semibold"
                                           : "text-xs";
+                                        // Iskazani i ulazni u istom redu — da red
+                                        // ostane iste visine kao ostali.
                                         return (
-                                          <>
-                                            <div
+                                          <span className="inline-flex items-baseline gap-3">
+                                            <span
                                               className={velicina}
                                               style={{ color: boje.iskazani }}
                                             >
-                                              Iskazani: {formatKM(iskazani)}
-                                            </div>
-                                            <div
+                                              Isk: {formatKM(iskazani)}
+                                            </span>
+                                            <span
                                               className={velicina}
                                               style={{ color: boje.ulazni }}
                                             >
-                                              Ulazni: {formatKM(ulazni)}
-                                            </div>
-                                          </>
+                                              Ul: {formatKM(ulazni)}
+                                            </span>
+                                          </span>
                                         );
                                       })()
                                     ) : (
                                       ""
                                     )}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                                  <td className="px-3 py-1 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                                     {t.napomena}
                                   </td>
-                                  <td className="px-3 py-2 text-sm text-right font-medium border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap" style={{ color: boja }}>
+                                  <td className="px-3 py-1 text-sm text-right font-medium border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap" style={{ color: boja }}>
                                     {t.vrstaNaziv}
                                   </td>
                                 </tr>
