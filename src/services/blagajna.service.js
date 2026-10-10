@@ -43,7 +43,7 @@ export const getBlagajnaPreglediSaUplatama = async () => {
 // BlagajnaPregled.tsx (frontend). "uplata" = novac ulazi u blagajnu,
 // "isplata" = izlazi. Nepoznat kod pada na "uplata" (isto ponašanje kao frontend).
 const TIP_UPLATE = {
-  0: "isplata", // Dugovanja kupcu
+  0: "uplata", // Dugovanja kupaca (kupac uplaćuje ranija dugovanja)
   1: "uplata", // Uplate kupaca
   2: "isplata", // Uplata dobavljačima (kalk)
   3: "isplata", // Uplata (KUF)

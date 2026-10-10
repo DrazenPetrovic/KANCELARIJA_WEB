@@ -462,6 +462,23 @@ export function IzvodiStatus() {
 
   const brojOtvorenih = banke.filter(jeOtvoren).length;
 
+  // Rekapitulacija svih kartica — isti iznosi koje kartice prikazuju
+  // (uplate, isplate i krajnje/obračunato stanje zadnjeg izvoda svake banke).
+  const rekap = banke.reduce(
+    (acc, b) => {
+      const z = b.zadnji_izvod;
+      if (!z) return acc;
+      acc.uplate += Number(z.tekuce_uplate) || 0;
+      acc.isplate += Number(z.tekuce_isplate) || 0;
+      acc.krajnje +=
+        Number(
+          jeOtvoren(b) ? z.tekuci_obracun : (z.krajnje_stanje ?? z.tekuci_obracun),
+        ) || 0;
+      return acc;
+    },
+    { uplate: 0, isplate: 0, krajnje: 0 },
+  );
+
   // Otvoreni izvodi prvi (redoslijed iz erp.banke_pregled), pa zatvoreni —
   // po datumu zatvaranja unosa (najnoviji prvi), pa po nazivu banke; banke
   // bez ijednog izvoda na kraju.
@@ -497,6 +514,27 @@ export function IzvodiStatus() {
             Otvaranje izvoda i tekući obračun po banci
           </p>
         </div>
+        {!loading && !greska && banke.length > 0 && (
+          <div className="hidden md:flex items-stretch rounded-xl border border-gray-100 dark:border-[#2d2648] bg-white dark:bg-[#261f38] shadow-sm divide-x divide-gray-100 dark:divide-[#2d2648]">
+            {[
+              { naziv: "Ukupno uplata", iznos: rekap.uplate, boja: ACCENT },
+              { naziv: "Ukupno isplata", iznos: rekap.isplate, boja: "#ef4444" },
+              { naziv: "Ukupno krajnje stanje", iznos: rekap.krajnje, boja: PRIMARY },
+            ].map((r) => (
+              <div key={r.naziv} className="px-4 py-1.5 text-right">
+                <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                  {r.naziv}
+                </div>
+                <div
+                  className="text-sm font-bold tabular-nums"
+                  style={{ color: r.boja }}
+                >
+                  {fmtKM(r.iznos)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {!loading && !greska && (
           <span
             className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full"

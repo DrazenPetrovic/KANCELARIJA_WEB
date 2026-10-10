@@ -64,7 +64,7 @@ export const getIzvodiPreglediSaUplatama = async () => {
 // Provjereno na zatvorenim izvodima: daje iste ukupno_uplata/ukupno_isplata
 // koje su upisane u ziralni.izvodi.
 const TIP_UPLATE_IZVODA = {
-  0: "isplata", // Dugovanja kupcu
+  0: "uplata", // Dugovanja kupaca (kupac uplaćuje ranija dugovanja)
   1: "uplata", // Uplate kupaca
   2: "isplata", // Uplata dobavljačima (kalk)
   3: "isplata", // Uplata (KUF)

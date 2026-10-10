@@ -75,7 +75,7 @@ function formatBroj(n: number) {
 // Šifarnik vrsta_uplate — "uplata" = novac ulazi (zeleno), "isplata" = novac
 // izlazi (crveno).
 const VRSTA_UPLATE: Record<number, { naziv: string; tip: "uplata" | "isplata" }> = {
-  0: { naziv: "Dugovanja kupcu", tip: "isplata" },
+  0: { naziv: "Dugovanja kupaca", tip: "uplata" }, // kupac uplaćuje ranija dugovanja
   1: { naziv: "Uplate kupaca", tip: "uplata" },
   2: { naziv: "Uplata dobavljačima (kalk)", tip: "isplata" },
   3: { naziv: "Uplata (KUF)", tip: "isplata" },
@@ -112,6 +112,13 @@ function izvuciBrojRacunaIzOpisa(opis: string | null | undefined): string {
   if (!opis) return "–";
   const match = opis.trim().match(/^MP\s*-\s*(.+)$/i);
   return match ? match[1].trim() : "–";
+}
+
+// Iz napomene uplate izbacuje labelu "Gotovinska uplata:" — ostatak teksta ostaje.
+function ocistiNapomenu(napomena: string | null | undefined): string {
+  if (!napomena) return "–";
+  const ocisceno = napomena.replace(/gotovinska\s+uplata\s*:\s*/gi, "").trim();
+  return ocisceno || "–";
 }
 
 // Boje za PDV kolonu (iskazani/ulazni):
@@ -330,7 +337,7 @@ export function BlagajnaPregled() {
     sortirane.length > 0 && prosireno.size >= sortirane.length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-[90%] mx-auto">
       {/* Naslov */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
@@ -425,7 +432,7 @@ export function BlagajnaPregled() {
       </div>
 
       {/* Lista naloga blagajne */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-[80%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -497,39 +504,51 @@ export function BlagajnaPregled() {
               (Number(blagajna.pocetno_stanje) || 0) +
               ukupnoUplata -
               ukupnoIsplata;
-            // Objedinjena lista transakcija (uplate + isplate dobavljačima),
-            // sortirana hronološki unazad.
+            // Objedinjena lista transakcija (uplate + isplate dobavljačima).
+            // Smjer novca se čita iz vrsta_uplate (kao i u sumama zaglavlja).
+            // Redoslijed: prvo uplate, pa isplate — unutar svake grupe od
+            // najvećeg iznosa ka najmanjem.
             const transakcije = [
-              ...uplateBlagajne.map((u) => ({
-                key: `u-${u.sifra_uplate}`,
-                partner: u.naziv_partnera ?? `Partner #${u.sifra_partnera}`,
-                datum: u.datum_uplate,
-                brojRacuna: izvuciBrojRacunaIzOpisa(u.opis),
-                uplata: Number(u.uplaceno) || 0,
-                isplata: null as number | null,
-                pdv: null as {
-                  iskazani: number | string | null;
-                  ulazni: number | string | null;
-                } | null,
-                napomena: u.napomena ?? "–",
-                vrsta: "UPLATE" as const,
-              })),
+              ...uplateBlagajne.map((u) => {
+                const vrsta = vrstaUplateInfo(u.vrsta_uplate);
+                const iznos = Number(u.uplaceno) || 0;
+                return {
+                  key: `u-${u.sifra_uplate}`,
+                  partner: u.naziv_partnera ?? `Partner #${u.sifra_partnera}`,
+                  datum: u.datum_uplate,
+                  brojRacuna: izvuciBrojRacunaIzOpisa(u.opis),
+                  tip: vrsta.tip,
+                  iznos,
+                  pdv: null as {
+                    iskazani: number | string | null;
+                    ulazni: number | string | null;
+                  } | null,
+                  napomena: ocistiNapomenu(u.napomena),
+                  // erp.blagajna_uplate_pregled trenutno ne vraća vrsta_uplate —
+                  // bez šifre se prikazuje samo "Uplata".
+                  vrstaNaziv:
+                    u.vrsta_uplate === null || u.vrsta_uplate === undefined
+                      ? "Uplata"
+                      : `${vrsta.naziv} (${u.vrsta_uplate})`,
+                };
+              }),
               ...isplateBlagajne.map((isp) => ({
                 key: `i-${isp.sifra}`,
                 partner:
                   isp.naziv_dobavljaca ?? `Dobavljač #${isp.sifra_dobavljaca}`,
                 datum: isp.datum_racuna,
                 brojRacuna: isp.broj_racuna ?? "–",
-                uplata: null as number | null,
-                isplata: Number(isp.ukupno) || 0,
+                tip: "isplata" as const,
+                iznos: Number(isp.ukupno) || 0,
                 pdv: { iskazani: isp.iskazani_pdv, ulazni: isp.ulazni_pdv },
                 napomena: isp.opis ?? "–",
-                vrsta: "ISPLATE" as const,
+                vrstaNaziv: "Isplata dobavljaču (račun)",
               })),
             ].sort((a, b) => {
-              const da = a.datum ? new Date(a.datum).getTime() : 0;
-              const db = b.datum ? new Date(b.datum).getTime() : 0;
-              return db - da;
+              const tipA = a.tip === "isplata" ? 1 : 0;
+              const tipB = b.tip === "isplata" ? 1 : 0;
+              if (tipA !== tipB) return tipA - tipB;
+              return b.iznos - a.iznos;
             });
 
             const neslaganjeSalda =
@@ -578,44 +597,6 @@ export function BlagajnaPregled() {
                       {formatDatum(blagajna.datum_otvaranja)}
                     </div>
                   </div>
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none whitespace-nowrap">
-                    <div className="flex flex-col items-center">
-                      <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
-                        Blagajna #{blagajna.sifra}
-                      </div>
-                      <div className="text-xs text-gray-400 dark:text-[#5f5878]">
-                        {formatDatum(blagajna.datum_otvaranja)}
-                      </div>
-                    </div>
-                    <div className="hidden md:flex flex-col items-center gap-1 pointer-events-auto">
-                      <span
-                        title={
-                          neslaganjeSalda
-                            ? "Početno + uplate - isplate ne odgovara krajnjem stanju"
-                            : "Saldo se slaže: početno + uplate - isplate = krajnje stanje"
-                        }
-                      >
-                        {neslaganjeSalda ? (
-                          <AlertTriangle size={16} className="text-red-500" />
-                        ) : (
-                          <CheckCircle2 size={16} style={{ color: ACCENT }} />
-                        )}
-                      </span>
-                      <span
-                        title={
-                          neslaganjeKontinuiteta
-                            ? "Početno stanje se ne poklapa sa krajnjim stanjem prethodne blagajne"
-                            : "Kontinuitet salda sa prethodnom blagajnom je ispravan"
-                        }
-                      >
-                        {neslaganjeKontinuiteta ? (
-                          <AlertTriangle size={16} className="text-red-500" />
-                        ) : (
-                          <CheckCircle2 size={16} style={{ color: ACCENT }} />
-                        )}
-                      </span>
-                    </div>
-                  </div>
                   <div className="hidden md:flex items-center gap-6 text-xs text-gray-500 dark:text-[#9e96b8] flex-shrink-0">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1.5">
@@ -654,6 +635,44 @@ export function BlagajnaPregled() {
                       </div>
                     </div>
                   </div>
+                  <div className="flex-1 flex justify-center items-center gap-4 pointer-events-none whitespace-nowrap">
+                    <div className="flex flex-col items-center">
+                      <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
+                        Blagajna #{blagajna.sifra}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+                        {formatDatum(blagajna.datum_otvaranja)}
+                      </div>
+                    </div>
+                    <div className="hidden md:flex flex-col items-center gap-1 pointer-events-auto">
+                      <span
+                        title={
+                          neslaganjeSalda
+                            ? "Početno + uplate - isplate ne odgovara krajnjem stanju"
+                            : "Saldo se slaže: početno + uplate - isplate = krajnje stanje"
+                        }
+                      >
+                        {neslaganjeSalda ? (
+                          <AlertTriangle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle2 size={16} style={{ color: ACCENT }} />
+                        )}
+                      </span>
+                      <span
+                        title={
+                          neslaganjeKontinuiteta
+                            ? "Početno stanje se ne poklapa sa krajnjim stanjem prethodne blagajne"
+                            : "Kontinuitet salda sa prethodnom blagajnom je ispravan"
+                        }
+                      >
+                        {neslaganjeKontinuiteta ? (
+                          <AlertTriangle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle2 size={16} style={{ color: ACCENT }} />
+                        )}
+                      </span>
+                    </div>
+                  </div>
                   <div className="ml-auto flex items-center gap-3 flex-shrink-0">
                     <div className="hidden lg:flex flex-col items-end leading-tight text-[10px]">
                       <span className="text-green-600 dark:text-green-400">
@@ -684,46 +703,50 @@ export function BlagajnaPregled() {
                         <span className="text-xs">Nema transakcija za ovaj nalog</span>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-[#2d2648]">
-                        <table className="w-full">
+                      <div className="overflow-x-auto rounded-xl border-2 border-red-500 w-fit max-w-full mx-auto">
+                        <table className="table-auto">
                           <thead>
-                            <tr style={{ background: `${PRIMARY}1f` }}>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                            <tr style={{ background: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Partner
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Datum
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Broj računa
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: ACCENT }}>
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-green-200">
                                 Uplate
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-500">
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-200">
                                 Isplate
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 PDV
                               </th>
-                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Napomena
                               </th>
-                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: PRIMARY }}>
+                              <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-white">
                                 Vrsta
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {transakcije.map((t, idx) => {
-                              const boja = t.vrsta === "ISPLATE" ? "#ef4444" : ACCENT;
+                              const boja = t.tip === "isplata" ? "#ef4444" : ACCENT;
                               return (
                                 <tr
                                   key={t.key}
-                                  className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
-                                    idx % 2 === 1
-                                      ? "bg-[#f4f1f9]/60 dark:bg-[#241d3a]/40"
-                                      : ""
+                                  className={`transition-colors ${
+                                    t.tip === "isplata"
+                                      ? idx % 2 === 1
+                                        ? "bg-red-200/70 hover:bg-red-200 dark:bg-red-900/45 dark:hover:bg-red-900/55"
+                                        : "bg-red-100 hover:bg-red-200 dark:bg-red-900/35 dark:hover:bg-red-900/55"
+                                      : idx % 2 === 1
+                                        ? "bg-green-100/70 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/40"
+                                        : "bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40"
                                   }`}
                                 >
                                   <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
@@ -736,10 +759,10 @@ export function BlagajnaPregled() {
                                     {t.brojRacuna}
                                   </td>
                                   <td className="px-3 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]" style={{ color: ACCENT }}>
-                                    {t.uplata !== null ? formatKM(t.uplata) : ""}
+                                    {t.tip === "uplata" ? formatKM(t.iznos) : ""}
                                   </td>
                                   <td className="px-3 py-2 text-sm text-right font-semibold text-red-500 border-t border-gray-50 dark:border-[#2d2648]">
-                                    {t.isplata !== null ? formatKM(t.isplata) : ""}
+                                    {t.tip === "isplata" ? formatKM(t.iznos) : ""}
                                   </td>
                                   <td className="px-3 py-2 text-xs text-right border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
                                     {t.pdv ? (
@@ -777,7 +800,7 @@ export function BlagajnaPregled() {
                                     {t.napomena}
                                   </td>
                                   <td className="px-3 py-2 text-sm text-right font-medium border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap" style={{ color: boja }}>
-                                    {t.vrsta}
+                                    {t.vrstaNaziv}
                                   </td>
                                 </tr>
                               );

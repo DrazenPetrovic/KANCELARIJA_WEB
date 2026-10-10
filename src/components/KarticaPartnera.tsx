@@ -161,7 +161,7 @@ function formatDatum(v: string) {
 // — fiksan redoslijed kategorijalnih boja, svaka šifra svoju boju radi lakšeg
 // vizuelnog razlikovanja u kartici partnera.
 const VRSTA_UPLATE_BOJE: Record<number, string> = {
-  0: "#e34948", // Dugovanja kupcu
+  0: "#e34948", // Dugovanja kupaca
   1: "#1baf7a", // Uplate kupaca
   2: "#eb6834", // Uplata dobavljačima (kalk)
   3: "#eda100", // Uplata (KUF)

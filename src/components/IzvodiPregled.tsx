@@ -97,7 +97,7 @@ function formatBroj(n: number) {
 // Šifarnik vrsta_uplate — "uplata" = novac ulazi (zeleno), "isplata" = novac
 // izlazi (crveno).
 const VRSTA_UPLATE: Record<number, { naziv: string; tip: "uplata" | "isplata" }> = {
-  0: { naziv: "Dugovanja kupcu", tip: "isplata" },
+  0: { naziv: "Dugovanja kupaca", tip: "uplata" }, // kupac uplaćuje ranija dugovanja
   1: { naziv: "Uplate kupaca", tip: "uplata" },
   2: { naziv: "Isplata dobavljačima (kalk)", tip: "isplata" },
   3: { naziv: "Isplata (KUF)", tip: "isplata" },

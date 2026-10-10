@@ -1046,6 +1046,18 @@ export function KalkulacijaUnos() {
     troskovi.reduce((z, t) => z + pdvTroska(t), 0),
   );
 
+  // Naša ulazna cijena = fakturna cijena + udio vezanih troškova (bez PDV).
+  // Troškovi se raspoređuju srazmjerno količini: svaka jedinica (svih
+  // stavki zajedno) nosi isti iznos ZT. Bez troškova = fakturna cijena.
+  // Računa se uvijek iz trenutnih stavki i troškova, pa redoslijed unosa nije
+  // bitan.
+  const ukupnaKolicina = stavke.reduce((z, s) => z + s.kolicina, 0);
+  const ztPoJedinici =
+    ukupnaKolicina > 0 ? ukupnoTroskovi / ukupnaKolicina : 0;
+  const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
+    round4(s.fakturnaCijena + ztPoJedinici);
+  const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
+
   const ponistiSve = () => {
     setTroskovi([]);
     setPartner(null);
@@ -1082,6 +1094,7 @@ export function KalkulacijaUnos() {
       rabat: s.rabat,
       akcijski_rabat: s.akcijskiRabat,
       fakturisana_cijena: s.fakturnaCijena,
+      nasa_ulazna_cijena: nasaUlaznaCijena(s),
       vpc: s.vpc,
     })),
     zavisni_troskovi: troskovi.map((t) => ({
@@ -1815,6 +1828,7 @@ export function KalkulacijaUnos() {
                     <TH right>Akc. rabat %</TH>
                     <TH right>Fakturna cijena</TH>
                     <TH right>Vrijednost</TH>
+                    <TH right>Naša ulazna</TH>
                     {vrsta === "roba" && <TH right>VPC</TH>}
                     <TH />
                   </tr>
@@ -1823,7 +1837,7 @@ export function KalkulacijaUnos() {
                   {stavke.length === 0 && (
                     <tr>
                       <td
-                        colSpan={vrsta === "roba" ? 11 : 10}
+                        colSpan={vrsta === "roba" ? 12 : 11}
                         className="px-4 py-8 text-center text-sm text-gray-400 dark:text-[#6f6890]"
                       >
                         Nema stavki — izaberite partnera, pa artikal i unesite
@@ -1857,6 +1871,12 @@ export function KalkulacijaUnos() {
                       <TD right className="font-bold">
                         {formatBroj(vrijednost(s))}
                       </TD>
+                      <TD
+                        right
+                        className={ztPoJedinici > 0 ? "font-semibold" : ""}
+                      >
+                        {formatBroj(nasaUlaznaCijena(s), 4)}
+                      </TD>
                       {vrsta === "roba" && <TD right>{formatBroj(s.vpc)}</TD>}
                       <TD>
                         <button
@@ -1878,10 +1898,10 @@ export function KalkulacijaUnos() {
             </div>
           </div>
 
-          {/* Rekapitulacija */}
+          {/* Rekapitulacija i dugmad — centrirano, dugmad ispod */}
+          <div className="flex flex-col items-center gap-3">
           {stavke.length > 0 && (
-            <div className="flex justify-end">
-              <div className="w-full sm:w-80 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 space-y-1.5 text-sm text-gray-700 dark:text-[#c5bfd8]">
+              <div className="w-full sm:w-96 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 space-y-1.5 text-sm text-gray-700 dark:text-[#c5bfd8]">
                 {[
                   { label: "Vrijednost bez rabata", iznos: ukupnoBruto },
                   { label: "Rabat", iznos: ukupnoRabat },
@@ -1906,17 +1926,40 @@ export function KalkulacijaUnos() {
                     {formatBroj(round2(ukupnoOsnovica + ukupnoPdv))}
                   </span>
                 </div>
-                {vrsta === "roba" && (
-                  <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
-                    <span>VP vrijednost</span>
-                    <span className="tabular-nums">{formatBroj(ukupnoVp)}</span>
+                <div className="pt-1.5 border-t border-gray-200 dark:border-[#453a68] space-y-1.5">
+                  <div className="flex justify-between gap-4">
+                    <span>Vezani troškovi (bez PDV)</span>
+                    <span className="tabular-nums">
+                      {formatBroj(ukupnoTroskovi)}
+                    </span>
                   </div>
-                )}
+                  <div className="flex justify-between gap-4 font-bold text-gray-800 dark:text-[#ede9f6]">
+                    <span>Nabavna vrijednost (sa ZT)</span>
+                    <span className="tabular-nums">
+                      {formatBroj(ukupnoNabavno)}
+                    </span>
+                  </div>
+                  {ztPoJedinici > 0 && (
+                    <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
+                      <span>ZT po jedinici količine</span>
+                      <span className="tabular-nums">
+                        {formatBroj(ztPoJedinici, 4)}
+                      </span>
+                    </div>
+                  )}
+                  {vrsta === "roba" && (
+                    <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
+                      <span>VP vrijednost</span>
+                      <span className="tabular-nums">
+                        {formatBroj(ukupnoVp)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
           )}
 
-          <div className="flex justify-end gap-3">
+          <div className="w-full sm:w-96 flex gap-3">
             <button
               type="button"
               onClick={() =>
@@ -1928,7 +1971,7 @@ export function KalkulacijaUnos() {
                 })
               }
               disabled={(!partner && stavke.length === 0) || zakljucivanje}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] disabled:opacity-40"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] disabled:opacity-40"
             >
               Poništi
             </button>
@@ -1936,7 +1979,7 @@ export function KalkulacijaUnos() {
               type="button"
               onClick={zakljuci}
               disabled={stavke.length === 0 || zakljucivanje}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+              className="flex-[2] flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
               style={{ background: ACCENT }}
             >
               {zakljucivanje ? (
@@ -1946,6 +1989,7 @@ export function KalkulacijaUnos() {
               )}
               Zaključi kalkulaciju
             </button>
+          </div>
           </div>
         </div>
       </div>
