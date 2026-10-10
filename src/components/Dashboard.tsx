@@ -37,6 +37,7 @@ import { IzvodiStatus } from "./IzvodiStatus";
 import { IzvodiUnos } from "./IzvodiUnos";
 import { BlagajnaPregled } from "./BlagajnaPregled";
 import { BlagajnaStatus } from "./BlagajnaStatus";
+import { BackupStatus } from "./BackupStatus";
 import { useBlagajna } from "../context/BlagajnaContext";
 import { useEffect, useRef, useState } from "react";
 import { BazaContext } from "../context/BazaContext";
@@ -67,6 +68,7 @@ import {
   ChevronRight,
   CreditCard,
   Database,
+  DatabaseBackup,
   Eye,
   Factory,
   FilePlus,
@@ -148,6 +150,7 @@ interface DashboardProps {
 
 type MenuSection =
   | "file-opcije"
+  | "file-backup"
   | "file-arhiva-2025"
   | "file-arhiva-2024"
   | "file-arhiva-2023"
@@ -197,6 +200,7 @@ type MenuSection =
 
 const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "file-opcije": "Opcije",
+  "file-backup": "Backup baze",
   "radnici-unos": "Radnici – unos",
   "radnici-pregled": "Radnici – pregled",
   "radnici-prisutnost-unos": "Radnici – unos prisutnosti",
@@ -925,6 +929,42 @@ export function Dashboard({
                             />
                           </span>
                           Opcije
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("file-backup")}
+                          className={dropdownItemClass(
+                            activeSection === "file-backup",
+                          )}
+                          style={
+                            activeSection === "file-backup"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "file-backup"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "file-backup"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <DatabaseBackup
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "file-backup"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Backup baze
                         </button>
 
                         {/* Arhiva toggle */}
@@ -3156,6 +3196,8 @@ export function Dashboard({
           {activeSection === "finansije-blagajna-pregled" && (
             <BlagajnaPregled />
           )}
+
+          {activeSection === "file-backup" && <BackupStatus />}
 
           {activeSection === "finansije-blagajna-status" && (
             <BlagajnaStatus />

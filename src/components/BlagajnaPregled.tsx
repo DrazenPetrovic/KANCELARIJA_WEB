@@ -438,7 +438,7 @@ export function BlagajnaPregled() {
       </div>
 
       {/* Lista naloga blagajne */}
-      <div className="w-[84%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-[92%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
