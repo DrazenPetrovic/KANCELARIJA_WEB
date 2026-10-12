@@ -15,6 +15,7 @@ import { KnjiznaGotovinski } from "./racuniKnjiznaGotovinski.tsx";
 import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
+import { DrzaveGradoviUnos } from "./DrzaveGradoviUnos";
 import { RadniciUnos } from "./RadniciUnos";
 import { RadniciPregled } from "./RadniciPregled";
 import { RadniciPrisutnostUnos } from "./RadniciPrisutnostUnos";
@@ -163,6 +164,7 @@ type MenuSection =
   | "partneri-unos"
   | "partneri-pregled"
   | "partneri-kartica"
+  | "partneri-drzave-gradovi"
   | "artikli-unos"
   | "artikli-pregled"
   | "artikli-kartica"
@@ -216,6 +218,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
   "partneri-kartica": "Kartica partnera",
+  "partneri-drzave-gradovi": "Unos država - gradova",
   "artikli-kartica": "Kartica artikla",
   "trgovacke-knjige-veleprodaja": "Trgovačka knjiga – veleprodaja",
   "trgovacke-knjige-maloprodaja": "Trgovačka knjiga – maloprodaja",
@@ -1416,6 +1419,44 @@ export function Dashboard({
                             />
                           </span>
                           Kartica partnera
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("partneri-drzave-gradovi")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "partneri-drzave-gradovi",
+                          )}
+                          style={
+                            activeSection === "partneri-drzave-gradovi"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-drzave-gradovi"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-drzave-gradovi"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <MapPin
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-drzave-gradovi"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Unos država - gradova
                         </button>
                       </div>
                     </div>,
@@ -3140,6 +3181,10 @@ export function Dashboard({
           {activeSection === "partneri-pregled" && <PartneriPregled />}
 
           {activeSection === "partneri-kartica" && <KarticaPartnera />}
+
+          {activeSection === "partneri-drzave-gradovi" && (
+            <DrzaveGradoviUnos />
+          )}
 
           {activeSection === "artikli-unos" && <ArtikliUnos />}
 

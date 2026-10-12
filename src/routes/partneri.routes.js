@@ -16,7 +16,11 @@ router.get(
   PartneriController.getDogovoreneCijeneOsnovno,
 );
 router.get("/drzave", PartneriController.getDrzave);
+router.get("/drzave-pregled", PartneriController.getDrzavePregled);
+router.post("/drzave", PartneriController.createDrzava);
 router.get("/gradovi", PartneriController.getGradovi);
+router.get("/gradovi-pregled", PartneriController.getGradoviPregled);
+router.post("/gradovi", PartneriController.createGrad);
 router.get("/lista-sve", PartneriController.getListaSve);
 router.get("/:id/poslovnice", PartneriController.getListaPoslovnice);
 router.get("/:id/telefoni", PartneriController.getListaTelefoni);

@@ -321,10 +321,95 @@ export const getPartneriDrzave = async () => {
   });
 };
 
+// Pregled svih unesenih država (i neaktivnih) — vraća
+// sifra_drzave, naziv_drzave, aktivan. Vidi erp.partneri_drzave_pregled.
+export const getPartneriDrzavePregled = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.partneri_drzave_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Unos nove države — JSON { naziv_drzave, aktivan }. Vidi erp.partneri_drzave_unos.
+export const unesiPartneriDrzavu = async ({ nazivDrzave, aktivan }) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({
+      naziv_drzave: nazivDrzave,
+      aktivan: aktivan ? 1 : 0,
+    });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_drzave_unos(?)",
+      [json],
+    );
+    // Procedura vraća upisani red: { sifra_drzave, naziv_drzave, aktivan }.
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    const rezultat =
+      Array.isArray(rezultatSet) && rezultatSet.length > 0
+        ? rezultatSet[0]
+        : null;
+
+    if (!rezultat || rezultat.sifra_drzave == null) {
+      throw new Error("Procedura nije unijela državu");
+    }
+
+    return rezultat;
+  });
+};
+
 export const getPartneriGradovi = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute("CALL erp.sp_partneri_gradovi()");
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Pregled svih unesenih gradova (i neaktivnih) — vraća sifra_grada, naziv_grada,
+// entitet, ptt, sifra_drzave, naziv_drzave, aktivan. Vidi erp.partneri_gradovi_pregled.
+export const getPartneriGradoviPregled = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.partneri_gradovi_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Unos novog grada — JSON { naziv_grada, entitet, ptt, sifra_drzave, aktivan }.
+// Vidi erp.partneri_gradovi_unos.
+export const unesiPartneriGrad = async ({
+  nazivGrada,
+  entitet,
+  ptt,
+  sifraDrzave,
+  aktivan,
+}) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({
+      naziv_grada: nazivGrada,
+      entitet: entitet || null,
+      ptt: ptt || null,
+      sifra_drzave: sifraDrzave,
+      aktivan: aktivan ? 1 : 0,
+    });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_gradovi_unos(?)",
+      [json],
+    );
+    // Procedura vraća upisani red: { sifra_grada, naziv_grada, entitet, ptt,
+    // sifra_drzave, aktivan, success }.
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    const rezultat =
+      Array.isArray(rezultatSet) && rezultatSet.length > 0
+        ? rezultatSet[0]
+        : null;
+
+    if (!rezultat || Number(rezultat.success) !== 1) {
+      throw new Error(rezultat?.poruka || "Procedura nije unijela grad");
+    }
+
+    return rezultat;
   });
 };
 

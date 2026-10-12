@@ -115,6 +115,36 @@ export const getDrzave = async (req, res) => {
   }
 };
 
+export const getDrzavePregled = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriDrzavePregled();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled drzava (svih) error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju država" });
+  }
+};
+
+export const createDrzava = async (req, res) => {
+  try {
+    const nazivDrzave = String(req.body?.naziv_drzave ?? "").trim();
+    if (!nazivDrzave) {
+      return res.status(400).json({ success: false, error: "Naziv države je obavezan" });
+    }
+    const data = await PartneriService.unesiPartneriDrzavu({
+      nazivDrzave,
+      aktivan: Number(req.body?.aktivan ?? 1) === 1,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos drzave error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri unosu države",
+    });
+  }
+};
+
 export const getGradovi = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriGradovi();
@@ -122,6 +152,43 @@ export const getGradovi = async (req, res) => {
   } catch (error) {
     console.error("Pregled gradova error:", error);
     return res.status(500).json({ success: false, error: "Greška pri učitavanju gradova" });
+  }
+};
+
+export const getGradoviPregled = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriGradoviPregled();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled gradova (svih) error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju gradova" });
+  }
+};
+
+export const createGrad = async (req, res) => {
+  try {
+    const nazivGrada = String(req.body?.naziv_grada ?? "").trim();
+    const sifraDrzave = Number(req.body?.sifra_drzave);
+    if (!nazivGrada) {
+      return res.status(400).json({ success: false, error: "Naziv grada je obavezan" });
+    }
+    if (!sifraDrzave) {
+      return res.status(400).json({ success: false, error: "Država je obavezna" });
+    }
+    const data = await PartneriService.unesiPartneriGrad({
+      nazivGrada,
+      entitet: String(req.body?.entitet ?? "").trim(),
+      ptt: String(req.body?.ptt ?? "").trim(),
+      sifraDrzave,
+      aktivan: Number(req.body?.aktivan ?? 1) === 1,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos grada error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri unosu grada",
+    });
   }
 };
 

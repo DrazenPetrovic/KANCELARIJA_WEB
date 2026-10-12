@@ -162,7 +162,7 @@ const preuzmiJson = (podaci: unknown, nazivFajla: string) => {
   URL.revokeObjectURL(url);
 };
 
-// Datum valute = datum kalkulacije + dogovorena valuta partnera (dani).
+// Datum valute = datum fakture + dogovorena valuta partnera (dani).
 const dodajDane = (datum: string, dani: number) => {
   const d = new Date(`${datum}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "";
@@ -1302,15 +1302,15 @@ export function KalkulacijaUnos() {
     setUspjeh(null);
     setPokusanoZakljucenje(true);
     if (!partner) return setGreska("Izaberite partnera.");
-    if (!brojKalkulacije.trim()) return setGreska("Unesite broj kalkulacije.");
-    if (!datumKalkulacije) return setGreska("Unesite datum kalkulacije.");
+    if (!brojKalkulacije.trim()) return setGreska("Unesite broj fakture.");
+    if (!datumKalkulacije) return setGreska("Unesite datum fakture.");
     if (!datumValute) return setGreska("Unesite datum valute plaćanja.");
     if (datumValute < datumKalkulacije)
-      return setGreska("Datum valute ne može biti prije datuma kalkulacije.");
+      return setGreska("Datum valute ne može biti prije datuma fakture.");
     if (stavke.length === 0) return setGreska("Kalkulacija nema stavki.");
     setPotvrda({
       naslov: "Zaključenje kalkulacije",
-      poruka: `Zaključiti kalkulaciju br. ${brojKalkulacije.trim()} (${stavke.length} stavki)?`,
+      poruka: `Zaključiti kalkulaciju po fakturi br. ${brojKalkulacije.trim()} (${stavke.length} stavki)?`,
       dugme: "Zaključi",
       akcija: () => void izvrsiZakljucenje(),
     });
@@ -1568,7 +1568,7 @@ export function KalkulacijaUnos() {
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Broj kalkulacije" className="sm:col-span-2">
+              <Field label="Broj fakture" className="sm:col-span-2">
                 <input
                   ref={brojRef}
                   type="text"
@@ -1579,7 +1579,7 @@ export function KalkulacijaUnos() {
                   className={`${inputClass} ${okvir("broj")}`}
                 />
               </Field>
-              <Field label="Datum kalkulacije">
+              <Field label="Datum fakture">
                 <DatumPolje polje="datumKal" okvir={okvir("datumKal")}
                   value={datumKalkulacije}
                   disabled={!partner}
