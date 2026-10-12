@@ -15,10 +15,10 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 const SIROVINA_BOJA = "#b45309";
 const PDV_STOPA = 0.17;
-// TEST režim: "Zaključi kalkulaciju" samo preuzima JSON koji bi išao
-// proceduri, bez upisa u bazu. Isključiti (false) čim se procedura poveže —
+// TEST: pored upisa u bazu, "Zaključi kalkulaciju" preuzima i JSON poslat
+// proceduri, radi provjere. Isključiti (false) kad testiranje završi —
 // inače bi svako zaključenje ostavljalo fajl u Downloads.
-const TEST_SAMO_JSON = true;
+const PREUZMI_JSON_PRI_ZAKLJUCENJU = true;
 // Šifra države BiH (domaći partner) — vidi erp.sp_partneri_drzave i
 // SIFRA_DRZAVE_BIH u racuniZiralni. Sve ostale države su ino.
 const SIFRA_DRZAVE_BIH = 1;
@@ -148,8 +148,25 @@ const formatBroj = (v: number, decimale = 2) =>
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
+// Polja koja u JSON idu kao decimalni broj sa tačno 2 decimale — npr.
+// 52 → 52.00. JSON.stringify sam ispisuje 52, pa se vrijednost privremeno
+// pretvara u oznaku i vraća kao broj.
+const DECIMALNA_POLJA = new Set(["fakturisana_cijena", "nasa_ulazna_cijena"]);
+
+const decimalniBroj = (n: number) => n.toFixed(2);
+
+const uJsonSaDecimalama = (podaci: unknown, razmak?: number) =>
+  JSON.stringify(
+    podaci,
+    (kljuc, v) =>
+      DECIMALNA_POLJA.has(kljuc) && typeof v === "number" && Number.isFinite(v)
+        ? `__DEC__${decimalniBroj(v)}__`
+        : v,
+    razmak,
+  ).replace(/"__DEC__(-?\d+\.\d+)__"/g, "$1");
+
 const preuzmiJson = (podaci: unknown, nazivFajla: string) => {
-  const blob = new Blob([JSON.stringify(podaci, null, 2)], {
+  const blob = new Blob([uJsonSaDecimalama(podaci, 2)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);
@@ -179,7 +196,7 @@ const imaStanje = (a: Artikal) => broj(a.kolicina_proizvoda) > 0;
 
 // Rabati se obračunavaju kaskadno: prvo redovni, pa akcijski na ostatak.
 const fakturnaCijena = (cijena: number, rabat: number, akcijski: number) =>
-  round4(cijena * (1 - rabat / 100) * (1 - akcijski / 100));
+  round2(cijena * (1 - rabat / 100) * (1 - akcijski / 100));
 
 function Field({
   label,
@@ -953,7 +970,7 @@ export function KalkulacijaUnos() {
     broj(akcijskiRabat),
   );
   const fakturna = fakturnaRucno
-    ? round4(broj(fakturnaUnos))
+    ? round2(broj(fakturnaUnos))
     : fakturnaIzracunata;
   const vrijednostStavke = round2(broj(kolicina) * fakturna);
 
@@ -1228,7 +1245,7 @@ export function KalkulacijaUnos() {
   const ztPoJedinici =
     ukupnaKolicina > 0 ? ukupnoTroskovi / ukupnaKolicina : 0;
   const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
-    round4(s.fakturnaCijena + ztPoJedinici);
+    round2(s.fakturnaCijena + ztPoJedinici);
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
 
   // Nakon pokušaja zaključenja, grupa (kartica) kojoj nešto nedostaje dobija
@@ -1269,6 +1286,9 @@ export function KalkulacijaUnos() {
     ino_dobavljac: jeIno ? 1 : 0,
     u_sistemu_pdv: uSistemuPdv ? 1 : 0,
     ukupno_km: ukupnoOsnovica,
+    // Iznos koji se duguje dobavljaču: domaći u sistemu PDV — sa PDV-om;
+    // ino ili van sistema PDV — bez PDV-a (ukupnoPdv je tada 0).
+    duzi_se_za_iznos: round2(ukupnoOsnovica + ukupnoPdv),
     ukupno_rab: ukupnoRabat,
     ukupno_pdv: ukupnoPdv,
     vp_vrednost: ukupnoVp,
@@ -1285,6 +1305,7 @@ export function KalkulacijaUnos() {
     zavisni_troskovi: troskovi.map((t) => ({
       kalkulacija_robe: 0,
       sifra_vrste_troska: t.sifraVrste,
+      naziv_troska: t.nazivVrste,
       sifra_dobavljaca: t.partnerId,
       tip_dokumenta_el_kuf: t.tipDokumenta,
       datum: t.datum,
@@ -1294,6 +1315,11 @@ export function KalkulacijaUnos() {
       obracun_pdv: t.pdv === "bez" ? 0 : 1,
       ino_pdv: t.pdv === "ino" ? 1 : 0,
       iznos_pdv: pdvTroska(t),
+      // Dug prema dobavljaču troška: domaći PDV — sa PDV-om; ino PDV i bez
+      // PDV-a — bez PDV-a.
+      duzi_se_za_iznos: round2(
+        t.iznos + (t.pdv === "domaci" ? pdvTroska(t) : 0),
+      ),
     })),
   });
 
@@ -1321,23 +1347,44 @@ export function KalkulacijaUnos() {
     setGreska(null);
     try {
       const podaci = pripremiPodatke();
-      if (TEST_SAMO_JSON) {
+      // JSON se preuzima prije upisa, pa je dostupan i kad upis ne uspije.
+      if (PREUZMI_JSON_PRI_ZAKLJUCENJU) {
         preuzmiJson(
           podaci,
           `kalkulacija_${brojKalkulacije.trim().replace(/[^\w-]+/g, "_")}_${datumKalkulacije}.json`,
         );
-        // Unos se prazni i ekran je spreman za novu kalkulaciju.
-        ponistiSve();
-        setUspjeh(
-          "TEST: JSON za proceduru je preuzet — ništa nije upisano u bazu.",
-        );
-        setTimeout(() => partnerRef.current?.focus(), 0);
-        return;
       }
-      // TODO: poziv procedure za zaključenje kalkulacije (POST na backend) —
-      // dodaje se kad procedura i nazivi polja budu definisani.
+
+      const res = await fetch(`${API_URL}/api/kalkulacije/unos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        // Tekst JSON-a ide nepromijenjen do procedure (decimale 52.00).
+        body: JSON.stringify({ podaci_json: uJsonSaDecimalama(podaci) }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || "Greška pri upisu kalkulacije");
+      }
+
+      const sifra = json.data?.sifra_kalkulacije;
+      // Unos se prazni i ekran je spreman za novu kalkulaciju.
+      ponistiSve();
+      setUspjeh(
+        `Kalkulacija${sifra ? ` br. ${sifra}` : ""} je upisana u bazu.${
+          PREUZMI_JSON_PRI_ZAKLJUCENJU ? " JSON je preuzet." : ""
+        }`,
+      );
+      setTimeout(() => partnerRef.current?.focus(), 0);
+      // Stanje artikala se promijenilo — osvježi listu (stanje, VPC).
+      fetch(`${API_URL}/api/artikli/pregled-sve`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j?.data && setArtikli(j.data))
+        .catch(() => {});
+    } catch (err) {
+      // Unos ostaje na ekranu da se može ispraviti i ponovo poslati.
       setGreska(
-        "Zaključenje još nije povezano sa bazom — ništa nije snimljeno.",
+        `Kalkulacija NIJE upisana: ${err instanceof Error ? err.message : "Nepoznata greška"}`,
       );
     } finally {
       setZakljucivanje(false);
@@ -2030,7 +2077,7 @@ export function KalkulacijaUnos() {
                       />
                     ) : (
                       <div className="text-base font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
-                        {formatBroj(fakturna, 4)}
+                        {formatBroj(fakturna)}
                       </div>
                     )}
                   </div>
@@ -2149,7 +2196,7 @@ export function KalkulacijaUnos() {
                               : undefined
                           }
                         >
-                          {formatBroj(s.fakturnaCijena, 4)}
+                          {formatBroj(s.fakturnaCijena)}
                           {s.fakturnaRucno && " R"}
                         </span>
                       </TD>
@@ -2160,7 +2207,7 @@ export function KalkulacijaUnos() {
                         right
                         className={ztPoJedinici > 0 ? "font-semibold" : ""}
                       >
-                        {formatBroj(nasaUlaznaCijena(s), 4)}
+                        {formatBroj(nasaUlaznaCijena(s))}
                       </TD>
                       {vrsta === "roba" && <TD right>{formatBroj(s.vpc)}</TD>}
                       <TD>

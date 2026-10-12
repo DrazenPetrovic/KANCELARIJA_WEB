@@ -64,6 +64,26 @@ export const getZadnjaCijenaProizvoda = async (sifraProizvoda) => {
   });
 };
 
+// Upis (zaključenje) kalkulacije — zaglavlje, stavke i vezani troškovi idu
+// kao jedan JSON parametar. jsonTekst se prosljeđuje tačno kako ga je
+// frontend složio (cijene sa decimalama, npr. 52.00 — vidi uJsonSaDecimalama
+// u KalkulacijaUnos.tsx), bez ponovnog JSON.stringify. Procedura upisuje
+// ziralni.kalkulacija_gl / kalkulacija_po / zavisan_trosak, ažurira stanje i
+// cijenu u erp.artikli i ziralni.proizvodi i vraća red sa sifra_kalkulacije.
+const PROCEDURA_UNOS_KALKULACIJE = "erp.kalkulacija_unos_podataka";
+
+export const unosKalkulacije = async (jsonTekst) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      `CALL ${PROCEDURA_UNOS_KALKULACIJE}(?)`,
+      [jsonTekst],
+    );
+    const rezultat =
+      Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    return rezultat[0] ?? null;
+  });
+};
+
 // Stavke (proizvodi) svih kalkulacija — frontend ih grupiše po
 // sifra_kalkulacije. Vidi erp.kalkulacija_po_pregled.
 export const getKalkulacijeStavke = async () => {

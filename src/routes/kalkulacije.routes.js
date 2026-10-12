@@ -18,5 +18,6 @@ router.get(
   "/zadnja-cijena/:sifraProizvoda",
   KalkulacijeController.getZadnjaCijenaProizvoda,
 );
+router.post("/unos", KalkulacijeController.unosKalkulacije);
 
 export default router;

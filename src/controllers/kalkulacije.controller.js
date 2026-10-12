@@ -83,6 +83,48 @@ export const getZadnjaCijenaProizvoda = async (req, res) => {
   }
 };
 
+// Body: { podaci_json: "<JSON tekst>" } — tekst se šalje proceduri
+// nepromijenjen da bi decimale (52.00) ostale kako ih je frontend zapisao.
+export const unosKalkulacije = async (req, res) => {
+  try {
+    const jsonTekst = req.body?.podaci_json;
+    if (typeof jsonTekst !== "string" || !jsonTekst.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Nedostaju podaci kalkulacije" });
+    }
+    let podaci;
+    try {
+      podaci = JSON.parse(jsonTekst);
+    } catch {
+      return res
+        .status(400)
+        .json({ success: false, error: "Neispravan JSON kalkulacije" });
+    }
+    if (
+      !podaci?.sifra_dobavljaca ||
+      !podaci.broj_racuna ||
+      !podaci.datum_kalkulacije ||
+      !Array.isArray(podaci.stavke) ||
+      podaci.stavke.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Nedostaju obavezni podaci (dobavljač, broj fakture, datum, stavke)",
+      });
+    }
+    const data = await KalkulacijeService.unosKalkulacije(jsonTekst);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos kalkulacije error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.sqlMessage || "Greška pri unosu kalkulacije",
+    });
+  }
+};
+
 export const getKalkulacijeStavke = async (req, res) => {
   try {
     const data = await KalkulacijeService.getKalkulacijeStavke();
