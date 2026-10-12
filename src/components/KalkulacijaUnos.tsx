@@ -71,6 +71,9 @@ interface StavkaKalkulacije {
   cijena: number;
   rabat: number;
   akcijskiRabat: number;
+  // true = fakturnu cijenu je operater upisao ručno (ne računa se iz cijene
+  // i rabata).
+  fakturnaRucno: boolean;
   fakturnaCijena: number;
   vpc: number;
 }
@@ -121,6 +124,9 @@ const inputClass =
 // prozirna siva podloga bez okvira, da je jasno da se u njih ne unosi.
 const samoCitanjeClass =
   "w-full px-3 py-2.5 text-sm rounded-xl border border-dashed border-white/50 bg-black/20 text-white/90 tabular-nums cursor-not-allowed select-none focus:outline-none";
+// Crveni okvir kartice kojoj nedostaje obavezan podatak.
+const nedostajeClass =
+  "!border-red-500 dark:!border-red-500 ring-[3px] ring-red-500";
 const labelClass =
   "block text-xs font-semibold text-gray-600 dark:text-[#a89fc2] mb-1";
 const karticaClass =
@@ -203,10 +209,15 @@ function DatumPolje({
   value,
   onChange,
   disabled,
+  polje,
+  okvir = "",
 }: {
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
+  // data-polje i dodatna klasa okvira — vidi useVodjenjeUnosa.
+  polje?: string;
+  okvir?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const otvoriPicker = () => {
@@ -227,7 +238,8 @@ function DatumPolje({
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         style={{ color: "transparent" }}
-        className={`${inputClass} ${disabled ? "" : "cursor-pointer"}`}
+        data-polje={polje}
+        className={`${inputClass} ${disabled ? "" : "cursor-pointer"} ${okvir}`}
       />
       <div
         className={`absolute inset-0 flex items-center px-3 text-sm tabular-nums pointer-events-none ${
@@ -240,6 +252,62 @@ function DatumPolje({
       </div>
     </div>
   );
+}
+
+// Vođenje operatera kroz unos: polje u kojem je fokus određuje "sljedeće"
+// polje — prvo nepopunjeno obavezno polje iza njega po redoslijedu — koje
+// dobija crveni okvir. Popunjena polja (kad nisu u fokusu) dobijaju okvir u
+// boji popunjenosti. Fokus se prati preko data-polje atributa na inputima.
+interface PoljeVodjenja {
+  id: string;
+  popunjeno: boolean;
+  obavezno?: boolean; // podrazumijevano true; neobavezna se preskaču
+  prikazano?: boolean; // podrazumijevano true; skrivena se preskaču
+  popunjenoClass?: string;
+}
+
+const SLJEDECE_POLJE_CLASS = "!border-red-500 ring-[3px] ring-red-500";
+const POPUNJENO_POLJE_CLASS = "!border-[#785E9E] ring-2 ring-[#785E9E]";
+
+function useVodjenjeUnosa(polja: PoljeVodjenja[]) {
+  const [fokus, setFokus] = useState<string | null>(null);
+  const idRef = useRef<Set<string>>(new Set());
+  idRef.current = new Set(polja.map((p) => p.id));
+
+  useEffect(() => {
+    const naFokus = (e: FocusEvent) => {
+      const id = (e.target as HTMLElement | null)
+        ?.closest?.("[data-polje]")
+        ?.getAttribute("data-polje");
+      setFokus(id && idRef.current.has(id) ? id : null);
+    };
+    const naGubitak = (e: FocusEvent) => {
+      if (!e.relatedTarget) setFokus(null);
+    };
+    document.addEventListener("focusin", naFokus);
+    document.addEventListener("focusout", naGubitak);
+    return () => {
+      document.removeEventListener("focusin", naFokus);
+      document.removeEventListener("focusout", naGubitak);
+    };
+  }, []);
+
+  const vidljiva = polja.filter((p) => p.prikazano !== false);
+  const i = vidljiva.findIndex((p) => p.id === fokus);
+  const sljedece =
+    i === -1
+      ? null
+      : (vidljiva
+          .slice(i + 1)
+          .find((p) => p.obavezno !== false && !p.popunjeno)?.id ?? null);
+
+  return (id: string) => {
+    if (id === sljedece) return SLJEDECE_POLJE_CLASS;
+    const p = vidljiva.find((x) => x.id === id);
+    if (p?.popunjeno && fokus !== id)
+      return p.popunjenoClass ?? POPUNJENO_POLJE_CLASS;
+    return "";
+  };
 }
 
 const Znacka = ({ tekst, boja }: { tekst: string; boja: string }) => (
@@ -372,6 +440,16 @@ function VezaniTrosakModal({
   const pdv: PdvTroska = saPdv ? (vrstaPdv ?? "bez") : "bez";
   const iznosPdv = saPdv ? round2(iznosBroj * PDV_STOPA) : 0;
 
+  const okvir = useVodjenjeUnosa([
+    { id: "m-vrsta", popunjeno: !!sifraVrste },
+    { id: "m-partner", popunjeno: !!partner },
+    { id: "m-tip", popunjeno: !!tipDokumenta },
+    { id: "m-datum", popunjeno: !!datum },
+    { id: "m-broj", popunjeno: !!brojRacuna.trim() },
+    { id: "m-napomena", popunjeno: !!napomena.trim(), obavezno: false },
+    { id: "m-iznos", popunjeno: iznosBroj > 0 },
+  ]);
+
   const sacuvaj = () => {
     const vrsta = vrste.find((v) => String(v.sifra) === sifraVrste);
     if (!vrsta) return setGreska("Izaberite vrstu troška.");
@@ -423,7 +501,8 @@ function VezaniTrosakModal({
             autoFocus
             value={sifraVrste}
             onChange={(e) => setSifraVrste(e.target.value)}
-            className={inputClass}
+            data-polje="m-vrsta"
+            className={`${inputClass} ${okvir("m-vrsta")}`}
           >
             <option value="">-- Izaberi vrstu troška --</option>
             {vrste.map((v) => (
@@ -471,7 +550,8 @@ function VezaniTrosakModal({
                   setLista(false);
                 }
               }}
-              className={`${inputClass} pl-9`}
+              data-polje="m-partner"
+              className={`${inputClass} pl-9 ${okvir("m-partner")}`}
             />
             {lista && !partner && filtrirani.length > 0 && (
               <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1c1828] shadow-xl">
@@ -508,7 +588,8 @@ function VezaniTrosakModal({
           <select
             value={tipDokumenta}
             onChange={(e) => setTipDokumenta(e.target.value)}
-            className={inputClass}
+            data-polje="m-tip"
+            className={`${inputClass} ${okvir("m-tip")}`}
           >
             <option value="">-- Izaberi tip dokumenta --</option>
             {TIP_DOKUMENTA.map((t) => (
@@ -521,7 +602,7 @@ function VezaniTrosakModal({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Datum računa">
-            <DatumPolje value={datum} onChange={setDatum} />
+            <DatumPolje polje="m-datum" okvir={okvir("m-datum")} value={datum} onChange={setDatum} />
           </Field>
           <Field label="Broj računa">
             <input
@@ -529,7 +610,8 @@ function VezaniTrosakModal({
               type="text"
               value={brojRacuna}
               onChange={(e) => setBrojRacuna(e.target.value)}
-              className={inputClass}
+              data-polje="m-broj"
+              className={`${inputClass} ${okvir("m-broj")}`}
             />
           </Field>
         </div>
@@ -539,7 +621,8 @@ function VezaniTrosakModal({
             type="text"
             value={napomena}
             onChange={(e) => setNapomena(e.target.value)}
-            className={inputClass}
+            data-polje="m-napomena"
+            className={`${inputClass} ${okvir("m-napomena")}`}
           />
         </Field>
 
@@ -550,7 +633,8 @@ function VezaniTrosakModal({
             min="0"
             value={iznos}
             onChange={(e) => setIznos(e.target.value)}
-            className={inputClass}
+            data-polje="m-iznos"
+            className={`${inputClass} ${okvir("m-iznos")}`}
           />
         </Field>
 
@@ -672,6 +756,10 @@ export function KalkulacijaUnos() {
   const [rabat, setRabat] = useState("");
   const [akcijskiRabat, setAkcijskiRabat] = useState("");
   const [vpc, setVpc] = useState("");
+  // Ručna izmjena fakturne cijene — inače se računa iz cijene i rabata.
+  const [fakturnaRucno, setFakturnaRucno] = useState(false);
+  const [fakturnaUnos, setFakturnaUnos] = useState("");
+  const fakturnaRef = useRef<HTMLInputElement>(null);
   const [zadnjaCijena, setZadnjaCijena] = useState<
     | { fakturisana_cijena: number | string; nasa_ulazna_cijena: number | string }
     | "ucitavanje"
@@ -685,6 +773,7 @@ export function KalkulacijaUnos() {
   const [greska, setGreska] = useState<string | null>(null);
   const [uspjeh, setUspjeh] = useState<string | null>(null);
   const [zakljucivanje, setZakljucivanje] = useState(false);
+  const [pokusanoZakljucenje, setPokusanoZakljucenje] = useState(false);
   // Pitanje za potvrdu — prikazuje se kao modal na sredini ekrana.
   const [potvrda, setPotvrda] = useState<{
     naslov: string;
@@ -811,11 +900,61 @@ export function KalkulacijaUnos() {
   // Ista boja kao izabrano dugme Sirovina/Roba u "Podacima o kalkulaciji".
   const bojaVrste = vrsta === "sirovina" ? SIROVINA_BOJA : PRIMARY;
 
-  const fakturna = fakturnaCijena(
+  // Redoslijed unosa za vođenje (crveni okvir = sljedeće polje). Na obojenoj
+  // kartici "Nova stavka" ljubičasti okvir se ne bi vidio, pa je tamo zelen.
+  const popunjenoStavka = "!border-[#8FC74A] ring-[3px] ring-[#8FC74A]";
+  const okvir = useVodjenjeUnosa([
+    { id: "partner", popunjeno: !!partner },
+    { id: "broj", popunjeno: !!brojKalkulacije.trim() },
+    { id: "datumKal", popunjeno: !!datumKalkulacije },
+    { id: "datumVal", popunjeno: !!datumValute },
+    {
+      id: "artikal",
+      popunjeno: !!odabrani,
+      popunjenoClass: popunjenoStavka,
+    },
+    {
+      id: "kolicina",
+      popunjeno: broj(kolicina) > 0,
+      prikazano: !!odabrani,
+      popunjenoClass: popunjenoStavka,
+    },
+    {
+      id: "cijena",
+      popunjeno: broj(cijena) > 0,
+      prikazano: !!odabrani,
+      popunjenoClass: popunjenoStavka,
+    },
+    {
+      id: "rabat",
+      popunjeno: rabat !== "",
+      obavezno: false,
+      prikazano: !!odabrani,
+      popunjenoClass: popunjenoStavka,
+    },
+    {
+      id: "akcijski",
+      popunjeno: akcijskiRabat !== "",
+      obavezno: false,
+      prikazano: !!odabrani,
+      popunjenoClass: popunjenoStavka,
+    },
+    {
+      id: "vpc",
+      popunjeno: vpcZakljucana || broj(vpc) > 0,
+      prikazano: !!odabrani && vrsta === "roba",
+      popunjenoClass: popunjenoStavka,
+    },
+  ]);
+
+  const fakturnaIzracunata = fakturnaCijena(
     broj(cijena),
     broj(rabat),
     broj(akcijskiRabat),
   );
+  const fakturna = fakturnaRucno
+    ? round4(broj(fakturnaUnos))
+    : fakturnaIzracunata;
   const vrijednostStavke = round2(broj(kolicina) * fakturna);
 
   const odaberiPartnera = (p: Partner) => {
@@ -899,11 +1038,25 @@ export function KalkulacijaUnos() {
     setRabat("");
     setAkcijskiRabat("");
     setVpc("");
+    setFakturnaRucno(false);
+    setFakturnaUnos("");
     setIzmjenaId(null);
     if (fokusNaPretragu) setTimeout(() => pretragaRef.current?.focus(), 0);
   };
 
   const odaberiArtikal = (a: Artikal) => {
+    // Isti artikal ne smije biti dva puta na kalkulaciji — umjesto nove
+    // stavke otvara se postojeća za izmjenu.
+    const postojeca = stavke.find(
+      (s) => s.sifra_proizvoda === Number(a.sifra_proizvoda),
+    );
+    if (postojeca) {
+      izmijeniStavku(postojeca);
+      setGreska(
+        "Ovaj artikal je već unesen — otvorena je postojeća stavka za izmjenu.",
+      );
+      return;
+    }
     setOdabrani(a);
     setPretraga(`${a.sifra_proizvoda} – ${a.naziv_proizvoda}`);
     setListaOtvorena(false);
@@ -913,6 +1066,8 @@ export function KalkulacijaUnos() {
     setRabat("");
     setAkcijskiRabat("");
     setVpc(vrsta === "roba" && broj(a.vpc) > 0 ? broj(a.vpc).toFixed(2) : "");
+    setFakturnaRucno(false);
+    setFakturnaUnos("");
     setGreska(null);
     setUspjeh(null);
     setTimeout(() => kolicinaRef.current?.focus(), 0);
@@ -938,6 +1093,8 @@ export function KalkulacijaUnos() {
           ? broj(a.vpc).toFixed(2)
           : s.vpc.toFixed(2),
     );
+    setFakturnaRucno(s.fakturnaRucno);
+    setFakturnaUnos(s.fakturnaRucno ? String(s.fakturnaCijena) : "");
     setGreska(null);
     setUspjeh(null);
     setTimeout(() => kolicinaRef.current?.select(), 0);
@@ -955,6 +1112,16 @@ export function KalkulacijaUnos() {
       setGreska(
         "Artikal ima stanje na zalihi, a VPC u šifarniku je 0 — VPC se ne može mijenjati dok ima robe. Ispravite artikal.",
       );
+      return;
+    }
+    if (
+      stavke.some(
+        (s) =>
+          s.sifra_proizvoda === Number(odabrani.sifra_proizvoda) &&
+          s.id !== izmjenaId,
+      )
+    ) {
+      setGreska("Ovaj artikal je već unesen na kalkulaciju.");
       return;
     }
     if (!(kol > 0)) {
@@ -976,6 +1143,11 @@ export function KalkulacijaUnos() {
       vpcRef.current?.focus();
       return;
     }
+    if (fakturnaRucno && !(fakturna > 0)) {
+      setGreska("Unesite fakturnu cijenu.");
+      fakturnaRef.current?.focus();
+      return;
+    }
 
     const stavka: StavkaKalkulacije = {
       id: izmjenaId ?? sljedeciId.current++,
@@ -986,7 +1158,8 @@ export function KalkulacijaUnos() {
       cijena: cij,
       rabat: rab,
       akcijskiRabat: akc,
-      fakturnaCijena: fakturnaCijena(cij, rab, akc),
+      fakturnaCijena: fakturnaRucno ? fakturna : fakturnaCijena(cij, rab, akc),
+      fakturnaRucno,
       vpc: vrsta === "roba" ? vp : 0,
     };
     setStavke((prev) =>
@@ -1058,7 +1231,19 @@ export function KalkulacijaUnos() {
     round4(s.fakturnaCijena + ztPoJedinici);
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
 
+  // Nakon pokušaja zaključenja, grupa (kartica) kojoj nešto nedostaje dobija
+  // crveni okvir. Računa se uživo, pa okvir nestaje čim se podatak unese.
+  const nedostajePartner = pokusanoZakljucenje && !partner;
+  const nedostajeZaglavlje =
+    pokusanoZakljucenje &&
+    (!brojKalkulacije.trim() ||
+      !datumKalkulacije ||
+      !datumValute ||
+      datumValute < datumKalkulacije);
+  const nedostajuStavke = pokusanoZakljucenje && stavke.length === 0;
+
   const ponistiSve = () => {
+    setPokusanoZakljucenje(false);
     setTroskovi([]);
     setPartner(null);
     setPartnerPretraga("");
@@ -1115,6 +1300,7 @@ export function KalkulacijaUnos() {
   const zakljuci = () => {
     if (zakljucivanje) return;
     setUspjeh(null);
+    setPokusanoZakljucenje(true);
     if (!partner) return setGreska("Izaberite partnera.");
     if (!brojKalkulacije.trim()) return setGreska("Unesite broj kalkulacije.");
     if (!datumKalkulacije) return setGreska("Unesite datum kalkulacije.");
@@ -1230,7 +1416,9 @@ export function KalkulacijaUnos() {
           Red 2: nova stavka ispod partnera | unesene stavke ispod podataka */}
       <div className="grid grid-cols-1 xl:grid-cols-[500px_minmax(0,1fr)_minmax(0,1fr)] gap-4">
           {/* Partner */}
-          <div className={karticaClass}>
+          <div
+            className={`${karticaClass} ${nedostajePartner ? nedostajeClass : ""}`}
+          >
             <span
               className="text-xs font-bold uppercase tracking-wider"
               style={{ color: PRIMARY }}
@@ -1284,7 +1472,8 @@ export function KalkulacijaUnos() {
                     setPartnerLista(false);
                   }
                 }}
-                className={`${inputClass} pl-9 pr-9`}
+                data-polje="partner"
+                className={`${inputClass} pl-9 pr-9 ${okvir("partner")}`}
               />
               {partnerPretraga && (
                 <button
@@ -1340,22 +1529,33 @@ export function KalkulacijaUnos() {
                     boja={uSistemuPdv ? ACCENT : "#6b7280"}
                   />
                 </div>
-                <div className="text-xs text-gray-600 dark:text-[#9e96b8]">
+                <div className="text-sm text-gray-700 dark:text-[#c5bfd8]">
                   {[partner.adresa, partner.grad, partner.drzava]
                     .filter(Boolean)
                     .join(", ") || "—"}
                 </div>
-                <div className="text-xs tabular-nums text-gray-600 dark:text-[#9e96b8]">
-                  JIB: {partner.jib || "—"} · PIB: {partner.pib || "—"}
-                  {Number(partner.valuta_placanja) > 0 &&
-                    ` · valuta ${partner.valuta_placanja} dana`}
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm tabular-nums text-gray-700 dark:text-[#c5bfd8]">
+                  <span className="text-gray-500 dark:text-[#9e96b8]">JIB:</span>
+                  <span className="font-semibold">{partner.jib || "—"}</span>
+                  <span className="text-gray-500 dark:text-[#9e96b8]">PIB:</span>
+                  <span className="font-semibold">{partner.pib || "—"}</span>
+                  <span className="text-gray-500 dark:text-[#9e96b8]">
+                    Valuta:
+                  </span>
+                  <span className="font-semibold">
+                    {Number(partner.valuta_placanja) > 0
+                      ? `${partner.valuta_placanja} dana`
+                      : "—"}
+                  </span>
                 </div>
               </div>
             )}
           </div>
 
           {/* Zaglavlje kalkulacije */}
-          <div className={karticaClass}>
+          <div
+            className={`${karticaClass} ${nedostajeZaglavlje ? nedostajeClass : ""}`}
+          >
             <span
               className="text-xs font-bold uppercase tracking-wider"
               style={{ color: PRIMARY }}
@@ -1375,18 +1575,19 @@ export function KalkulacijaUnos() {
                   value={brojKalkulacije}
                   disabled={!partner}
                   onChange={(e) => setBrojKalkulacije(e.target.value)}
-                  className={inputClass}
+                  data-polje="broj"
+                  className={`${inputClass} ${okvir("broj")}`}
                 />
               </Field>
               <Field label="Datum kalkulacije">
-                <DatumPolje
+                <DatumPolje polje="datumKal" okvir={okvir("datumKal")}
                   value={datumKalkulacije}
                   disabled={!partner}
                   onChange={promjenaDatuma}
                 />
               </Field>
               <Field label="Datum valute">
-                <DatumPolje
+                <DatumPolje polje="datumVal" okvir={okvir("datumVal")}
                   value={datumValute}
                   disabled={!partner}
                   onChange={(v) => {
@@ -1582,7 +1783,8 @@ export function KalkulacijaUnos() {
                     setListaOtvorena(false);
                   }
                 }}
-                className={`${inputClass} pl-9 pr-9`}
+                data-polje="artikal"
+                className={`${inputClass} pl-9 pr-9 ${okvir("artikal")}`}
               />
               {pretraga && (
                 <button
@@ -1614,9 +1816,29 @@ export function KalkulacijaUnos() {
                           {String(a.sifra_proizvoda)}
                         </span>
                         {a.naziv_proizvoda}
+                        {stavke.some(
+                          (s) =>
+                            s.sifra_proizvoda === Number(a.sifra_proizvoda),
+                        ) && (
+                          <span
+                            className="ml-2 text-xs font-semibold"
+                            style={{ color: ACCENT }}
+                          >
+                            (već unesen)
+                          </span>
+                        )}
                       </span>
                       <span className="flex-shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#9e96b8]">
-                        {a.jm}
+                        ({a.jm}){" "}
+                        <b
+                          className={
+                            imaStanje(a)
+                              ? "text-gray-700 dark:text-[#ede9f6]"
+                              : "text-gray-400 dark:text-[#6f6890]"
+                          }
+                        >
+                          {formatBroj(broj(a.kolicina_proizvoda), 3)}
+                        </b>
                         {vrsta === "roba" &&
                           ` · VPC ${formatBroj(broj(a.vpc))}`}
                       </span>
@@ -1638,7 +1860,8 @@ export function KalkulacijaUnos() {
                       value={kolicina}
                       onChange={(e) => setKolicina(e.target.value)}
                       onKeyDown={naEnter(cijenaRef)}
-                      className={inputClass}
+                      data-polje="kolicina"
+                      className={`${inputClass} ${okvir("kolicina")}`}
                     />
                   </Field>
                   <Field label="Cijena">
@@ -1650,7 +1873,8 @@ export function KalkulacijaUnos() {
                       value={cijena}
                       onChange={(e) => setCijena(e.target.value)}
                       onKeyDown={naEnter(rabatRef)}
-                      className={inputClass}
+                      data-polje="cijena"
+                      className={`${inputClass} ${okvir("cijena")}`}
                     />
                   </Field>
                   {/* Rabat i akcijski rabat dijele jednu kolonu */}
@@ -1665,7 +1889,8 @@ export function KalkulacijaUnos() {
                       value={rabat}
                       onChange={(e) => setRabat(e.target.value)}
                       onKeyDown={naEnter(akcijskiRef)}
-                      className={inputClass}
+                      data-polje="rabat"
+                      className={`${inputClass} ${okvir("rabat")}`}
                     />
                   </Field>
                   <Field label="Akc. rabat %">
@@ -1680,7 +1905,8 @@ export function KalkulacijaUnos() {
                       onKeyDown={naEnter(
                         vrsta === "roba" && !vpcZakljucana ? vpcRef : undefined,
                       )}
-                      className={inputClass}
+                      data-polje="akcijski"
+                      className={`${inputClass} ${okvir("akcijski")}`}
                     />
                   </Field>
                   </div>
@@ -1744,35 +1970,78 @@ export function KalkulacijaUnos() {
                         }
                         onChange={(e) => setVpc(e.target.value)}
                         onKeyDown={naEnter()}
-                        className={vpcZakljucana ? samoCitanjeClass : inputClass}
+                        data-polje="vpc"
+                        className={vpcZakljucana ? samoCitanjeClass : `${inputClass} ${okvir("vpc")}`}
                       />
                     </Field>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {[
-                    {
-                      label: "Fakturna cijena",
-                      vrijednost: formatBroj(fakturna, 4),
-                    },
-                    {
-                      label: "Vrijednost",
-                      vrijednost: formatBroj(vrijednostStavke),
-                    },
-                  ].map((p) => (
-                    <div
-                      key={p.label}
-                      className="rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828]"
-                    >
-                      <div className="text-xs text-gray-500 dark:text-[#9e96b8]">
-                        {p.label}
-                      </div>
-                      <div className="text-base font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
-                        {p.vrijednost}
-                      </div>
+                  {/* Fakturna cijena — računa se, a po potrebi se mijenja ručno */}
+                  <div className="rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-500 dark:text-[#9e96b8]">
+                        Fakturna cijena
+                        {fakturnaRucno && (
+                          <span className="ml-1 font-semibold text-red-500">
+                            (ručno)
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => {
+                          if (fakturnaRucno) {
+                            setFakturnaRucno(false);
+                            setFakturnaUnos("");
+                          } else {
+                            setFakturnaRucno(true);
+                            setFakturnaUnos(
+                              fakturnaIzracunata > 0
+                                ? String(fakturnaIzracunata)
+                                : "",
+                            );
+                            setTimeout(() => fakturnaRef.current?.select(), 0);
+                          }
+                        }}
+                        className="text-xs font-semibold underline"
+                        style={{ color: PRIMARY }}
+                        title={
+                          fakturnaRucno
+                            ? "Vrati automatski obračun iz cijene i rabata"
+                            : "Ručno upiši fakturnu cijenu"
+                        }
+                      >
+                        {fakturnaRucno ? "Automatski" : "Izmijeni"}
+                      </button>
                     </div>
-                  ))}
+                    {fakturnaRucno ? (
+                      <input
+                        ref={fakturnaRef}
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={fakturnaUnos}
+                        onChange={(e) => setFakturnaUnos(e.target.value)}
+                        onKeyDown={naEnter()}
+                        className="w-full mt-0.5 px-2 py-1 text-base font-bold tabular-nums rounded-lg border-2 border-red-400 bg-white dark:bg-[#261f38] text-gray-800 dark:text-[#ede9f6] focus:outline-none"
+                      />
+                    ) : (
+                      <div className="text-base font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
+                        {formatBroj(fakturna, 4)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828]">
+                    <div className="text-xs text-gray-500 dark:text-[#9e96b8]">
+                      Vrijednost
+                    </div>
+                    <div className="text-base font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
+                      {formatBroj(vrijednostStavke)}
+                    </div>
+                  </div>
                 </div>
 
                 {vrsta === "roba" &&
@@ -1814,7 +2083,9 @@ export function KalkulacijaUnos() {
 
         {/* Unesene stavke */}
         <div className="xl:col-span-2 min-w-0 space-y-4 self-start">
-          <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+          <div
+            className={`bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden ${nedostajuStavke ? nedostajeClass : ""}`}
+          >
             <div className="overflow-x-auto">
               <table className="table-auto w-full">
                 <thead>
@@ -1867,7 +2138,21 @@ export function KalkulacijaUnos() {
                       <TD right>{formatBroj(s.cijena, 4)}</TD>
                       <TD right>{formatBroj(s.rabat)}</TD>
                       <TD right>{formatBroj(s.akcijskiRabat)}</TD>
-                      <TD right>{formatBroj(s.fakturnaCijena, 4)}</TD>
+                      <TD
+                        right
+                        className={s.fakturnaRucno ? "!text-red-500 font-semibold" : ""}
+                      >
+                        <span
+                          title={
+                            s.fakturnaRucno
+                              ? "Fakturna cijena upisana ručno"
+                              : undefined
+                          }
+                        >
+                          {formatBroj(s.fakturnaCijena, 4)}
+                          {s.fakturnaRucno && " R"}
+                        </span>
+                      </TD>
                       <TD right className="font-bold">
                         {formatBroj(vrijednost(s))}
                       </TD>
