@@ -139,6 +139,7 @@ const broj = (v: unknown) => {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
+const round5 = (n: number) => Math.round(n * 100000) / 100000;
 
 const formatBroj = (v: number, decimale = 2) =>
   v.toLocaleString("bs-BA", {
@@ -148,12 +149,12 @@ const formatBroj = (v: number, decimale = 2) =>
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
-// Polja koja u JSON idu kao decimalni broj sa tačno 2 decimale — npr.
-// 52 → 52.00. JSON.stringify sam ispisuje 52, pa se vrijednost privremeno
+// Polja koja u JSON idu kao decimalni broj sa tačno 5 decimala — npr.
+// 52 → 52.00000. JSON.stringify sam ispisuje 52, pa se vrijednost privremeno
 // pretvara u oznaku i vraća kao broj.
 const DECIMALNA_POLJA = new Set(["fakturisana_cijena", "nasa_ulazna_cijena"]);
 
-const decimalniBroj = (n: number) => n.toFixed(2);
+const decimalniBroj = (n: number) => n.toFixed(5);
 
 const uJsonSaDecimalama = (podaci: unknown, razmak?: number) =>
   JSON.stringify(
@@ -196,7 +197,7 @@ const imaStanje = (a: Artikal) => broj(a.kolicina_proizvoda) > 0;
 
 // Rabati se obračunavaju kaskadno: prvo redovni, pa akcijski na ostatak.
 const fakturnaCijena = (cijena: number, rabat: number, akcijski: number) =>
-  round2(cijena * (1 - rabat / 100) * (1 - akcijski / 100));
+  round5(cijena * (1 - rabat / 100) * (1 - akcijski / 100));
 
 function Field({
   label,
@@ -970,7 +971,7 @@ export function KalkulacijaUnos() {
     broj(akcijskiRabat),
   );
   const fakturna = fakturnaRucno
-    ? round2(broj(fakturnaUnos))
+    ? round5(broj(fakturnaUnos))
     : fakturnaIzracunata;
   const vrijednostStavke = round2(broj(kolicina) * fakturna);
 
@@ -1245,7 +1246,7 @@ export function KalkulacijaUnos() {
   const ztPoJedinici =
     ukupnaKolicina > 0 ? ukupnoTroskovi / ukupnaKolicina : 0;
   const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
-    round2(s.fakturnaCijena + ztPoJedinici);
+    round5(s.fakturnaCijena + ztPoJedinici);
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
 
   // Nakon pokušaja zaključenja, grupa (kartica) kojoj nešto nedostaje dobija
@@ -2077,7 +2078,7 @@ export function KalkulacijaUnos() {
                       />
                     ) : (
                       <div className="text-base font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
-                        {formatBroj(fakturna)}
+                        {formatBroj(fakturna, 5)}
                       </div>
                     )}
                   </div>
@@ -2196,7 +2197,7 @@ export function KalkulacijaUnos() {
                               : undefined
                           }
                         >
-                          {formatBroj(s.fakturnaCijena)}
+                          {formatBroj(s.fakturnaCijena, 5)}
                           {s.fakturnaRucno && " R"}
                         </span>
                       </TD>
@@ -2207,7 +2208,7 @@ export function KalkulacijaUnos() {
                         right
                         className={ztPoJedinici > 0 ? "font-semibold" : ""}
                       >
-                        {formatBroj(nasaUlaznaCijena(s))}
+                        {formatBroj(nasaUlaznaCijena(s), 5)}
                       </TD>
                       {vrsta === "roba" && <TD right>{formatBroj(s.vpc)}</TD>}
                       <TD>
