@@ -567,9 +567,15 @@ export function KarticaProizvoda({
           )}
 
           {stavke.length > 0 && (
-            <div className="relative flex flex-col gap-4 lg:block">
+            // Centralni objekat (tabela) je ključan i uvijek mora stati bez
+            // preklapanja — statistika lijevo/desno je ukras, pa se apsolutno
+            // pozicionira tek na xl ekranima (≥1280px) gdje sigurno ima
+            // mjesta. Na manjim/užim monitorima (čak i lg, 1024-1279px) pada
+            // nazad na najosnovniji prikaz — jednostavno naslagano ispod
+            // tabele, bez preklapanja.
+            <div className="relative flex flex-col gap-4 xl:block">
               {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u odnosu na cijeli ekran */}
-              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full lg:max-w-[calc(100%-18rem)] mx-auto origin-top scale-105">
+              <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full xl:max-w-[calc(100%-18rem)] mx-auto origin-top scale-105">
                 <div className="overflow-x-auto">
                   <table className="table-auto">
                     <thead>
@@ -717,8 +723,8 @@ export function KarticaProizvoda({
                 </div>
               </div>
 
-              {/* Statistika — vertikalno, apsolutno pozicionirana gore lijevo (lg+), da tabela ostane centrirana prema cijelom ekranu */}
-              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[5%] lg:absolute lg:top-0 lg:left-[3%] origin-top-left scale-90">
+              {/* Statistika — vertikalno, apsolutno pozicionirana gore lijevo (xl+), da tabela ostane centrirana prema cijelom ekranu */}
+              <div className="flex flex-col gap-3 w-full xl:w-64 flex-shrink-0 mt-4 xl:mt-[5%] xl:absolute xl:top-0 xl:left-[3%] origin-top-left xl:scale-90">
                 <div
                   className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
                   style={{ background: PRIMARY }}
@@ -755,7 +761,7 @@ export function KarticaProizvoda({
               {/* Nabavna cijena, VPC i njihovi saldo iznosi — desno, na istoj
                   udaljenosti od desne ivice tabele koliko je lijeva statistika
                   od lijeve ivice, i na istoj visini (isti mt kao lijevo) */}
-              <div className="flex flex-col gap-3 w-full lg:w-64 flex-shrink-0 mt-4 lg:mt-[5%] lg:absolute lg:top-0 lg:right-[3%]">
+              <div className="flex flex-col gap-3 w-full xl:w-64 flex-shrink-0 mt-4 xl:mt-[5%] xl:absolute xl:top-0 xl:right-[3%]">
                 <div
                   className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
                   style={{ background: PRIMARY }}

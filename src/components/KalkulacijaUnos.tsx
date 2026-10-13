@@ -15,6 +15,8 @@ const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 const SIROVINA_BOJA = "#b45309";
 const PDV_STOPA = 0.17;
+// Fiksni kurs konvertibilne marke (1 EUR = 1,95583 KM) — dugme €→KM kod cijene.
+const KURS_EUR = 1.95583;
 // TEST: pored upisa u bazu, "Zaključi kalkulaciju" preuzima i JSON poslat
 // proceduri, radi provjere. Isključiti (false) kad testiranje završi —
 // inače bi svako zaključenje ostavljalo fajl u Downloads.
@@ -127,6 +129,9 @@ const samoCitanjeClass =
 // Crveni okvir kartice kojoj nedostaje obavezan podatak.
 const nedostajeClass =
   "!border-red-500 dark:!border-red-500 ring-[3px] ring-red-500";
+// Number input bez strelica gore/dole (Chrome/Edge i Firefox).
+const bezStrelica =
+  "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 const labelClass =
   "block text-xs font-semibold text-gray-600 dark:text-[#a89fc2] mb-1";
 const karticaClass =
@@ -138,7 +143,6 @@ const broj = (v: unknown) => {
 };
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const round5 = (n: number) => Math.round(n * 100000) / 100000;
 
 const formatBroj = (v: number, decimale = 2) =>
@@ -774,6 +778,8 @@ export function KalkulacijaUnos() {
   const [rabat, setRabat] = useState("");
   const [akcijskiRabat, setAkcijskiRabat] = useState("");
   const [vpc, setVpc] = useState("");
+  // Iznos u EUR prije konverzije (dugme €→KM); null = cijena upisana u KM.
+  const [cijenaEur, setCijenaEur] = useState<string | null>(null);
   // Ručna izmjena fakturne cijene — inače se računa iz cijene i rabata.
   const [fakturnaRucno, setFakturnaRucno] = useState(false);
   const [fakturnaUnos, setFakturnaUnos] = useState("");
@@ -1053,6 +1059,7 @@ export function KalkulacijaUnos() {
     setPretraga("");
     setKolicina("");
     setCijena("");
+    setCijenaEur(null);
     setRabat("");
     setAkcijskiRabat("");
     setVpc("");
@@ -1081,6 +1088,7 @@ export function KalkulacijaUnos() {
     setIzmjenaId(null);
     setKolicina("");
     setCijena("");
+    setCijenaEur(null);
     setRabat("");
     setAkcijskiRabat("");
     setVpc(vrsta === "roba" && broj(a.vpc) > 0 ? broj(a.vpc).toFixed(2) : "");
@@ -1102,6 +1110,7 @@ export function KalkulacijaUnos() {
     setIzmjenaId(s.id);
     setKolicina(String(s.kolicina));
     setCijena(String(s.cijena));
+    setCijenaEur(null);
     setRabat(s.rabat ? String(s.rabat) : "");
     setAkcijskiRabat(s.akcijskiRabat ? String(s.akcijskiRabat) : "");
     setVpc(
@@ -1121,7 +1130,7 @@ export function KalkulacijaUnos() {
   const dodajStavku = () => {
     if (!odabrani) return;
     const kol = round3(broj(kolicina));
-    const cij = round4(broj(cijena));
+    const cij = round5(broj(cijena));
     const rab = round2(broj(rabat));
     const akc = round2(broj(akcijskiRabat));
     // Roba sa stanjem zadržava VPC iz šifarnika — operater je ne mijenja.
@@ -1163,6 +1172,15 @@ export function KalkulacijaUnos() {
     }
     if (fakturnaRucno && !(fakturna > 0)) {
       setGreska("Unesite fakturnu cijenu.");
+      fakturnaRef.current?.focus();
+      return;
+    }
+    // Fakturna cijena ne smije biti veća od cijene — rabat ne može biti
+    // negativan.
+    if (fakturnaRucno && fakturna > cij) {
+      setGreska(
+        `Fakturna cijena (${formatBroj(fakturna, 5)}) ne može biti veća od cijene (${formatBroj(cij, 5)}) — rabat ne može biti manji od 0.`,
+      );
       fakturnaRef.current?.focus();
       return;
     }
@@ -1219,7 +1237,9 @@ export function KalkulacijaUnos() {
     stavke.reduce((z, s) => z + s.kolicina * s.cijena, 0),
   );
   const ukupnoOsnovica = round2(stavke.reduce((z, s) => z + vrijednost(s), 0));
-  const ukupnoRabat = round2(ukupnoBruto - ukupnoOsnovica);
+  // Rabat ne može biti negativan — razlika od zaokruživanja (npr. -0,01) se
+  // ne prikazuje niti šalje kao minus.
+  const ukupnoRabat = Math.max(0, round2(ukupnoBruto - ukupnoOsnovica));
   const ukupnoPdv = obracunPdv ? round2(ukupnoOsnovica * PDV_STOPA) : 0;
   const ukupnoVp = round2(stavke.reduce((z, s) => z + s.kolicina * s.vpc, 0));
 
@@ -1909,21 +1929,60 @@ export function KalkulacijaUnos() {
                       onChange={(e) => setKolicina(e.target.value)}
                       onKeyDown={naEnter(cijenaRef)}
                       data-polje="kolicina"
-                      className={`${inputClass} ${okvir("kolicina")}`}
+                      className={`${inputClass} ${bezStrelica} ${okvir("kolicina")}`}
                     />
                   </Field>
-                  <Field label="Cijena">
-                    <input
-                      ref={cijenaRef}
-                      type="number"
-                      step="any"
-                      min="0"
-                      value={cijena}
-                      onChange={(e) => setCijena(e.target.value)}
-                      onKeyDown={naEnter(rabatRef)}
-                      data-polje="cijena"
-                      className={`${inputClass} ${okvir("cijena")}`}
-                    />
+                  <Field
+                    label={
+                      cijenaEur !== null
+                        ? `Cijena (${formatBroj(broj(cijenaEur), 4)} € × ${KURS_EUR})`
+                        : "Cijena"
+                    }
+                  >
+                    <div className="flex gap-1.5">
+                      <input
+                        ref={cijenaRef}
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={cijena}
+                        onChange={(e) => {
+                          setCijena(e.target.value);
+                          setCijenaEur(null);
+                        }}
+                        onKeyDown={naEnter(rabatRef)}
+                        data-polje="cijena"
+                        className={`${inputClass} ${bezStrelica} ${okvir("cijena")}`}
+                      />
+                      {/* Brza konverzija: upisana cijena je u EUR → KM.
+                          Drugi klik vraća iznos u EUR. */}
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={cijenaEur === null && !(broj(cijena) > 0)}
+                        onClick={() => {
+                          if (cijenaEur !== null) {
+                            setCijena(cijenaEur);
+                            setCijenaEur(null);
+                          } else {
+                            setCijenaEur(cijena);
+                            setCijena(String(round5(broj(cijena) * KURS_EUR)));
+                          }
+                          setTimeout(() => cijenaRef.current?.focus(), 0);
+                        }}
+                        title={
+                          cijenaEur !== null
+                            ? "Vrati cijenu u EUR"
+                            : `Preračunaj upisanu cijenu iz EUR u KM (kurs ${KURS_EUR})`
+                        }
+                        className={`flex-shrink-0 px-2.5 rounded-xl text-xs font-bold whitespace-nowrap border-2 border-white disabled:opacity-40 ${
+                          cijenaEur !== null ? "bg-white" : "text-white"
+                        }`}
+                        style={cijenaEur !== null ? { color: bojaVrste } : {}}
+                      >
+                        {cijenaEur !== null ? "↺ €" : "€→KM"}
+                      </button>
+                    </div>
                   </Field>
                   {/* Rabat i akcijski rabat dijele jednu kolonu */}
                   <div className="grid grid-cols-2 gap-2">
@@ -1938,7 +1997,7 @@ export function KalkulacijaUnos() {
                       onChange={(e) => setRabat(e.target.value)}
                       onKeyDown={naEnter(akcijskiRef)}
                       data-polje="rabat"
-                      className={`${inputClass} ${okvir("rabat")}`}
+                      className={`${inputClass} ${bezStrelica} ${okvir("rabat")}`}
                     />
                   </Field>
                   <Field label="Akc. rabat %">
@@ -1954,7 +2013,7 @@ export function KalkulacijaUnos() {
                         vrsta === "roba" && !vpcZakljucana ? vpcRef : undefined,
                       )}
                       data-polje="akcijski"
-                      className={`${inputClass} ${okvir("akcijski")}`}
+                      className={`${inputClass} ${bezStrelica} ${okvir("akcijski")}`}
                     />
                   </Field>
                   </div>
@@ -2183,7 +2242,7 @@ export function KalkulacijaUnos() {
                       <TD right>
                         {formatBroj(s.kolicina, 3)} {s.jm}
                       </TD>
-                      <TD right>{formatBroj(s.cijena, 4)}</TD>
+                      <TD right>{formatBroj(s.cijena, 5)}</TD>
                       <TD right>{formatBroj(s.rabat)}</TD>
                       <TD right>{formatBroj(s.akcijskiRabat)}</TD>
                       <TD

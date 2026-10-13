@@ -13,6 +13,7 @@ import {
   Package,
   Pencil,
   Plus,
+  RefreshCcw,
   Search,
   Trash2,
   X,
@@ -340,6 +341,17 @@ export function ArtikliPregled() {
       setNormativi(json.data ?? []);
     } catch {
       setNormativi([]);
+    }
+  };
+
+  const [osvjezavanje, setOsvjezavanje] = useState(false);
+
+  const osvjeziPodatke = async () => {
+    setOsvjezavanje(true);
+    try {
+      await Promise.all([ucitajArtikle(), ucitajNormative()]);
+    } finally {
+      setOsvjezavanje(false);
     }
   };
 
@@ -751,6 +763,20 @@ export function ArtikliPregled() {
                 </p>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => void osvjeziPodatke()}
+              disabled={osvjezavanje}
+              title="Osvježi podatke"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:brightness-110 disabled:opacity-60"
+              style={{ background: `${PRIMARY}1f`, color: PRIMARY }}
+            >
+              <RefreshCcw
+                size={14}
+                className={osvjezavanje ? "animate-spin" : ""}
+              />
+              Osvježi
+            </button>
           </div>
 
           {!loading && !error ? (
@@ -934,7 +960,7 @@ export function ArtikliPregled() {
                         formatBroj(a.kolicina_proizvoda, 3)
                       )}
                     </TD>
-                    <TD center>{formatBroj(a.nabavna_cijena, 3)}</TD>
+                    <TD center>{formatBroj(a.nabavna_cijena, 5)}</TD>
                     <TD center>{formatBroj(a.vpc)}</TD>
                     <TD center>
                       {(() => {
