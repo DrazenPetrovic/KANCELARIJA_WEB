@@ -1762,8 +1762,12 @@ export function KalkulacijaUnos() {
   const izvrsiZakljucenje = async () => {
     setZakljucivanje(true);
     setGreska(null);
+    // Za log greške: šta je poslato i šta je server vratio.
+    let podaci: ReturnType<typeof pripremiPodatke> | null = null;
+    let httpStatus: number | null = null;
+    let odgovorServera: unknown = null;
     try {
-      const podaci = pripremiPodatke();
+      podaci = pripremiPodatke();
       // JSON se preuzima prije upisa, pa je dostupan i kad upis ne uspije.
       if (PREUZMI_JSON_PRI_ZAKLJUCENJU) {
         preuzmiJson(
@@ -1779,7 +1783,9 @@ export function KalkulacijaUnos() {
         // Tekst JSON-a ide nepromijenjen do procedure (decimale 52.00).
         body: JSON.stringify({ podaci_json: uJsonSaDecimalama(podaci) }),
       });
+      httpStatus = res.status;
       const json = await res.json().catch(() => null);
+      odgovorServera = json;
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || "Greška pri upisu kalkulacije");
       }
@@ -1821,9 +1827,34 @@ export function KalkulacijaUnos() {
         .then((j) => j?.data && setArtikli(j.data))
         .catch(() => {});
     } catch (err) {
+      const poruka = err instanceof Error ? err.message : "Nepoznata greška";
+      // Log greške se preuzima na računar: greška, odgovor servera i svi
+      // podaci koji su se upisivali — za analizu i ponovni unos.
+      const sada = new Date();
+      const vrijeme = `${sada.getFullYear()}-${p2(sada.getMonth() + 1)}-${p2(sada.getDate())}_${p2(sada.getHours())}-${p2(sada.getMinutes())}-${p2(sada.getSeconds())}`;
+      try {
+        preuzmiJson(
+          {
+            log: "Greška pri upisu kalkulacije",
+            vrijeme: sada.toLocaleString("bs-BA"),
+            greska: poruka,
+            // null = server nije ni odgovorio (mreža / server ugašen)
+            http_status: httpStatus,
+            odgovor_servera: odgovorServera,
+            dobavljac: partner
+              ? { sifra: partner.partner_id, naziv: partner.naziv }
+              : null,
+            broj_fakture: brojKalkulacije.trim(),
+            podaci_za_upis: podaci,
+          },
+          `kalkulacija_GRESKA_${brojKalkulacije.trim().replace(/[^\w-]+/g, "_") || "bez_broja"}_${vrijeme}.json`,
+        );
+      } catch {
+        // log je pomoćni — ne smije sakriti stvarnu grešku
+      }
       // Unos ostaje na ekranu da se može ispraviti i ponovo poslati.
       setGreska(
-        `Kalkulacija NIJE upisana: ${err instanceof Error ? err.message : "Nepoznata greška"}`,
+        `Kalkulacija NIJE upisana: ${poruka} — log greške je preuzet na računar.`,
       );
     } finally {
       setZakljucivanje(false);
