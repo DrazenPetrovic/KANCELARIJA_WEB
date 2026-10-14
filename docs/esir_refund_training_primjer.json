@@ -1,0 +1,62 @@
+{
+  "print": true,
+  "renderReceiptImage": true,
+  "receiptLayout": "Slip",
+  "receiptImageFormat": "Png",
+  "receiptSlipWidth": 386,
+  "receiptSlipFontSizeNormal": 23,
+  "receiptSlipFontSizeLarge": 27,
+  "invoiceRequest": {
+    "invoiceType": "Training",
+    "transactionType": "Refund",
+    "referentDocumentNumber": "26447S2G-26447S2G-986",
+    "referentDocumentDT": "2026-10-14T09:33:06.052+02:00",
+    "buyerId": "300",
+    "buyerCostCenterId": "RAZNI KUPCI",
+    "payment": [
+      {
+        "amount": 141.25,
+        "paymentType": "Cash"
+      }
+    ],
+    "items": [
+      {
+        "name": "Sir edamer / WEIDEGLUCK 3/1",
+        "gtin": "2840550033008",
+        "labels": [
+          "Е"
+        ],
+        "totalAmount": 60.96,
+        "unitPrice": 9.35,
+        "quantity": 6.52,
+        "discount": 0,
+        "discountAmount": 0
+      },
+      {
+        "name": "Sir gauda / WEIDEGLUCK 3/1",
+        "gtin": "2843803032209",
+        "labels": [
+          "Е"
+        ],
+        "totalAmount": 62.74,
+        "unitPrice": 9.35,
+        "quantity": 6.71,
+        "discount": 0,
+        "discountAmount": 0
+      },
+      {
+        "name": "Pizza sos aroma - 4050 g / ARDITA",
+        "gtin": "8005590347223",
+        "labels": [
+          "Е"
+        ],
+        "totalAmount": 17.55,
+        "unitPrice": 17.55,
+        "quantity": 1,
+        "discount": 0,
+        "discountAmount": 0
+      }
+    ],
+    "cashier": "TEST"
+  }
+}

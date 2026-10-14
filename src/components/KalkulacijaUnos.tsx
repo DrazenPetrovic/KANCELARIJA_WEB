@@ -24,6 +24,9 @@ const PREUZMI_JSON_PRI_ZAKLJUCENJU = true;
 // Šifra države BiH (domaći partner) — vidi erp.sp_partneri_drzave i
 // SIFRA_DRZAVE_BIH u racuniZiralni. Sve ostale države su ino.
 const SIFRA_DRZAVE_BIH = 1;
+// UIO (Uprava za indirektno oporezivanje) — uplata njima je PDV, a ne trošak
+// proizvoda: uneseni iznos ZT stavke je uvijek domaći PDV, bez izbora.
+const SIFRA_PARTNERA_UIO = 2020;
 
 // Red sa /api/partneri/lista-sve (isti izvor kao PartneriPregled).
 interface Partner {
@@ -112,6 +115,10 @@ interface StavkaTroska {
   napomena: string;
   iznos: number;
   pdv: PdvTroska;
+  // UIO: uneseni iznos je sam PDV (domaći), osnovica troška je 0 — ne ulazi
+  // u nabavnu cijenu proizvoda.
+  samoPdv?: boolean;
+  pdvIznos?: number;
 }
 
 // Račun vezanih troškova jednog partnera — partner, broj i datum se unose
@@ -140,6 +147,8 @@ interface VezaniTrosak {
   napomena: string;
   iznos: number;
   pdv: PdvTroska;
+  samoPdv?: boolean;
+  pdvIznos?: number;
 }
 
 const inputClass =
@@ -394,8 +403,14 @@ const TD = ({
   </td>
 );
 
-const pdvTroska = (t: Pick<VezaniTrosak, "iznos" | "pdv">) =>
-  t.pdv === "bez" ? 0 : round2(t.iznos * PDV_STOPA);
+const pdvTroska = (
+  t: Pick<VezaniTrosak, "iznos" | "pdv" | "samoPdv" | "pdvIznos">,
+) =>
+  t.samoPdv
+    ? round2(t.pdvIznos ?? 0)
+    : t.pdv === "bez"
+      ? 0
+      : round2(t.iznos * PDV_STOPA);
 
 const PDV_TROSKA_NAZIV: Record<PdvTroska, string> = {
   bez: "Bez PDV",
@@ -511,7 +526,14 @@ function VezaniRacunModal({
   };
 
   const iznosBroj = round2(broj(iznos));
-  const iznosPdv = saPdv ? round2(iznosBroj * PDV_STOPA) : 0;
+  const jeUio = partner?.partner_id === SIFRA_PARTNERA_UIO;
+  // Za UIO je uneseni iznos sam PDV, a osnovica 0.
+  const osnovicaStavke = jeUio ? 0 : iznosBroj;
+  const iznosPdv = jeUio
+    ? iznosBroj
+    : saPdv
+      ? round2(iznosBroj * PDV_STOPA)
+      : 0;
 
   const okvir = useVodjenjeUnosa([
     { id: "m-partner", popunjeno: !!partner },
@@ -538,7 +560,7 @@ function VezaniRacunModal({
     setTipDokumenta(s.tipDokumenta);
     setSifraVrste(String(s.sifraVrste));
     setNapomena(s.napomena);
-    setIznos(String(s.iznos));
+    setIznos(String(s.samoPdv ? (s.pdvIznos ?? 0) : s.iznos));
     setSaPdv(s.pdv !== "bez");
     setVrstaPdv(s.pdv === "bez" ? null : s.pdv);
     setGreska(null);
@@ -550,17 +572,29 @@ function VezaniRacunModal({
     if (!tipDokumenta) return setGreska("Izaberite tip dokumenta.");
     if (!vrsta) return setGreska("Izaberite vrstu troška.");
     if (!(iznosBroj > 0)) return setGreska("Unesite ukupan iznos stavke.");
-    if (saPdv && !vrstaPdv)
+    if (!jeUio && saPdv && !vrstaPdv)
       return setGreska("Izaberite da li je PDV domaći ili INO.");
-    const stavka: StavkaTroska = {
+    const stavka: StavkaTroska = jeUio
+      ? {
+          id: izmjenaId ?? sljedeciId.current++,
+          tipDokumenta,
+          sifraVrste: Number(vrsta.sifra),
+          nazivVrste: vrsta.naziv_zavisnog_troska,
+          napomena: napomena.trim(),
+          iznos: 0,
+          pdv: "domaci",
+          samoPdv: true,
+          pdvIznos: iznosBroj,
+        }
+      : {
       id: izmjenaId ?? sljedeciId.current++,
       tipDokumenta,
       sifraVrste: Number(vrsta.sifra),
       nazivVrste: vrsta.naziv_zavisnog_troska,
       napomena: napomena.trim(),
-      iznos: iznosBroj,
-      pdv: saPdv ? (vrstaPdv ?? "bez") : "bez",
-    };
+          iznos: iznosBroj,
+          pdv: saPdv ? (vrstaPdv ?? "bez") : "bez",
+        };
     setStavke((prev) =>
       izmjenaId === null
         ? [...prev, stavka]
@@ -589,6 +623,13 @@ function VezaniRacunModal({
       );
     if (stavke.length === 0)
       return setGreska("Račun mora imati bar jednu stavku.");
+    // Stavke unesene za UIO (samo PDV) i za ostale partnere se ne miješaju.
+    if (stavke.some((s) => !!s.samoPdv !== jeUio))
+      return setGreska(
+        jeUio
+          ? "Stavke su unesene za drugog partnera — za UIO obrišite ih i unesite ponovo."
+          : "Stavke su unesene kao PDV za UIO — obrišite ih ili vratite partnera UIO.",
+      );
     onSacuvaj({
       partnerId: partner.partner_id,
       nazivPartnera: partner.naziv,
@@ -778,7 +819,7 @@ function VezaniRacunModal({
                 className={`${inputClass} ${okvir("m-napomena")}`}
               />
             </Field>
-            <Field label="Ukupan iznos">
+            <Field label={jeUio ? "Iznos PDV-a (UIO)" : "Ukupan iznos"}>
               <input
                 type="number"
                 step="0.01"
@@ -797,6 +838,12 @@ function VezaniRacunModal({
             </Field>
           </div>
 
+          {jeUio ? (
+            <div className="rounded-xl px-3 py-2.5 text-sm font-semibold text-white" style={{ background: PRIMARY }}>
+              Domaći PDV — partner UIO: cijeli uneseni iznos je PDV i ne
+              ulazi u trošak proizvoda.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="PDV na iznos">
               <div className="grid grid-cols-2 gap-2">
@@ -842,11 +889,12 @@ function VezaniRacunModal({
               </Field>
             )}
           </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm tabular-nums text-gray-600 dark:text-[#c5bfd8]">
-              Iznos {formatBroj(iznosBroj)} · PDV {formatBroj(iznosPdv)} ·{" "}
-              <b>Ukupno {formatBroj(round2(iznosBroj + iznosPdv))}</b>
+              Iznos {formatBroj(osnovicaStavke)} · PDV {formatBroj(iznosPdv)} ·{" "}
+              <b>Ukupno {formatBroj(round2(osnovicaStavke + iznosPdv))}</b>
             </span>
             <div className="flex gap-2">
               {(izmjenaId !== null || zapocetaStavka) && (
@@ -1088,6 +1136,8 @@ export function KalkulacijaUnos() {
       napomena: s.napomena,
       iznos: s.iznos,
       pdv: s.pdv,
+      samoPdv: s.samoPdv,
+      pdvIznos: s.pdvIznos,
     })),
   );
   // Modal za račun: "novi", postojeći račun (izmjena) ili zatvoren (null).
@@ -1614,6 +1664,8 @@ export function KalkulacijaUnos() {
       obracun_pdv: t.pdv === "bez" ? 0 : 1,
       ino_pdv: t.pdv === "ino" ? 1 : 0,
       iznos_pdv: pdvTroska(t),
+      // 1 = UIO: iznos je 0, a cijela uplata je domaći PDV (iznos_pdv).
+      samo_pdv: t.samoPdv ? 1 : 0,
       // Dug prema dobavljaču troška: domaći PDV — sa PDV-om; ino PDV i bez
       // PDV-a — bez PDV-a.
       duzi_se_za_iznos: round2(

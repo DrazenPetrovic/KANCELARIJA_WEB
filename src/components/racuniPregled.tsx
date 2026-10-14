@@ -346,6 +346,21 @@ const bojaVrsteRacuna = (v: unknown) =>
 const BOJA_STORNIRANO = "#ef4444";
 const jeStorniranRacun = (v: unknown) => Number(v) === 1;
 
+// Račun ima fiskalni broj — prazno, ili "0" uz datum fiskalnog "-" (tako
+// upisuje drugi program kad ne vrati ESIR broj) znači da NIJE potvrđen, pa se
+// nudi "Provjeri / kreiraj fiskalizaciju".
+const imaFiskalniBroj = (red: { br_fiskalnog?: unknown; datum_vreme_fiskalnog?: unknown }) => {
+  const br = red.br_fiskalnog;
+  if (br === null || br === undefined || String(br).trim() === "") return false;
+  if (
+    String(br).trim() === "0" &&
+    String(red.datum_vreme_fiskalnog ?? "").trim() === "-"
+  ) {
+    return false;
+  }
+  return true;
+};
+
 // Opcije za filter po vrsti računa (vrsta_racuna_novi) — vidi i handleStampaj
 // (1 i 3 idu na A5, sve ostalo na A4).
 const VRSTE_RACUNA_NOVI: { vrijednost: number; naziv: string }[] = [
@@ -744,10 +759,7 @@ function GenericnaTabela({
                       const jeRabatDonji =
                         normalizujKljuc(donjiKljuc).startsWith("rab");
                       if (k === "br_fiskalnog") {
-                        const imaFiskalni =
-                          red.br_fiskalnog !== null &&
-                          red.br_fiskalnog !== undefined &&
-                          String(red.br_fiskalnog).trim() !== "";
+                        const imaFiskalni = imaFiskalniBroj(red);
                         return (
                           <td
                             key={k}
@@ -1533,10 +1545,10 @@ export function RacuniPregled() {
   };
 
   // Koji ESIR (fizički fiskalni uređaj/kasa) odgovara vrsti računa:
-  // vrsta_racuna_novi 1 (MP) -> "gotovinski" (kasa .250), 3 (Storno MP) ->
-  // "ziralni" (kasa .251) — sve ostalo (VP i sl.) takođe "ziralni".
+  // vrsta_racuna_novi 1 (MP) i 3 (Storno MP — refundacija ide na isti uređaj
+  // kao original) -> "gotovinski" (kasa .250); sve ostalo (VP i sl.) "ziralni".
   const uredjajZaVrstuRacuna = (red: RacunRed): EsirUredjaj =>
-    Number(red.vrsta_racuna_novi) === 1 ? "gotovinski" : "ziralni";
+    [1, 3].includes(Number(red.vrsta_racuna_novi)) ? "gotovinski" : "ziralni";
 
   // MP računi (vrsta_racuna_novi 1 = maloprodajni, 3 = storno maloprodajnih —
   // vidi VRSTE_RACUNA_FILTER) se prodaju po MPC-u (prodajna_cijena), ne po
@@ -1746,6 +1758,16 @@ export function RacuniPregled() {
             }
           },
         });
+      } else if ([3, 4, 6].includes(Number(red.vrsta_racuna_novi))) {
+        // Storno (KO) račun se ne smije ponovo slati kao "Sale" (kreirajNovuFiskalizaciju) —
+        // refundacija ide samo iz Knjižne gotovinski/virmanski.
+        setFiskalnaPoruka({
+          naslov: "Fiskalizacija nije pronađena",
+          poruka:
+            "Refundacija za ovaj storno račun NIJE pronađena na ESIR uređaju " +
+            "(po RequestId = šifra tabele; ESIR pamti samo zadnjih 100 zahtjeva).",
+          tip: "greska",
+        });
       } else {
         setFiskalnaPoruka({
           naslov: "Fiskalizacija nije pronađena",
@@ -1916,10 +1938,7 @@ export function RacuniPregled() {
       {kontekstMeniFiskalni &&
         (() => {
           const red = kontekstMeniFiskalni.red;
-          const imaFiskalni =
-            red.br_fiskalnog !== null &&
-            red.br_fiskalnog !== undefined &&
-            String(red.br_fiskalnog).trim() !== "";
+          const imaFiskalni = imaFiskalniBroj(red);
           return (
             <>
               <div
