@@ -84,6 +84,22 @@ export const unosKalkulacije = async (jsonTekst) => {
   });
 };
 
+// Redni broj u KUF-u koji operater upisuje na fakturu dobavljača. Procedura
+// broji q_kalkulacija_gl + q_kuf, pa se poziva tek nakon uspješnog upisa
+// kalkulacije (nova kalkulacija je tada već uračunata). Vraća broj ili null.
+// Vidi erp.kalkulacija_kuf_broj_odredjivanje.
+export const getKufRedniBroj = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      "CALL erp.kalkulacija_kuf_broj_odredjivanje()",
+    );
+    const rezultat =
+      Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    const broj = Number(rezultat[0]?.redni_broj);
+    return Number.isFinite(broj) ? broj : null;
+  });
+};
+
 // Stavke (proizvodi) svih kalkulacija — frontend ih grupiše po
 // sifra_kalkulacije. Vidi erp.kalkulacija_po_pregled.
 export const getKalkulacijeStavke = async () => {

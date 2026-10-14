@@ -115,7 +115,22 @@ export const unosKalkulacije = async (req, res) => {
       });
     }
     const data = await KalkulacijeService.unosKalkulacije(jsonTekst);
-    return res.json({ success: true, data });
+
+    // KUF broj se određuje nakon upisa. Kalkulacija je tada već snimljena,
+    // pa greška ovdje ne smije oboriti odgovor — operater dobija upozorenje.
+    let kufBroj = null;
+    let kufGreska = null;
+    try {
+      kufBroj = await KalkulacijeService.getKufRedniBroj();
+    } catch (error) {
+      console.error("Određivanje KUF broja error:", error);
+      kufGreska = error?.sqlMessage || "Greška pri određivanju KUF broja";
+    }
+
+    return res.json({
+      success: true,
+      data: { ...(data ?? {}), kuf_broj: kufBroj, kuf_greska: kufGreska },
+    });
   } catch (error) {
     console.error("Unos kalkulacije error:", error);
     return res.status(500).json({

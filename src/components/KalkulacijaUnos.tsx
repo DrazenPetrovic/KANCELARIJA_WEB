@@ -103,9 +103,31 @@ const TIP_DOKUMENTA = [
 // PDV na vezani trošak bira operater: bez PDV-a, domaći ili ino PDV.
 type PdvTroska = "bez" | "domaci" | "ino";
 
-// Vezani (zavisni) trošak — zaseban račun (prevoz, carinjenje, taksa...) koji
-// povećava nabavnu cijenu proizvoda sa kalkulacije. Kalkulacija ih može imati
-// više.
+// Stavka računa vezanih troškova (prevoz, carinjenje, taksa...).
+interface StavkaTroska {
+  id: number;
+  tipDokumenta: string;
+  sifraVrste: number;
+  nazivVrste: string;
+  napomena: string;
+  iznos: number;
+  pdv: PdvTroska;
+}
+
+// Račun vezanih troškova jednog partnera — partner, broj i datum se unose
+// jednom, a račun ima jednu ili više stavki. Kalkulacija može imati više
+// računa.
+interface VezaniRacun {
+  id: number;
+  partnerId: number;
+  nazivPartnera: string;
+  brojRacuna: string;
+  datum: string;
+  stavke: StavkaTroska[];
+}
+
+// Vezani (zavisni) trošak u ravnom obliku — jedna stavka računa sa podacima
+// njenog računa. Ovako ide u JSON (zavisni_troskovi) i u obračun.
 interface VezaniTrosak {
   id: number;
   sifraVrste: number;
@@ -390,22 +412,26 @@ const izborDugmeClass = (aktivno: boolean) =>
 const izborDugmeStyle = (aktivno: boolean, boja = PRIMARY) =>
   aktivno ? { background: boja, borderColor: boja } : {};
 
-function VezaniTrosakModal({
+// Modal za jedan račun vezanih troškova: partner, broj i datum računa se
+// biraju jednom, a zatim se dodaje jedna ili više stavki (tip dokumenta,
+// vrsta troška, napomena, iznos, PDV).
+function VezaniRacunModal({
   partneri,
   vrste,
   pocetni,
+  glavniPartnerId,
   onSacuvaj,
   onZatvori,
 }: {
   partneri: Partner[];
   vrste: VrstaTroska[];
-  pocetni: VezaniTrosak | null;
-  onSacuvaj: (t: Omit<VezaniTrosak, "id">) => void;
+  pocetni: VezaniRacun | null;
+  // Dobavljač glavne kalkulacije — ne smije biti partner vezanog troška.
+  glavniPartnerId: number | null;
+  onSacuvaj: (r: Omit<VezaniRacun, "id">) => void;
   onZatvori: () => void;
 }) {
-  const [sifraVrste, setSifraVrste] = useState(
-    pocetni ? String(pocetni.sifraVrste) : "",
-  );
+  // Zaglavlje računa
   const [partner, setPartner] = useState<Partner | null>(
     pocetni
       ? (partneri.find((p) => p.partner_id === pocetni.partnerId) ?? null)
@@ -414,100 +440,175 @@ function VezaniTrosakModal({
   const [pretraga, setPretraga] = useState(pocetni?.nazivPartnera ?? "");
   const [lista, setLista] = useState(false);
   const [oznacen, setOznacen] = useState(0);
-  const [tipDokumenta, setTipDokumenta] = useState(
-    pocetni?.tipDokumenta ?? "",
-  );
-  const [datum, setDatum] = useState(pocetni?.datum ?? "");
   const [brojRacuna, setBrojRacuna] = useState(pocetni?.brojRacuna ?? "");
-  const [napomena, setNapomena] = useState(pocetni?.napomena ?? "");
-  const [iznos, setIznos] = useState(pocetni ? String(pocetni.iznos) : "");
-  const [saPdv, setSaPdv] = useState(!!pocetni && pocetni.pdv !== "bez");
-  // Kad se PDV obračunava, operater mora izričito izabrati domaći ili ino.
-  const [vrstaPdv, setVrstaPdv] = useState<"domaci" | "ino" | null>(
-    pocetni && pocetni.pdv !== "bez" ? pocetni.pdv : null,
+  const [datum, setDatum] = useState(pocetni?.datum ?? "");
+
+  // Stavke računa
+  const [stavke, setStavke] = useState<StavkaTroska[]>(pocetni?.stavke ?? []);
+  const sljedeciId = useRef(
+    Math.max(0, ...(pocetni?.stavke ?? []).map((s) => s.id)) + 1,
   );
+  // Stavka koja se mijenja (klik na red); null = nova.
+  const [izmjenaId, setIzmjenaId] = useState<number | null>(null);
+  const [tipDokumenta, setTipDokumenta] = useState("");
+  const [sifraVrste, setSifraVrste] = useState("");
+  const [napomena, setNapomena] = useState("");
+  const [iznos, setIznos] = useState("");
+  const [saPdv, setSaPdv] = useState(false);
+  // Kad se PDV obračunava, operater mora izričito izabrati domaći ili ino.
+  const [vrstaPdv, setVrstaPdv] = useState<"domaci" | "ino" | null>(null);
+
   const [greska, setGreska] = useState<string | null>(null);
+  const partnerRef = useRef<HTMLInputElement>(null);
   const brojRef = useRef<HTMLInputElement>(null);
+  const tipRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onZatvori();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onZatvori]);
+    setTimeout(
+      () => (pocetni ? tipRef.current : partnerRef.current)?.focus(),
+      0,
+    );
+    // samo pri otvaranju
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
+    // Dobavljač glavne kalkulacije se ne nudi.
+    const dozvoljeni = partneri.filter(
+      (p) => p.partner_id !== glavniPartnerId,
+    );
     const l = q
-      ? partneri.filter(
+      ? dozvoljeni.filter(
           (p) =>
             String(p.partner_id) === q ||
             p.naziv?.toLowerCase().includes(q) ||
             (p.jib && p.jib.includes(q)) ||
             (p.pib && p.pib.includes(q)),
         )
-      : partneri;
+      : dozvoljeni;
     return l.slice(0, 60);
-  }, [partneri, pretraga]);
+  }, [partneri, pretraga, glavniPartnerId]);
+
+  const ponistiPartnera = () => {
+    setPartner(null);
+    setPretraga("");
+    setTimeout(() => partnerRef.current?.focus(), 0);
+  };
 
   const odaberi = (p: Partner) => {
+    if (p.partner_id === glavniPartnerId) {
+      setGreska(
+        "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
+      );
+      return;
+    }
     setPartner(p);
     setPretraga(p.naziv);
     setLista(false);
     setGreska(null);
+    setTimeout(() => brojRef.current?.focus(), 0);
   };
 
   const iznosBroj = round2(broj(iznos));
-  const pdv: PdvTroska = saPdv ? (vrstaPdv ?? "bez") : "bez";
   const iznosPdv = saPdv ? round2(iznosBroj * PDV_STOPA) : 0;
 
   const okvir = useVodjenjeUnosa([
-    { id: "m-vrsta", popunjeno: !!sifraVrste },
     { id: "m-partner", popunjeno: !!partner },
-    { id: "m-tip", popunjeno: !!tipDokumenta },
-    { id: "m-datum", popunjeno: !!datum },
     { id: "m-broj", popunjeno: !!brojRacuna.trim() },
+    { id: "m-datum", popunjeno: !!datum },
+    { id: "m-tip", popunjeno: !!tipDokumenta },
+    { id: "m-vrsta", popunjeno: !!sifraVrste },
     { id: "m-napomena", popunjeno: !!napomena.trim(), obavezno: false },
     { id: "m-iznos", popunjeno: iznosBroj > 0 },
   ]);
 
-  const sacuvaj = () => {
+  const ocistiStavku = () => {
+    setIzmjenaId(null);
+    setTipDokumenta("");
+    setSifraVrste("");
+    setNapomena("");
+    setIznos("");
+    setSaPdv(false);
+    setVrstaPdv(null);
+  };
+
+  const izmijeniStavku = (s: StavkaTroska) => {
+    setIzmjenaId(s.id);
+    setTipDokumenta(s.tipDokumenta);
+    setSifraVrste(String(s.sifraVrste));
+    setNapomena(s.napomena);
+    setIznos(String(s.iznos));
+    setSaPdv(s.pdv !== "bez");
+    setVrstaPdv(s.pdv === "bez" ? null : s.pdv);
+    setGreska(null);
+    setTimeout(() => tipRef.current?.focus(), 0);
+  };
+
+  const dodajStavku = () => {
     const vrsta = vrste.find((v) => String(v.sifra) === sifraVrste);
-    if (!vrsta) return setGreska("Izaberite vrstu troška.");
-    if (!partner) return setGreska("Izaberite partnera.");
     if (!tipDokumenta) return setGreska("Izaberite tip dokumenta.");
-    if (!datum) return setGreska("Unesite datum računa.");
-    if (!brojRacuna.trim()) return setGreska("Unesite broj računa.");
-    if (!(iznosBroj > 0)) return setGreska("Unesite ukupan iznos.");
+    if (!vrsta) return setGreska("Izaberite vrstu troška.");
+    if (!(iznosBroj > 0)) return setGreska("Unesite ukupan iznos stavke.");
     if (saPdv && !vrstaPdv)
       return setGreska("Izaberite da li je PDV domaći ili INO.");
-    onSacuvaj({
+    const stavka: StavkaTroska = {
+      id: izmjenaId ?? sljedeciId.current++,
+      tipDokumenta,
       sifraVrste: Number(vrsta.sifra),
       nazivVrste: vrsta.naziv_zavisnog_troska,
-      partnerId: partner.partner_id,
-      nazivPartnera: partner.naziv,
-      tipDokumenta,
-      datum,
-      brojRacuna: brojRacuna.trim(),
       napomena: napomena.trim(),
       iznos: iznosBroj,
-      pdv,
+      pdv: saPdv ? (vrstaPdv ?? "bez") : "bez",
+    };
+    setStavke((prev) =>
+      izmjenaId === null
+        ? [...prev, stavka]
+        : prev.map((s) => (s.id === izmjenaId ? stavka : s)),
+    );
+    setGreska(null);
+    ocistiStavku();
+    setTimeout(() => tipRef.current?.focus(), 0);
+  };
+
+  // Stavka koja je započeta, a nije dodata — da se ne izgubi pri čuvanju.
+  const zapocetaStavka =
+    !!tipDokumenta || !!sifraVrste || !!napomena.trim() || iznosBroj > 0;
+
+  const sacuvaj = () => {
+    if (!partner) return setGreska("Izaberite partnera.");
+    if (partner.partner_id === glavniPartnerId)
+      return setGreska(
+        "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
+      );
+    if (!brojRacuna.trim()) return setGreska("Unesite broj računa.");
+    if (!datum) return setGreska("Unesite datum računa.");
+    if (zapocetaStavka)
+      return setGreska(
+        "Stavka je započeta, a nije dodata — kliknite „Dodaj stavku” ili je očistite.",
+      );
+    if (stavke.length === 0)
+      return setGreska("Račun mora imati bar jednu stavku.");
+    onSacuvaj({
+      partnerId: partner.partner_id,
+      nazivPartnera: partner.naziv,
+      brojRacuna: brojRacuna.trim(),
+      datum,
+      stavke,
     });
   };
 
+  const ukupnoIznos = round2(stavke.reduce((z, s) => z + s.iznos, 0));
+  const ukupnoPdv = round2(stavke.reduce((z, s) => z + pdvTroska(s), 0));
+
   return (
-    <div
-      className="fixed inset-0 z-[9990] flex items-center justify-center p-4 bg-black/50"
-      onMouseDown={onZatvori}
-    >
-      <div
-        className="w-full max-w-lg max-h-full overflow-y-auto rounded-2xl bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648] shadow-2xl p-6 space-y-3"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+    // Ne zatvara se klikom pored ni Escape-om — da se unesene stavke ne
+    // izgube slučajno; samo X ili "Odustani".
+    <div className="fixed inset-0 z-[9990] flex items-center justify-center p-4 bg-black/50">
+      <div className="w-full max-w-2xl max-h-full overflow-y-auto rounded-2xl bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648] shadow-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
-            {pocetni ? "Izmjena vezanog troška" : "Novi vezani trošak"}
+            {pocetni ? "Izmjena računa vezanih troškova" : "Novi račun vezanih troškova"}
           </h3>
           <button
             type="button"
@@ -518,205 +619,337 @@ function VezaniTrosakModal({
           </button>
         </div>
 
-        <Field label="Vrsta troška">
-          <select
-            autoFocus
-            value={sifraVrste}
-            onChange={(e) => setSifraVrste(e.target.value)}
-            data-polje="m-vrsta"
-            className={`${inputClass} ${okvir("m-vrsta")}`}
-          >
-            <option value="">-- Izaberi vrstu troška --</option>
-            {vrste.map((v) => (
-              <option key={v.sifra} value={v.sifra}>
-                {v.naziv_zavisnog_troska}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Partner">
-          <div className="relative">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <input
-              type="text"
-              value={pretraga}
-              placeholder="Naziv, šifra, JIB ili PIB partnera..."
-              onChange={(e) => {
-                setPretraga(e.target.value);
-                setPartner(null);
-                setLista(true);
-                setOznacen(0);
-              }}
-              onFocus={() => {
-                if (!partner) setLista(true);
-              }}
-              onBlur={() => setTimeout(() => setLista(false), 150)}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
+        {/* Zaglavlje računa — bira se jednom */}
+        <div className="space-y-3">
+          <Field label="Partner">
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                ref={partnerRef}
+                type="text"
+                value={pretraga}
+                placeholder="Naziv, šifra, JIB ili PIB partnera..."
+                onChange={(e) => {
+                  setPretraga(e.target.value);
+                  setPartner(null);
                   setLista(true);
-                  setOznacen((i) => Math.min(i + 1, filtrirani.length - 1));
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setOznacen((i) => Math.max(i - 1, 0));
-                } else if (e.key === "Enter") {
-                  e.preventDefault();
-                  const p = filtrirani[oznacen];
-                  if (p && !partner) odaberi(p);
-                } else if (e.key === "Escape" && lista) {
-                  e.stopPropagation();
-                  setLista(false);
-                }
-              }}
-              data-polje="m-partner"
-              className={`${inputClass} pl-9 ${okvir("m-partner")}`}
-            />
-            {lista && !partner && filtrirani.length > 0 && (
-              <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1c1828] shadow-xl">
-                {filtrirani.map((p, i) => (
-                  <button
-                    key={p.partner_id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      odaberi(p);
-                    }}
-                    onMouseEnter={() => setOznacen(i)}
-                    className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
-                      i === oznacen ? "bg-purple-50 dark:bg-[#2d2648]" : ""
-                    } text-gray-700 dark:text-[#c5bfd8]`}
-                  >
-                    <span className="truncate">
-                      <span className="font-mono text-xs text-gray-400 mr-2">
-                        {p.partner_id}
-                      </span>
-                      {p.naziv}
-                    </span>
-                    <span className="flex-shrink-0 text-xs text-gray-500 dark:text-[#9e96b8]">
-                      {[p.grad, p.drzava].filter(Boolean).join(", ")}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </Field>
-
-        <Field label="Tip dokumenta">
-          <select
-            value={tipDokumenta}
-            onChange={(e) => setTipDokumenta(e.target.value)}
-            data-polje="m-tip"
-            className={`${inputClass} ${okvir("m-tip")}`}
-          >
-            <option value="">-- Izaberi tip dokumenta --</option>
-            {TIP_DOKUMENTA.map((t) => (
-              <option key={t.sifra} value={t.sifra}>
-                {t.sifra} - {t.naziv}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Datum računa">
-            <DatumPolje polje="m-datum" okvir={okvir("m-datum")} value={datum} onChange={setDatum} />
-          </Field>
-          <Field label="Broj računa">
-            <input
-              ref={brojRef}
-              type="text"
-              value={brojRacuna}
-              onChange={(e) => setBrojRacuna(e.target.value)}
-              data-polje="m-broj"
-              className={`${inputClass} ${okvir("m-broj")}`}
-            />
-          </Field>
-        </div>
-
-        <Field label="Napomena">
-          <input
-            type="text"
-            value={napomena}
-            onChange={(e) => setNapomena(e.target.value)}
-            data-polje="m-napomena"
-            className={`${inputClass} ${okvir("m-napomena")}`}
-          />
-        </Field>
-
-        <Field label="Ukupan iznos">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={iznos}
-            onChange={(e) => setIznos(e.target.value)}
-            data-polje="m-iznos"
-            className={`${inputClass} ${okvir("m-iznos")}`}
-          />
-        </Field>
-
-        <Field label="PDV na iznos">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setSaPdv(false)}
-              className={izborDugmeClass(!saPdv)}
-              style={izborDugmeStyle(!saPdv, "#6b7280")}
-            >
-              Ne obračunava se
-            </button>
-            <button
-              type="button"
-              onClick={() => setSaPdv(true)}
-              className={izborDugmeClass(saPdv)}
-              style={izborDugmeStyle(saPdv)}
-            >
-              Obračunava se
-            </button>
-          </div>
-        </Field>
-
-        {saPdv && (
-          <Field label="Vrsta PDV-a">
-            <div className="grid grid-cols-2 gap-2">
-              {(["domaci", "ino"] as const).map((v) => (
+                  setOznacen(0);
+                }}
+                onFocus={() => {
+                  if (!partner) setLista(true);
+                }}
+                onBlur={() => setTimeout(() => setLista(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setLista(true);
+                    setOznacen((i) => Math.min(i + 1, filtrirani.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setOznacen((i) => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const p = filtrirani[oznacen];
+                    if (p && !partner) odaberi(p);
+                  } else if (e.key === "Escape") {
+                    setLista(false);
+                  }
+                }}
+                data-polje="m-partner"
+                className={`${inputClass} pl-9 pr-9 ${okvir("m-partner")}`}
+              />
+              {pretraga && (
                 <button
-                  key={v}
                   type="button"
-                  onClick={() => setVrstaPdv(v)}
-                  className={izborDugmeClass(vrstaPdv === v)}
-                  style={izborDugmeStyle(
-                    vrstaPdv === v,
-                    v === "ino" ? SIROVINA_BOJA : PRIMARY,
-                  )}
+                  tabIndex={-1}
+                  onClick={ponistiPartnera}
+                  title="Ukloni izabranog partnera"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {PDV_TROSKA_NAZIV[v]}
+                  <X size={15} />
                 </button>
-              ))}
+              )}
+              {lista && !partner && filtrirani.length > 0 && (
+                <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1c1828] shadow-xl">
+                  {filtrirani.map((p, i) => (
+                    <button
+                      key={p.partner_id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        odaberi(p);
+                      }}
+                      onMouseEnter={() => setOznacen(i)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                        i === oznacen ? "bg-purple-50 dark:bg-[#2d2648]" : ""
+                      } text-gray-700 dark:text-[#c5bfd8]`}
+                    >
+                      <span className="truncate">
+                        <span className="font-mono text-xs text-gray-400 mr-2">
+                          {p.partner_id}
+                        </span>
+                        {p.naziv}
+                      </span>
+                      <span className="flex-shrink-0 text-xs text-gray-500 dark:text-[#9e96b8]">
+                        {[p.grad, p.drzava].filter(Boolean).join(", ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </Field>
-        )}
 
-        <div className="rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828] text-sm text-gray-700 dark:text-[#c5bfd8] space-y-1">
-          <div className="flex justify-between gap-4">
-            <span>Iznos</span>
-            <span className="tabular-nums">{formatBroj(iznosBroj)}</span>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Broj računa">
+              <input
+                ref={brojRef}
+                type="text"
+                value={brojRacuna}
+                onChange={(e) => setBrojRacuna(e.target.value)}
+                data-polje="m-broj"
+                className={`${inputClass} ${okvir("m-broj")}`}
+              />
+            </Field>
+            <Field label="Datum računa">
+              <DatumPolje
+                polje="m-datum"
+                okvir={okvir("m-datum")}
+                value={datum}
+                onChange={setDatum}
+              />
+            </Field>
           </div>
-          <div className="flex justify-between gap-4">
-            <span>PDV {saPdv ? `${PDV_STOPA * 100} %` : ""}</span>
-            <span className="tabular-nums">{formatBroj(iznosPdv)}</span>
+        </div>
+
+        {/* Unos stavke računa */}
+        <div className="rounded-2xl border border-gray-200 dark:border-[#3a3158] p-4 space-y-3">
+          <span
+            className="text-xs font-bold uppercase tracking-wider"
+            style={{ color: PRIMARY }}
+          >
+            {izmjenaId !== null ? "Izmjena stavke" : "Nova stavka računa"}
+          </span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Tip dokumenta">
+              <select
+                ref={tipRef}
+                value={tipDokumenta}
+                onChange={(e) => setTipDokumenta(e.target.value)}
+                data-polje="m-tip"
+                className={`${inputClass} ${okvir("m-tip")}`}
+              >
+                <option value="">-- Izaberi tip dokumenta --</option>
+                {TIP_DOKUMENTA.map((t) => (
+                  <option key={t.sifra} value={t.sifra}>
+                    {t.sifra} - {t.naziv}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Vrsta troška">
+              <select
+                value={sifraVrste}
+                onChange={(e) => setSifraVrste(e.target.value)}
+                data-polje="m-vrsta"
+                className={`${inputClass} ${okvir("m-vrsta")}`}
+              >
+                <option value="">-- Izaberi vrstu troška --</option>
+                {vrste.map((v) => (
+                  <option key={v.sifra} value={v.sifra}>
+                    {v.naziv_zavisnog_troska}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
-          <div className="flex justify-between gap-4 font-bold text-gray-800 dark:text-[#ede9f6]">
-            <span>Ukupno</span>
-            <span className="tabular-nums">
-              {formatBroj(round2(iznosBroj + iznosPdv))}
+
+          <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+            <Field label="Napomena">
+              <input
+                type="text"
+                value={napomena}
+                onChange={(e) => setNapomena(e.target.value)}
+                data-polje="m-napomena"
+                className={`${inputClass} ${okvir("m-napomena")}`}
+              />
+            </Field>
+            <Field label="Ukupan iznos">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={iznos}
+                onChange={(e) => setIznos(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    dodajStavku();
+                  }
+                }}
+                data-polje="m-iznos"
+                className={`${inputClass} ${bezStrelica} ${okvir("m-iznos")}`}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="PDV na iznos">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaPdv(false);
+                    setVrstaPdv(null);
+                  }}
+                  className={izborDugmeClass(!saPdv)}
+                  style={izborDugmeStyle(!saPdv, "#6b7280")}
+                >
+                  Ne obračunava se
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaPdv(true)}
+                  className={izborDugmeClass(saPdv)}
+                  style={izborDugmeStyle(saPdv)}
+                >
+                  Obračunava se
+                </button>
+              </div>
+            </Field>
+            {saPdv && (
+              <Field label="Vrsta PDV-a">
+                <div className="grid grid-cols-2 gap-2">
+                  {(["domaci", "ino"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setVrstaPdv(v)}
+                      className={izborDugmeClass(vrstaPdv === v)}
+                      style={izborDugmeStyle(
+                        vrstaPdv === v,
+                        v === "ino" ? SIROVINA_BOJA : PRIMARY,
+                      )}
+                    >
+                      {PDV_TROSKA_NAZIV[v]}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm tabular-nums text-gray-600 dark:text-[#c5bfd8]">
+              Iznos {formatBroj(iznosBroj)} · PDV {formatBroj(iznosPdv)} ·{" "}
+              <b>Ukupno {formatBroj(round2(iznosBroj + iznosPdv))}</b>
             </span>
+            <div className="flex gap-2">
+              {(izmjenaId !== null || zapocetaStavka) && (
+                <button
+                  type="button"
+                  onClick={ocistiStavku}
+                  className="px-3 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8]"
+                >
+                  Očisti
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={dodajStavku}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                style={{ background: PRIMARY }}
+              >
+                <Plus size={15} />
+                {izmjenaId !== null ? "Sačuvaj stavku" : "Dodaj stavku"}
+              </button>
+            </div>
           </div>
+        </div>
+
+        {/* Stavke računa */}
+        <div className="rounded-2xl border border-gray-100 dark:border-[#2d2648] overflow-hidden">
+          <table className="table-auto w-full">
+            <thead>
+              <tr>
+                <TH>Tip</TH>
+                <TH>Vrsta troška</TH>
+                <TH>Napomena</TH>
+                <TH right>Iznos</TH>
+                <TH right>PDV</TH>
+                <TH />
+              </tr>
+            </thead>
+            <tbody>
+              {stavke.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-5 text-center text-sm text-gray-400 dark:text-[#6f6890]"
+                  >
+                    Nema stavki — dodajte bar jednu stavku računa.
+                  </td>
+                </tr>
+              )}
+              {stavke.map((s) => (
+                <tr
+                  key={s.id}
+                  onClick={() => izmijeniStavku(s)}
+                  title="Klik za izmjenu stavke"
+                  className={`cursor-pointer hover:bg-purple-50/60 dark:hover:bg-[#2d2648] ${
+                    s.id === izmjenaId ? "bg-purple-50 dark:bg-[#2d2648]" : ""
+                  }`}
+                >
+                  <TD>{s.tipDokumenta}</TD>
+                  <TD>{s.nazivVrste}</TD>
+                  <TD className="max-w-[180px] truncate">
+                    {s.napomena || "—"}
+                  </TD>
+                  <TD right>{formatBroj(s.iznos)}</TD>
+                  <TD right>
+                    {formatBroj(pdvTroska(s))}
+                    <span className="ml-1 text-[11px] text-gray-500 dark:text-[#9e96b8]">
+                      {s.pdv === "bez" ? "" : s.pdv === "ino" ? "INO" : "dom."}
+                    </span>
+                  </TD>
+                  <TD>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStavke((prev) => prev.filter((x) => x.id !== s.id));
+                        if (izmjenaId === s.id) ocistiStavku();
+                      }}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      title="Ukloni stavku"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </TD>
+                </tr>
+              ))}
+            </tbody>
+            {stavke.length > 0 && (
+              <tfoot>
+                <tr className="bg-[#f4f1f9] dark:bg-[#1c1828] font-bold text-sm text-gray-800 dark:text-[#ede9f6]">
+                  <td colSpan={3} className="px-1.5 py-2 text-right">
+                    Ukupno računa:
+                  </td>
+                  <td className="px-1.5 py-2 text-right tabular-nums">
+                    {formatBroj(ukupnoIznos)}
+                  </td>
+                  <td className="px-1.5 py-2 text-right tabular-nums">
+                    {formatBroj(ukupnoPdv)}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
 
         {greska && (
@@ -737,10 +970,16 @@ function VezaniTrosakModal({
           <button
             type="button"
             onClick={sacuvaj}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
+            disabled={stavke.length === 0}
+            title={
+              stavke.length === 0
+                ? "Račun mora imati bar jednu stavku"
+                : undefined
+            }
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: PRIMARY }}
           >
-            {pocetni ? "Sačuvaj izmjenu" : "Dodaj trošak"}
+            {pocetni ? "Sačuvaj račun" : "Dodaj račun"}
           </button>
         </div>
       </div>
@@ -798,6 +1037,22 @@ export function KalkulacijaUnos() {
   const [uspjeh, setUspjeh] = useState<string | null>(null);
   const [zakljucivanje, setZakljucivanje] = useState(false);
   const [pokusanoZakljucenje, setPokusanoZakljucenje] = useState(false);
+  // KUF brojevi zadnje upisane kalkulacije — modal (prikazanKuf) odmah nakon
+  // upisa, a kratak podsjetnik ostaje ispod dugmadi do sljedećeg upisa.
+  const [kufRezultat, setKufRezultat] = useState<{
+    sifraKalkulacije: number | null;
+    kufGlavna: number | null;
+    dobavljac: string;
+    brojFakture: string;
+    troskovi: {
+      naziv: string;
+      dobavljac: string;
+      brojRacuna: string;
+      kuf: number | null;
+    }[];
+    greska: string | null;
+  } | null>(null);
+  const [prikazanKuf, setPrikazanKuf] = useState(false);
   // Pitanje za potvrdu — prikazuje se kao modal na sredini ekrana.
   const [potvrda, setPotvrda] = useState<{
     naslov: string;
@@ -817,9 +1072,26 @@ export function KalkulacijaUnos() {
 
   // Vezani troškovi
   const [vrsteTroska, setVrsteTroska] = useState<VrstaTroska[]>([]);
-  const [troskovi, setTroskovi] = useState<VezaniTrosak[]>([]);
-  // Modal za trošak: "novi", postojeći trošak (izmjena) ili zatvoren (null).
-  const [trosakModal, setTrosakModal] = useState<VezaniTrosak | "novi" | null>(
+  const [racuni, setRacuni] = useState<VezaniRacun[]>([]);
+  // Svaka stavka računa kao zaseban vezani trošak (redoslijed: računi pa
+  // njihove stavke) — tako ide u JSON, obračun i KUF brojeve.
+  const troskovi: VezaniTrosak[] = racuni.flatMap((r) =>
+    r.stavke.map((s) => ({
+      id: s.id,
+      sifraVrste: s.sifraVrste,
+      nazivVrste: s.nazivVrste,
+      partnerId: r.partnerId,
+      nazivPartnera: r.nazivPartnera,
+      tipDokumenta: s.tipDokumenta,
+      datum: r.datum,
+      brojRacuna: r.brojRacuna,
+      napomena: s.napomena,
+      iznos: s.iznos,
+      pdv: s.pdv,
+    })),
+  );
+  // Modal za račun: "novi", postojeći račun (izmjena) ili zatvoren (null).
+  const [trosakModal, setTrosakModal] = useState<VezaniRacun | "novi" | null>(
     null,
   );
 
@@ -1000,7 +1272,7 @@ export function KalkulacijaUnos() {
     !!brojKalkulacije.trim() ||
     !!datumKalkulacije ||
     !!datumValute ||
-    troskovi.length > 0 ||
+    racuni.length > 0 ||
     stavke.length > 0 ||
     !!odabrani;
 
@@ -1243,11 +1515,17 @@ export function KalkulacijaUnos() {
   const ukupnoPdv = obracunPdv ? round2(ukupnoOsnovica * PDV_STOPA) : 0;
   const ukupnoVp = round2(stavke.reduce((z, s) => z + s.kolicina * s.vpc, 0));
 
-  const sacuvajTrosak = (t: Omit<VezaniTrosak, "id">) => {
-    setTroskovi((prev) =>
+  const sacuvajTrosak = (r: Omit<VezaniRacun, "id">) => {
+    // Stavke dobijaju id-eve jedinstvene na nivou cijele kalkulacije.
+    const sRacun = (id: number): VezaniRacun => ({
+      ...r,
+      id,
+      stavke: r.stavke.map((s) => ({ ...s, id: sljedeciId.current++ })),
+    });
+    setRacuni((prev) =>
       trosakModal && trosakModal !== "novi"
-        ? prev.map((x) => (x.id === trosakModal.id ? { ...t, id: x.id } : x))
-        : [...prev, { ...t, id: sljedeciId.current++ }],
+        ? prev.map((x) => (x.id === trosakModal.id ? sRacun(x.id) : x))
+        : [...prev, sRacun(sljedeciId.current++)],
     );
     setTrosakModal(null);
   };
@@ -1282,7 +1560,7 @@ export function KalkulacijaUnos() {
 
   const ponistiSve = () => {
     setPokusanoZakljucenje(false);
-    setTroskovi([]);
+    setRacuni([]);
     setPartner(null);
     setPartnerPretraga("");
     setBrojKalkulacije("");
@@ -1389,6 +1667,29 @@ export function KalkulacijaUnos() {
       }
 
       const sifra = json.data?.sifra_kalkulacije;
+
+      // KUF broj: procedura vraća broj nakon upisa, tj. broj zadnjeg upisanog
+      // reda. Redoslijed upisa je glavna kalkulacija, pa ZT redom kako su
+      // uneseni — zato se broji unazad: zadnji ZT = vraćeni broj, ZT prije
+      // njega = broj - 1, ..., glavna = broj - (broj troškova).
+      const kufZadnji = Number(json.data?.kuf_broj);
+      const kufOk = Number.isFinite(kufZadnji) && kufZadnji > 0;
+      const kufGlavna = kufOk ? kufZadnji - troskovi.length : null;
+      setKufRezultat({
+        sifraKalkulacije: sifra ?? null,
+        kufGlavna,
+        dobavljac: partner?.naziv ?? "",
+        brojFakture: brojKalkulacije.trim(),
+        troskovi: troskovi.map((t, i) => ({
+          naziv: t.nazivVrste,
+          dobavljac: t.nazivPartnera,
+          brojRacuna: t.brojRacuna,
+          kuf: kufOk ? kufZadnji - (troskovi.length - 1 - i) : null,
+        })),
+        greska: json.data?.kuf_greska ?? null,
+      });
+      setPrikazanKuf(true);
+
       // Unos se prazni i ekran je spreman za novu kalkulaciju.
       ponistiSve();
       setUspjeh(
@@ -1396,7 +1697,6 @@ export function KalkulacijaUnos() {
           PREUZMI_JSON_PRI_ZAKLJUCENJU ? " JSON je preuzet." : ""
         }`,
       );
-      setTimeout(() => partnerRef.current?.focus(), 0);
       // Stanje artikala se promijenilo — osvježi listu (stanje, VPC).
       fetch(`${API_URL}/api/artikli/pregled-sve`, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))
@@ -1470,11 +1770,103 @@ export function KalkulacijaUnos() {
         </div>
       )}
 
+      {/* KUF broj nakon upisa — uočljivo, operater ga upisuje na fakturu */}
+      {prikazanKuf && kufRezultat && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648] shadow-2xl p-6 space-y-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 font-semibold">
+              <CheckCircle2 size={20} />
+              Kalkulacija
+              {kufRezultat.sifraKalkulacije
+                ? ` br. ${kufRezultat.sifraKalkulacije}`
+                : ""}{" "}
+              je upisana
+            </div>
+
+            {kufRezultat.kufGlavna !== null ? (
+              <>
+                <div className="text-sm text-gray-600 dark:text-[#c5bfd8]">
+                  Upišite na fakturu{" "}
+                  <b>{kufRezultat.brojFakture}</b> dobavljača{" "}
+                  <b>{kufRezultat.dobavljac}</b>:
+                </div>
+                <div
+                  className="rounded-2xl py-4 text-white"
+                  style={{ background: PRIMARY }}
+                >
+                  <div className="text-xs font-bold uppercase tracking-widest opacity-80">
+                    KUF broj
+                  </div>
+                  <div className="text-6xl font-extrabold tabular-nums">
+                    {kufRezultat.kufGlavna}
+                  </div>
+                </div>
+
+                {kufRezultat.troskovi.length > 0 && (
+                  <div className="text-left space-y-1.5">
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#9e96b8]">
+                      Vezani troškovi
+                    </div>
+                    {kufRezultat.troskovi.map((t, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828]"
+                      >
+                        <div className="min-w-0 text-sm text-gray-700 dark:text-[#c5bfd8]">
+                          <div className="font-semibold truncate">
+                            {t.naziv}
+                          </div>
+                          <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
+                            {t.dobavljac} · rn. {t.brojRacuna}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          <div className="text-[10px] font-bold uppercase text-gray-500 dark:text-[#9e96b8]">
+                            KUF
+                          </div>
+                          <div
+                            className="text-2xl font-extrabold tabular-nums"
+                            style={{ color: PRIMARY }}
+                          >
+                            {t.kuf}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-left bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                <AlertTriangle size={15} className="flex-shrink-0" />
+                KUF broj nije određen
+                {kufRezultat.greska ? `: ${kufRezultat.greska}` : ""}.
+                Kalkulacija je ipak upisana.
+              </div>
+            )}
+
+            <button
+              type="button"
+              autoFocus
+              onClick={() => {
+                setPrikazanKuf(false);
+                setTimeout(() => partnerRef.current?.focus(), 0);
+              }}
+              className="w-full px-5 py-3 rounded-xl text-sm font-semibold text-white"
+              style={{ background: ACCENT }}
+            >
+              Upisao sam — nastavi
+            </button>
+          </div>
+        </div>
+      )}
+
       {trosakModal && (
-        <VezaniTrosakModal
+        <VezaniRacunModal
           partneri={partneri}
           vrste={vrsteTroska}
           pocetni={trosakModal === "novi" ? null : trosakModal}
+          glavniPartnerId={partner?.partner_id ?? null}
           onSacuvaj={sacuvajTrosak}
           onZatvori={() => setTrosakModal(null)}
         />
@@ -1715,73 +2107,110 @@ export function KalkulacijaUnos() {
                 style={{ background: PRIMARY }}
               >
                 <Plus size={13} />
-                Dodaj trošak
+                Dodaj račun
               </button>
             </div>
 
-            {troskovi.length === 0 ? (
+            {racuni.length === 0 ? (
               <p className="text-xs text-gray-500 dark:text-[#9e96b8]">
                 Nema vezanih troškova (prevoz, carinjenje, takse...).
               </p>
             ) : (
               <>
-                <div className="space-y-1.5">
-                  {troskovi.map((t) => (
-                    <div
-                      key={t.id}
-                      onClick={() => setTrosakModal(t)}
-                      title="Klik za izmjenu troška"
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer bg-[#f4f1f9] dark:bg-[#1c1828] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate text-gray-800 dark:text-[#ede9f6]">
-                          {t.nazivVrste}
-                        </div>
-                        <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
-                          {t.nazivPartnera} · rn. {t.brojRacuna} ·{" "}
-                          {formatDatumDMY(t.datum)} · tip {t.tipDokumenta}
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <div className="text-sm font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
-                          <span className="mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
-                            Ukupno
-                          </span>
-                          {formatBroj(t.iznos)}
-                          <span className="ml-3 mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
-                            PDV
-                          </span>
-                          {formatBroj(pdvTroska(t))}
-                        </div>
-                        <div
-                          className="text-[11px] font-semibold"
-                          style={{
-                            color:
-                              t.pdv === "bez"
-                                ? "#9ca3af"
-                                : t.pdv === "ino"
-                                  ? SIROVINA_BOJA
-                                  : PRIMARY,
-                          }}
-                        >
-                          {PDV_TROSKA_NAZIV[t.pdv]}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTroskovi((prev) =>
-                            prev.filter((x) => x.id !== t.id),
-                          );
-                        }}
-                        className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        title="Ukloni trošak"
+                <div className="space-y-2">
+                  {racuni.map((r) => {
+                    const iznosR = round2(
+                      r.stavke.reduce((z, s) => z + s.iznos, 0),
+                    );
+                    const pdvR = round2(
+                      r.stavke.reduce((z, s) => z + pdvTroska(s), 0),
+                    );
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => setTrosakModal(r)}
+                        title="Klik za izmjenu računa"
+                        className="rounded-xl px-3 py-2 cursor-pointer bg-[#f4f1f9] dark:bg-[#1c1828] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                       >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                        {/* Zaglavlje računa */}
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold truncate text-gray-800 dark:text-[#ede9f6]">
+                              {r.nazivPartnera}
+                            </div>
+                            <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
+                              rn. {r.brojRacuna} · {formatDatumDMY(r.datum)} ·{" "}
+                              {r.stavke.length}{" "}
+                              {r.stavke.length === 1 ? "stavka" : "stavke"}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 text-sm font-bold tabular-nums text-gray-800 dark:text-[#ede9f6]">
+                            <span className="mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
+                              Ukupno
+                            </span>
+                            {formatBroj(iznosR)}
+                            <span className="ml-3 mr-1.5 text-xs font-normal text-gray-500 dark:text-[#9e96b8]">
+                              PDV
+                            </span>
+                            {formatBroj(pdvR)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRacuni((prev) =>
+                                prev.filter((x) => x.id !== r.id),
+                              );
+                            }}
+                            className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="Ukloni račun"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {/* Stavke računa */}
+                        <div className="mt-1.5 pl-3 border-l-2 border-gray-200 dark:border-[#3a3158] space-y-0.5">
+                          {r.stavke.map((s) => (
+                            <div
+                              key={s.id}
+                              className="flex items-center justify-between gap-3 text-xs text-gray-600 dark:text-[#c5bfd8]"
+                            >
+                              <span className="truncate">
+                                <span className="font-mono text-gray-400 mr-1.5">
+                                  {s.tipDokumenta}
+                                </span>
+                                {s.nazivVrste}
+                                {s.napomena && (
+                                  <span className="text-gray-400">
+                                    {" "}
+                                    — {s.napomena}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="flex-shrink-0 tabular-nums">
+                                {formatBroj(s.iznos)}
+                                <span
+                                  className="ml-2 font-semibold"
+                                  style={{
+                                    color:
+                                      s.pdv === "bez"
+                                        ? "#9ca3af"
+                                        : s.pdv === "ino"
+                                          ? SIROVINA_BOJA
+                                          : PRIMARY,
+                                  }}
+                                >
+                                  {s.pdv === "bez"
+                                    ? PDV_TROSKA_NAZIV.bez
+                                    : `${PDV_TROSKA_NAZIV[s.pdv]} ${formatBroj(pdvTroska(s))}`}
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="flex justify-between gap-4 text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
                   <span>Ukupno troškovi</span>
@@ -2382,6 +2811,27 @@ export function KalkulacijaUnos() {
               Zaključi kalkulaciju
             </button>
           </div>
+
+          {/* Diskretan podsjetnik na KUF broj zadnje upisane kalkulacije */}
+          {kufRezultat && (
+            <button
+              type="button"
+              onClick={() => setPrikazanKuf(true)}
+              title="Prikaži KUF brojeve zadnje kalkulacije"
+              className="text-xs text-gray-500 dark:text-[#9e96b8] hover:underline"
+            >
+              Zadnja kalkulacija
+              {kufRezultat.sifraKalkulacije
+                ? ` br. ${kufRezultat.sifraKalkulacije}`
+                : ""}{" "}
+              · KUF{" "}
+              <b style={{ color: PRIMARY }}>
+                {kufRezultat.kufGlavna ?? "?"}
+              </b>
+              {kufRezultat.troskovi.length > 0 &&
+                ` (+${kufRezultat.troskovi.length} ZT)`}
+            </button>
+          )}
           </div>
         </div>
       </div>
