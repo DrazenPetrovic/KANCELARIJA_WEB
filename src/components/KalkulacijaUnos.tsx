@@ -633,9 +633,8 @@ function VezaniRacunModal({
         : prev.map((s) => (s.id === izmjenaId ? stavka : s)),
     );
     setGreska(null);
+    // Zaglavlje računa (partner, broj, datum) ostaje; polja stavke se brišu.
     ocistiStavku();
-    // Sljedeća stavka nastavlja sa istim tipom dokumenta.
-    setTipDokumenta(stavka.tipDokumenta);
     setTimeout(() => tipRef.current?.focus(), 0);
   };
 
@@ -2578,7 +2577,7 @@ export function KalkulacijaUnos() {
                         type="text"
                         readOnly
                         tabIndex={-1}
-                        value={formatBroj(broj(odabrani.nabavna_cijena), 3)}
+                        value={formatBroj(broj(odabrani.nabavna_cijena), 5)}
                         className={samoCitanjeClass}
                       />
                     </Field>
@@ -2724,7 +2723,7 @@ export function KalkulacijaUnos() {
                     <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white/90 text-red-600">
                       <AlertTriangle size={13} className="flex-shrink-0" />
                       VPC ({formatBroj(broj(vpc))}) je manja od nabavne cijene (
-                      {formatBroj(broj(odabrani.nabavna_cijena), 3)}).
+                      {formatBroj(broj(odabrani.nabavna_cijena), 5)}).
                     </div>
                   )}
 

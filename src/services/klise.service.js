@@ -62,7 +62,7 @@ export const unosNaplateOdKupca = async ({ sifra, ukupno_naplaceno }) => {
 export const getKlisePregled = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(
-      "CALL ziralni.sp_klise_pregled_podataka()",
+      "CALL erp.klisea_pregled_podataka()",
     );
 
     const klise = rows?.[0] || [];

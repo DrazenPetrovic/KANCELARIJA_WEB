@@ -702,7 +702,7 @@ export function KarticaProizvoda({
                             <td
                               className={`px-4 py-2 text-sm text-right text-gray-600 dark:text-[#c5bfd8] ${border}`}
                             >
-                              {formatIznos(s.nabavna_cijena, 3)}
+                              {formatIznos(s.nabavna_cijena, 5)}
                             </td>
                             <td
                               className={`px-4 py-2 text-sm text-center text-gray-600 dark:text-[#c5bfd8] ${border}`}
@@ -770,7 +770,7 @@ export function KarticaProizvoda({
                 </div>
                 <StatTile
                   icon={<CreditCard size={16} />}
-                  vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez, 3)}
+                  vrijednost={formatIznos(nabavnaCijenaPodaci?.cijena_bez, 5)}
                   naziv="Nabavna cijena"
                   boja={PRIMARY}
                 />

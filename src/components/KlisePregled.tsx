@@ -276,7 +276,7 @@ export function KlisePregled() {
       </div>
 
       {/* Tabela */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-fit min-w-[50%] max-w-full mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -302,7 +302,7 @@ export function KlisePregled() {
 
         {!loading && !error && filtered.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="table-auto">
               <thead>
                 <tr>
                   <TH>Šif</TH>
@@ -319,6 +319,8 @@ export function KlisePregled() {
                   <TH center>Površina</TH>
                   <TH center>Br. računa</TH>
                   <TH center>Datum računa</TH>
+                  <TH center>KM/dm²</TH>
+                  <TH>Napomena</TH>
                 </tr>
               </thead>
               <tbody>
@@ -329,9 +331,8 @@ export function KlisePregled() {
                     : "hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40";
                   return (
                     <Fragment key={k.sifra ?? i}>
-                      {/* Red 1 — podaci */}
                       <tr className={`transition-colors ${rowBg}`}>
-                        <TD noBorder>
+                        <TD>
                           <span
                             className="font-mono font-semibold text-xs"
                             style={{ color: PRIMARY }}
@@ -339,39 +340,36 @@ export function KlisePregled() {
                             {k.sifra}
                           </span>
                         </TD>
-                        <TD noBorder narrow>
+                        <TD narrow>
                           <span className="font-medium">{k.naziv_klisea}</span>
                         </TD>
-                        <TD noBorder>{k.lokacija_partnera}</TD>
-                        <TD noBorder>{k.dimenzija_za_stampu}</TD>
-                        <TD noBorder narrow>
+                        <TD>{k.lokacija_partnera}</TD>
+                        <TD>{k.dimenzija_za_stampu}</TD>
+                        <TD narrow>
                           {k.povrsina_klisea}
                         </TD>
-                        <TD noBorder center>
+                        <TD center>
                           {k.cijena_klisea}
                         </TD>
-                        <TD noBorder center>
+                        <TD center>
                           {k.datum_narcucivanja}
                         </TD>
-                        <TD noBorder center>
+                        <TD center>
                           <StatusBadge status={k.primljen_u_proizvodnju} />
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={k.naplacen_kancelarija === "ceka"}
                         >
                           {k.naplacen_kancelarija === "ceka" ? "čeka" : k.naplacen_kancelarija}
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={k.dobavljac_klisea === "ceka"}
                         >
                           {k.dobavljac_klisea === "ceka" ? "čeka" : k.dobavljac_klisea}
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={Number(k.placeno_dobavljacu) < 0}
                         >
@@ -380,7 +378,6 @@ export function KlisePregled() {
                             : `${k.placeno_dobavljacu} KM`}
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={Number(k.povrsina_kod_dobavljaca) < 0}
                         >
@@ -389,43 +386,28 @@ export function KlisePregled() {
                             : `${k.povrsina_kod_dobavljaca} dm²`}
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={k.broj_racuna_od_dobavljaca === "ceka"}
                         >
                           {k.broj_racuna_od_dobavljaca === "ceka" ? "čeka" : k.broj_racuna_od_dobavljaca}
                         </TD>
                         <TD
-                          noBorder
                           center
                           pending={k.datum_racuna_od_dobavljaca === "ceka"}
                         >
                           {k.datum_racuna_od_dobavljaca === "ceka" ? "čeka" : k.datum_racuna_od_dobavljaca}
                         </TD>
-                      </tr>
-
-                      {/* Red 2 — napomena */}
-                      <tr className={`transition-colors ${rowBg}`}>
-                        <td
-                          colSpan={9}
-                          className="px-4 pb-2.5 pt-0 text-xs border-b border-gray-100 dark:border-[#2d2648] text-gray-400 dark:text-[#5f5878]"
-                        >
-                          <span className="font-semibold text-gray-500 dark:text-[#7d7498]">
-                            Napomena:{" "}
-                          </span>
-                          {k.napomena}
-                        </td>
-                        <td
-                          colSpan={5}
-                          className="px-3 pb-2.5 pt-0 text-xs border-b border-gray-100 dark:border-[#2d2648] text-center"
-                        >
+                        <TD center>
                           {Number(k.placeno_dobavljacu) > 0 && Number(k.povrsina_kod_dobavljaca) > 0 ? (
                             <span className="font-semibold" style={{ color: PRIMARY }}>
-                              {(Number(k.placeno_dobavljacu) / Number(k.povrsina_kod_dobavljaca)).toFixed(3)} KM/dm²
+                              {(Number(k.placeno_dobavljacu) / Number(k.povrsina_kod_dobavljaca)).toFixed(3)}
                             </span>
                           ) : (
                             <span className="text-gray-400 dark:text-[#5f5878]">–</span>
                           )}
+                        </TD>
+                        <td className="px-3 py-2.5 text-xs border-b border-gray-100 dark:border-[#2d2648] text-gray-500 dark:text-[#7d7498] min-w-[200px] max-w-[320px]">
+                          {k.napomena || "–"}
                         </td>
                       </tr>
                     </Fragment>

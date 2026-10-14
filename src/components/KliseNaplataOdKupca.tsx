@@ -133,9 +133,9 @@ export function KliseNaplataOdKupca() {
         </h2>
       </div>
 
-      <div className="flex gap-6 items-start">
+      <div className="flex gap-6 items-start justify-center">
         {/* Lijeva kolona — lista klišea sa statusom 1 */}
-        <div className="flex-1 min-w-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="flex-initial min-w-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2d2648] bg-[#f4f1f9] dark:bg-[#2a2340]"
           >
@@ -172,7 +172,7 @@ export function KliseNaplataOdKupca() {
 
           {!loading && lista.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="table-auto text-sm">
                 <thead>
                   <tr
                     className="text-xs font-semibold text-white uppercase tracking-wider"
@@ -184,7 +184,8 @@ export function KliseNaplataOdKupca() {
                     <th className="px-4 py-3 text-left">Dimenzija</th>
                     <th className="px-4 py-3 text-right">Površina</th>
                     <th className="px-4 py-3 text-right">Cijena</th>
-                    <th className="px-4 py-3 text-left">Datum naručivanja</th>
+                    <th className="px-4 py-3 text-left">Datum</th>
+                    <th className="px-4 py-3 text-left">Napomena</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -228,6 +229,9 @@ export function KliseNaplataOdKupca() {
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-[#9e96b8]">
                           {formatDatum(k.datum_narcucivanja)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-[#7d7498] min-w-[200px] max-w-[320px]">
+                          {k.napomena || "–"}
                         </td>
                       </tr>
                     );

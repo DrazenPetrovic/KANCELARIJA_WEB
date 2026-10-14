@@ -414,8 +414,12 @@ const formatDatumVrijemeDMY = (v: unknown): string => {
 // (round2 vraća čist JS broj, koji bi bez ovoga izgubio ".00" za cijele iznose).
 const KOLONE_UVIJEK_DECIMALNE = ["ukupno", "prodajna_vrednost"];
 
-// Količina i nabavna cijena se uvijek prikazuju sa 3 decimale.
-const KOLONE_TRI_DECIMALE = ["kolicina", "nabavna_cijena"];
+// Količina se uvijek prikazuje sa 3 decimale.
+const KOLONE_TRI_DECIMALE = ["kolicina"];
+
+// Nabavna cijena se uvijek prikazuje sa 5 decimala (erp.artikli.cijena_bez je
+// decimal(13,5) i zna imati stvarnu preciznost preko 2 decimale).
+const KOLONE_PET_DECIMALA = ["nabavna_cijena", "nabavna_cijena_proizvoda"];
 
 const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   if (kljuc === "datum_racuna") return formatDatumDMY(v);
@@ -423,6 +427,9 @@ const formatirajVrijednost = (v: unknown, kljuc?: string): string => {
   if (v === null || v === undefined || v === "") return "–";
   if (izgledaKaoBroj(v)) {
     const n = Number(v);
+    if (kljuc !== undefined && KOLONE_PET_DECIMALA.includes(kljuc)) {
+      return n.toFixed(5);
+    }
     if (kljuc !== undefined && KOLONE_TRI_DECIMALE.includes(kljuc)) {
       return n.toFixed(3);
     }

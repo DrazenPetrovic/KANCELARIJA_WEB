@@ -251,7 +251,7 @@ export function NivelacijaUnos() {
     }
     if (ispodNabavne) {
       setGreska(
-        `Nova VPC (${formatBroj(novaVpcBroj)}) ne smije biti ispod nabavne cijene (${formatBroj(odabraniNabavna, 3)}).`,
+        `Nova VPC (${formatBroj(novaVpcBroj)}) ne smije biti ispod nabavne cijene (${formatBroj(odabraniNabavna, 5)}).`,
       );
       return;
     }
@@ -524,7 +524,7 @@ export function NivelacijaUnos() {
                 },
                 {
                   label: "Nabavna cijena",
-                  vrijednost: formatBroj(odabraniNabavna, 3),
+                  vrijednost: formatBroj(odabraniNabavna, 5),
                 },
                 {
                   label: "Trenutna VPC",
@@ -600,7 +600,7 @@ export function NivelacijaUnos() {
               <p className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
                 <AlertTriangle size={12} />
                 Nova VPC ne smije biti ispod nabavne cijene (
-                {formatBroj(odabraniNabavna, 3)}).
+                {formatBroj(odabraniNabavna, 5)}).
               </p>
             )}
             {!ispodNabavne && novaVpcBroj > 0 && broj(odabrani.vpc) > 0 && (
@@ -709,7 +709,7 @@ export function NivelacijaUnos() {
                     <TD right>
                       {formatBroj(s.kolicina, 3)} {s.jm}
                     </TD>
-                    <TD right>{formatBroj(s.nabavna, 3)}</TD>
+                    <TD right>{formatBroj(s.nabavna, 5)}</TD>
                     <TD right>{formatBroj(s.staraVpc)}</TD>
                     <TD right className="font-bold">
                       {formatBroj(s.novaVpc)}
