@@ -412,6 +412,15 @@ const pdvTroska = (
       ? 0
       : round2(t.iznos * PDV_STOPA);
 
+// Dug prema dobavljaču za stavku ZT: UIO — cijela uplata (PDV); domaći PDV —
+// iznos sa PDV-om; ino PDV i bez PDV-a — iznos bez PDV-a.
+const dugTroska = (
+  t: Pick<VezaniTrosak, "iznos" | "pdv" | "samoPdv" | "pdvIznos">,
+) =>
+  t.samoPdv
+    ? round2(t.pdvIznos ?? 0)
+    : round2(t.iznos + (t.pdv === "domaci" ? pdvTroska(t) : 0));
+
 const PDV_TROSKA_NAZIV: Record<PdvTroska, string> = {
   bez: "Bez PDV",
   domaci: "Domaći PDV",
@@ -435,6 +444,7 @@ function VezaniRacunModal({
   vrste,
   pocetni,
   glavniPartnerId,
+  zauzetiPartneri,
   onSacuvaj,
   onZatvori,
 }: {
@@ -443,6 +453,9 @@ function VezaniRacunModal({
   pocetni: VezaniRacun | null;
   // Dobavljač glavne kalkulacije — ne smije biti partner vezanog troška.
   glavniPartnerId: number | null;
+  // Partneri koji već imaju račun ZT na ovoj kalkulaciji — jedan partner
+  // može imati samo jedan račun (jedan red u kalkulacija_gl).
+  zauzetiPartneri: number[];
   onSacuvaj: (r: Omit<VezaniRacun, "id">) => void;
   onZatvori: () => void;
 }) {
@@ -491,7 +504,9 @@ function VezaniRacunModal({
     const q = pretraga.trim().toLowerCase();
     // Dobavljač glavne kalkulacije se ne nudi.
     const dozvoljeni = partneri.filter(
-      (p) => p.partner_id !== glavniPartnerId,
+      (p) =>
+        p.partner_id !== glavniPartnerId &&
+        !zauzetiPartneri.includes(p.partner_id),
     );
     const l = q
       ? dozvoljeni.filter(
@@ -503,7 +518,7 @@ function VezaniRacunModal({
         )
       : dozvoljeni;
     return l.slice(0, 60);
-  }, [partneri, pretraga, glavniPartnerId]);
+  }, [partneri, pretraga, glavniPartnerId, zauzetiPartneri]);
 
   const ponistiPartnera = () => {
     setPartner(null);
@@ -515,6 +530,12 @@ function VezaniRacunModal({
     if (p.partner_id === glavniPartnerId) {
       setGreska(
         "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
+      );
+      return;
+    }
+    if (zauzetiPartneri.includes(p.partner_id)) {
+      setGreska(
+        "Ovaj partner već ima račun vezanih troškova na kalkulaciji — dodajte stavke na postojeći račun.",
       );
       return;
     }
@@ -570,10 +591,21 @@ function VezaniRacunModal({
   const dodajStavku = () => {
     const vrsta = vrste.find((v) => String(v.sifra) === sifraVrste);
     if (!tipDokumenta) return setGreska("Izaberite tip dokumenta.");
+    // Račun je jedan red u KUF-u (kalkulacija_gl) sa jednim tipom dokumenta.
+    if (
+      stavke.some((s) => s.id !== izmjenaId && s.tipDokumenta !== tipDokumenta)
+    )
+      return setGreska(
+        "Sve stavke jednog računa moraju imati isti tip dokumenta (račun je jedan red u KUF-u).",
+      );
     if (!vrsta) return setGreska("Izaberite vrstu troška.");
     if (!(iznosBroj > 0)) return setGreska("Unesite ukupan iznos stavke.");
-    if (!jeUio && saPdv && !vrstaPdv)
-      return setGreska("Izaberite da li je PDV domaći ili INO.");
+    if ((jeUio || saPdv) && !vrstaPdv)
+      return setGreska(
+        jeUio
+          ? "Izaberite da li je PDV domaći ili uvozni."
+          : "Izaberite da li je PDV domaći ili INO.",
+      );
     const stavka: StavkaTroska = jeUio
       ? {
           id: izmjenaId ?? sljedeciId.current++,
@@ -582,7 +614,7 @@ function VezaniRacunModal({
           nazivVrste: vrsta.naziv_zavisnog_troska,
           napomena: napomena.trim(),
           iznos: 0,
-          pdv: "domaci",
+          pdv: vrstaPdv ?? "domaci",
           samoPdv: true,
           pdvIznos: iznosBroj,
         }
@@ -602,6 +634,8 @@ function VezaniRacunModal({
     );
     setGreska(null);
     ocistiStavku();
+    // Sljedeća stavka nastavlja sa istim tipom dokumenta.
+    setTipDokumenta(stavka.tipDokumenta);
     setTimeout(() => tipRef.current?.focus(), 0);
   };
 
@@ -614,6 +648,10 @@ function VezaniRacunModal({
     if (partner.partner_id === glavniPartnerId)
       return setGreska(
         "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
+      );
+    if (zauzetiPartneri.includes(partner.partner_id))
+      return setGreska(
+        "Ovaj partner već ima račun vezanih troškova na kalkulaciji — dodajte stavke na postojeći račun.",
       );
     if (!brojRacuna.trim()) return setGreska("Unesite broj računa.");
     if (!datum) return setGreska("Unesite datum računa.");
@@ -839,9 +877,32 @@ function VezaniRacunModal({
           </div>
 
           {jeUio ? (
-            <div className="rounded-xl px-3 py-2.5 text-sm font-semibold text-white" style={{ background: PRIMARY }}>
-              Domaći PDV — partner UIO: cijeli uneseni iznos je PDV i ne
-              ulazi u trošak proizvoda.
+            <div className="space-y-2">
+              <div
+                className="rounded-xl px-3 py-2 text-xs font-semibold text-white"
+                style={{ background: PRIMARY }}
+              >
+                Partner UIO: cijeli uneseni iznos je PDV i ne ulazi u trošak
+                proizvoda.
+              </div>
+              <Field label="Vrsta PDV-a">
+                <div className="grid grid-cols-2 gap-2">
+                  {(["domaci", "ino"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setVrstaPdv(v)}
+                      className={izborDugmeClass(vrstaPdv === v)}
+                      style={izborDugmeStyle(
+                        vrstaPdv === v,
+                        v === "ino" ? SIROVINA_BOJA : PRIMARY,
+                      )}
+                    >
+                      {v === "ino" ? "Uvozni PDV" : "Domaći PDV"}
+                    </button>
+                  ))}
+                </div>
+              </Field>
             </div>
           ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1651,26 +1712,32 @@ export function KalkulacijaUnos() {
       nasa_ulazna_cijena: nasaUlaznaCijena(s),
       vpc: s.vpc,
     })),
-    zavisni_troskovi: troskovi.map((t) => ({
+    // Jedan račun ZT (jedan partner) = jedan red u kalkulacija_gl
+    // (vrsta_kalkulacije 'ZT'); njegove stavke idu u zavisan_trosak.
+    zavisni_troskovi: racuni.map((r) => ({
       kalkulacija_robe: 0,
-      sifra_vrste_troska: t.sifraVrste,
-      naziv_troska: t.nazivVrste,
-      sifra_dobavljaca: t.partnerId,
-      tip_dokumenta_el_kuf: t.tipDokumenta,
-      datum: t.datum,
-      broj_racuna: t.brojRacuna,
-      napomena: t.napomena,
-      iznos: t.iznos,
-      obracun_pdv: t.pdv === "bez" ? 0 : 1,
-      ino_pdv: t.pdv === "ino" ? 1 : 0,
-      iznos_pdv: pdvTroska(t),
-      // 1 = UIO: iznos je 0, a cijela uplata je domaći PDV (iznos_pdv).
-      samo_pdv: t.samoPdv ? 1 : 0,
-      // Dug prema dobavljaču troška: domaći PDV — sa PDV-om; ino PDV i bez
-      // PDV-a — bez PDV-a.
+      sifra_dobavljaca: r.partnerId,
+      broj_racuna: r.brojRacuna,
+      datum: r.datum,
+      // Sve stavke računa imaju isti tip (provjerava se u modalu).
+      tip_dokumenta_el_kuf: r.stavke[0]?.tipDokumenta ?? "01",
+      ukupno_km: round2(r.stavke.reduce((z, s) => z + s.iznos, 0)),
+      ukupno_pdv: round2(r.stavke.reduce((z, s) => z + pdvTroska(s), 0)),
       duzi_se_za_iznos: round2(
-        t.iznos + (t.pdv === "domaci" ? pdvTroska(t) : 0),
+        r.stavke.reduce((z, s) => z + dugTroska(s), 0),
       ),
+      stavke: r.stavke.map((s) => ({
+        sifra_vrste_troska: s.sifraVrste,
+        naziv_troska: s.nazivVrste,
+        napomena: s.napomena,
+        iznos: s.iznos,
+        obracun_pdv: s.pdv === "bez" ? 0 : 1,
+        ino_pdv: s.pdv === "ino" ? 1 : 0,
+        iznos_pdv: pdvTroska(s),
+        // 1 = UIO: iznos je 0, a cijela uplata je PDV (iznos_pdv).
+        samo_pdv: s.samoPdv ? 1 : 0,
+        duzi_se_za_iznos: dugTroska(s),
+      })),
     })),
   });
 
@@ -1726,17 +1793,17 @@ export function KalkulacijaUnos() {
       // njega = broj - 1, ..., glavna = broj - (broj troškova).
       const kufZadnji = Number(json.data?.kuf_broj);
       const kufOk = Number.isFinite(kufZadnji) && kufZadnji > 0;
-      const kufGlavna = kufOk ? kufZadnji - troskovi.length : null;
+      const kufGlavna = kufOk ? kufZadnji - racuni.length : null;
       setKufRezultat({
         sifraKalkulacije: sifra ?? null,
         kufGlavna,
         dobavljac: partner?.naziv ?? "",
         brojFakture: brojKalkulacije.trim(),
-        troskovi: troskovi.map((t, i) => ({
-          naziv: t.nazivVrste,
-          dobavljac: t.nazivPartnera,
-          brojRacuna: t.brojRacuna,
-          kuf: kufOk ? kufZadnji - (troskovi.length - 1 - i) : null,
+        troskovi: racuni.map((r, i) => ({
+          naziv: r.stavke.map((s) => s.nazivVrste).join(", "),
+          dobavljac: r.nazivPartnera,
+          brojRacuna: r.brojRacuna,
+          kuf: kufOk ? kufZadnji - (racuni.length - 1 - i) : null,
         })),
         greska: json.data?.kuf_greska ?? null,
       });
@@ -1919,6 +1986,11 @@ export function KalkulacijaUnos() {
           vrste={vrsteTroska}
           pocetni={trosakModal === "novi" ? null : trosakModal}
           glavniPartnerId={partner?.partner_id ?? null}
+          zauzetiPartneri={racuni
+            .filter(
+              (r) => trosakModal === "novi" || r.id !== trosakModal?.id,
+            )
+            .map((r) => r.partnerId)}
           onSacuvaj={sacuvajTrosak}
           onZatvori={() => setTrosakModal(null)}
         />
@@ -2640,6 +2712,20 @@ export function KalkulacijaUnos() {
                       <AlertTriangle size={12} />
                       VPC je ispod fakturne cijene.
                     </p>
+                  )}
+
+                {/* Info kad operater sam upisuje VPC manju od nabavne cijene
+                    artikla (nabavna_cijena iz šifarnika) — samo upozorenje. */}
+                {vrsta === "roba" &&
+                  !vpcZakljucana &&
+                  broj(vpc) > 0 &&
+                  broj(odabrani.nabavna_cijena) > 0 &&
+                  broj(vpc) < broj(odabrani.nabavna_cijena) && (
+                    <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-white/90 text-red-600">
+                      <AlertTriangle size={13} className="flex-shrink-0" />
+                      VPC ({formatBroj(broj(vpc))}) je manja od nabavne cijene (
+                      {formatBroj(broj(odabrani.nabavna_cijena), 3)}).
+                    </div>
                   )}
 
                 <button
