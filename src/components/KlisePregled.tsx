@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BadgeCheck,
   ClipboardList,
@@ -101,14 +101,14 @@ function StatusBadge({ status }: { status: number }) {
 const TH = ({
   children,
   center,
-  narrow,
+  sub,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   center?: boolean;
-  narrow?: boolean;
+  sub?: boolean;
 }) => (
   <th
-    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap ${center ? "text-center" : "text-left"} bg-[#f4f1f9] dark:bg-[#2a2340]`}
+    className={`px-3 ${sub ? "py-1.5 border-b-2 border-[#d9d0e8] dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#231d36]" : "pt-2 pb-1 bg-[#f4f1f9] dark:bg-[#2a2340]"} text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${center ? "text-center" : "text-left"}`}
     style={{ color: PRIMARY }}
   >
     {children}
@@ -118,20 +118,22 @@ const TH = ({
 const TD = ({
   children,
   pending,
-  noBorder,
-  narrow,
   center,
+  sub,
+  className = "",
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   pending?: boolean;
-  noBorder?: boolean;
-  narrow?: boolean;
   center?: boolean;
+  sub?: boolean;
+  className?: string;
 }) => (
   <td
-    className={`${narrow ? "pl-1 pr-3" : "px-3"} py-2.5 text-sm whitespace-nowrap ${
-      noBorder ? "" : "border-b border-gray-100 dark:border-[#2d2648]"
-    } ${pending ? "text-amber-500" : "text-gray-700 dark:text-[#c5bfd8]"} ${center ? "text-center" : ""}`}
+    className={`px-3 whitespace-nowrap ${
+      sub
+        ? "pt-0.5 pb-2 text-xs border-b border-gray-200 dark:border-[#3a3158]"
+        : "pt-2 pb-0.5 text-sm"
+    } ${pending ? "text-amber-500" : sub ? "text-gray-500 dark:text-[#9a92b4]" : "text-gray-700 dark:text-[#c5bfd8]"} ${center ? "text-center" : ""} ${className}`}
   >
     {children}
   </td>
@@ -306,114 +308,107 @@ export function KlisePregled() {
               <thead>
                 <tr>
                   <TH>Šif</TH>
-                  <TH narrow>Naziv kliša</TH>
-                  <TH>Lokacija</TH>
+                  <TH>Naziv kliša</TH>
                   <TH>Dimenzija</TH>
-                  <TH narrow>Površina</TH>
                   <TH center>Cijena</TH>
-                  <TH center>Datum</TH>
-                  <TH center>Status</TH>
-                  <TH center>Naplaćeno</TH>
-                  <TH center>Dobavljač</TH>
-                  <TH center>Plaćeno dob</TH>
-                  <TH center>Površina</TH>
-                  <TH center>Br. računa</TH>
-                  <TH center>Datum računa</TH>
-                  <TH center>KM/dm²</TH>
                   <TH>Napomena</TH>
+                  <TH>Dobavljač</TH>
+                  <TH center>Br. računa</TH>
+                  <TH center>Površina dob</TH>
+                  <TH center>KM/dm²</TH>
+                </tr>
+                <tr>
+                  <TH sub />
+                  <TH sub>Lokacija</TH>
+                  <TH sub>Površina</TH>
+                  <TH sub center>Datum</TH>
+                  <TH sub>Status</TH>
+                  <TH sub>Naplaćeno</TH>
+                  <TH sub center>Datum računa</TH>
+                  <TH sub center>Plaćeno dob</TH>
+                  <TH sub />
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map((k, i) => {
-                  const hasPending = k.broj_nepopunjenih_polja > 0;
-                  const rowBg = hasPending
-                    ? "hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                    : "hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40";
-                  return (
-                    <Fragment key={k.sifra ?? i}>
-                      <tr className={`transition-colors ${rowBg}`}>
-                        <TD>
-                          <span
-                            className="font-mono font-semibold text-xs"
-                            style={{ color: PRIMARY }}
-                          >
-                            {k.sifra}
+              {filtered.map((k, i) => {
+                const hasPending = k.broj_nepopunjenih_polja > 0;
+                const hoverBg = hasPending
+                  ? "hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                  : "hover:bg-purple-50/40 dark:hover:bg-[#271f40]/40";
+                const stripe = i % 2 === 1 ? "bg-[#fcfbfe] dark:bg-[#2a2240]" : "";
+                const ceka = (v: string) => (v === "ceka" ? "čeka" : v);
+                return (
+                  <tbody
+                    key={k.sifra ?? i}
+                    className={`transition-colors ${stripe} ${hoverBg}`}
+                  >
+                    <tr>
+                      <TD>
+                        <span
+                          className="font-mono font-semibold text-xs"
+                          style={{ color: PRIMARY }}
+                        >
+                          {k.sifra}
+                        </span>
+                      </TD>
+                      <TD>
+                        <span className="font-medium text-gray-800 dark:text-[#ede9f6]">
+                          {k.naziv_klisea}
+                        </span>
+                      </TD>
+                      <TD>{k.dimenzija_za_stampu}</TD>
+                      <TD center>{k.cijena_klisea}</TD>
+                      <TD className="!whitespace-normal min-w-[180px] max-w-[260px] text-xs !text-gray-500 dark:!text-[#7d7498]">
+                        {k.napomena || "–"}
+                      </TD>
+                      <TD pending={k.dobavljac_klisea === "ceka"}>
+                        {ceka(k.dobavljac_klisea)}
+                      </TD>
+                      <TD center pending={k.broj_racuna_od_dobavljaca === "ceka"}>
+                        {ceka(k.broj_racuna_od_dobavljaca)}
+                      </TD>
+                      <TD center pending={Number(k.povrsina_kod_dobavljaca) < 0}>
+                        {Number(k.povrsina_kod_dobavljaca) < 0
+                          ? "čeka"
+                          : `${k.povrsina_kod_dobavljaca} dm²`}
+                      </TD>
+                      <TD center>
+                        {Number(k.placeno_dobavljacu) > 0 &&
+                        Number(k.povrsina_kod_dobavljaca) > 0 ? (
+                          <span className="font-semibold" style={{ color: PRIMARY }}>
+                            {(
+                              Number(k.placeno_dobavljacu) /
+                              Number(k.povrsina_kod_dobavljaca)
+                            ).toFixed(3)}
                           </span>
-                        </TD>
-                        <TD narrow>
-                          <span className="font-medium">{k.naziv_klisea}</span>
-                        </TD>
-                        <TD>{k.lokacija_partnera}</TD>
-                        <TD>{k.dimenzija_za_stampu}</TD>
-                        <TD narrow>
-                          {k.povrsina_klisea}
-                        </TD>
-                        <TD center>
-                          {k.cijena_klisea}
-                        </TD>
-                        <TD center>
-                          {k.datum_narcucivanja}
-                        </TD>
-                        <TD center>
-                          <StatusBadge status={k.primljen_u_proizvodnju} />
-                        </TD>
-                        <TD
-                          center
-                          pending={k.naplacen_kancelarija === "ceka"}
-                        >
-                          {k.naplacen_kancelarija === "ceka" ? "čeka" : k.naplacen_kancelarija}
-                        </TD>
-                        <TD
-                          center
-                          pending={k.dobavljac_klisea === "ceka"}
-                        >
-                          {k.dobavljac_klisea === "ceka" ? "čeka" : k.dobavljac_klisea}
-                        </TD>
-                        <TD
-                          center
-                          pending={Number(k.placeno_dobavljacu) < 0}
-                        >
-                          {Number(k.placeno_dobavljacu) < 0
-                            ? "čeka"
-                            : `${k.placeno_dobavljacu} KM`}
-                        </TD>
-                        <TD
-                          center
-                          pending={Number(k.povrsina_kod_dobavljaca) < 0}
-                        >
-                          {Number(k.povrsina_kod_dobavljaca) < 0
-                            ? "čeka"
-                            : `${k.povrsina_kod_dobavljaca} dm²`}
-                        </TD>
-                        <TD
-                          center
-                          pending={k.broj_racuna_od_dobavljaca === "ceka"}
-                        >
-                          {k.broj_racuna_od_dobavljaca === "ceka" ? "čeka" : k.broj_racuna_od_dobavljaca}
-                        </TD>
-                        <TD
-                          center
-                          pending={k.datum_racuna_od_dobavljaca === "ceka"}
-                        >
-                          {k.datum_racuna_od_dobavljaca === "ceka" ? "čeka" : k.datum_racuna_od_dobavljaca}
-                        </TD>
-                        <TD center>
-                          {Number(k.placeno_dobavljacu) > 0 && Number(k.povrsina_kod_dobavljaca) > 0 ? (
-                            <span className="font-semibold" style={{ color: PRIMARY }}>
-                              {(Number(k.placeno_dobavljacu) / Number(k.povrsina_kod_dobavljaca)).toFixed(3)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 dark:text-[#5f5878]">–</span>
-                          )}
-                        </TD>
-                        <td className="px-3 py-2.5 text-xs border-b border-gray-100 dark:border-[#2d2648] text-gray-500 dark:text-[#7d7498] min-w-[200px] max-w-[320px]">
-                          {k.napomena || "–"}
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
-              </tbody>
+                        ) : (
+                          <span className="text-gray-400 dark:text-[#5f5878]">–</span>
+                        )}
+                      </TD>
+                    </tr>
+                    <tr>
+                      <TD sub />
+                      <TD sub>{k.lokacija_partnera}</TD>
+                      <TD sub>{k.povrsina_klisea}</TD>
+                      <TD sub center>{k.datum_narcucivanja}</TD>
+                      <TD sub>
+                        <StatusBadge status={k.primljen_u_proizvodnju} />
+                      </TD>
+                      <TD sub pending={k.naplacen_kancelarija === "ceka"}>
+                        {ceka(k.naplacen_kancelarija)}
+                      </TD>
+                      <TD sub center pending={k.datum_racuna_od_dobavljaca === "ceka"}>
+                        {ceka(k.datum_racuna_od_dobavljaca)}
+                      </TD>
+                      <TD sub center pending={Number(k.placeno_dobavljacu) < 0}>
+                        {Number(k.placeno_dobavljacu) < 0
+                          ? "čeka"
+                          : `${k.placeno_dobavljacu} KM`}
+                      </TD>
+                      <TD sub />
+                    </tr>
+                  </tbody>
+                );
+              })}
             </table>
           </div>
         )}
