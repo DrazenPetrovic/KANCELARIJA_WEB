@@ -169,25 +169,31 @@ function StatTile({
   vrijednost,
   naziv,
   boja,
+  uze,
 }: {
   icon: React.ReactNode;
   vrijednost: string;
   naziv: string;
   boja: string;
+  // 30% uža pločica (ostale preuzimaju prostor).
+  uze?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 bg-white dark:bg-[#261f38] rounded-2xl shadow-sm px-4 py-3 flex-1 min-w-[170px] border border-gray-100 dark:border-[#2d2648]">
+    <div
+      className={`flex items-center gap-2 bg-white dark:bg-[#261f38] rounded-xl px-3 py-1.5 min-w-[140px] border ${uze ? "flex-[0.7]" : "flex-1"}`}
+      style={{ borderColor: PRIMARY }}
+    >
       <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ background: `${boja}1f` }}
       >
         <div style={{ color: boja }}>{icon}</div>
       </div>
       <div className="min-w-0">
-        <div className="text-lg font-bold leading-tight text-gray-800 dark:text-[#ede9f6]">
+        <div className="text-sm font-bold leading-tight text-gray-800 dark:text-[#ede9f6]">
           {vrijednost}
         </div>
-        <div className="text-xs text-gray-400 dark:text-[#5f5878] truncate">
+        <div className="text-[10px] text-gray-400 dark:text-[#5f5878] truncate">
           {naziv}
         </div>
       </div>
@@ -413,7 +419,7 @@ export function KalkulacijePregled() {
     return rezultat;
   }, [kalkulacije, kalkZaZt]);
 
-  // Period se gleda po datumu KALK-a (ZT idu uz svoj KALK i kad imaju
+  // Period se gleda po datumu unosa KALK-a (ZT idu uz svoj KALK i kad imaju
   // drugačiji datum); pretraga pogađa grupu ako odgovara bilo koji član.
   const grupeFiltrirano = useMemo(() => {
     const od = primenjeniOd ? new Date(`${primenjeniOd}T00:00:00`) : null;
@@ -425,7 +431,7 @@ export function KalkulacijePregled() {
       (k.naziv_dobavljaca ?? "").toLowerCase().includes(q);
     return grupe
       .filter((g) => {
-        const d = new Date(g.glavna.datum_kalkulacije);
+        const d = new Date(g.glavna.datum_unosa_kalkulacije ?? "");
         if (isNaN(d.getTime())) return false;
         if (od && d < od) return false;
         if (doo && d > doo) return false;
@@ -443,11 +449,13 @@ export function KalkulacijePregled() {
         if (!q) return true;
         return odgovara(g.glavna) || g.zt.some(odgovara);
       })
-      // Redoslijed po datumu unosa KALK-a (najnoviji prvi), pa po šifri.
+      // Redoslijed po danu unosa KALK-a (najnoviji prvi), a unutar istog dana
+      // po šifri kalkulacije (veća prva) — vrijeme unosa se zanemaruje.
       .sort((a, b) => {
         const vrijeme = (k: KalkulacijaGlavni) => {
-          const t = new Date(k.datum_unosa_kalkulacije ?? "").getTime();
-          return isNaN(t) ? 0 : t;
+          const d = new Date(k.datum_unosa_kalkulacije ?? "");
+          if (isNaN(d.getTime())) return 0;
+          return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
         };
         return (
           vrijeme(b.glavna) - vrijeme(a.glavna) ||
@@ -671,21 +679,6 @@ export function KalkulacijePregled() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Calculator size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Pregled kalkulacija
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Kalkulacije za izabrani period — klik na red otvara stavke
-          </p>
-        </div>
-      </div>
-
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -792,38 +785,39 @@ export function KalkulacijePregled() {
         </div>
       </div>
 
-      {/* Statistika */}
+      {/* Statistika — kompaktne pločice, svaka sa svojim okvirom */}
       {!loading && !greska && (
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <StatTile
-            icon={<FileText size={16} />}
+            icon={<FileText size={14} />}
             vrijednost={String(brojKalk)}
             naziv="Broj kalkulacija (KALK)"
             boja={PRIMARY}
+            uze
           />
           <StatTile
-            icon={<Truck size={16} />}
-            vrijednost={formatIznos(ukupnoZt)}
-            naziv="Zavisni troškovi (ZT)"
-            boja={ZT_BOJA}
-          />
-          <StatTile
-            icon={<TrendingUp size={16} />}
+            icon={<TrendingUp size={14} />}
             vrijednost={formatIznos(ukupnoKm)}
             naziv="Ukupno KM"
             boja={ACCENT}
           />
           <StatTile
-            icon={<Percent size={16} />}
+            icon={<Percent size={14} />}
             vrijednost={formatIznos(ukupnoRab)}
             naziv="Ukupno rabat"
             boja={PRIMARY}
           />
           <StatTile
-            icon={<Landmark size={16} />}
+            icon={<Landmark size={14} />}
             vrijednost={formatIznos(ukupnoVp)}
             naziv="VP vrijednost"
             boja={PRIMARY}
+          />
+          <StatTile
+            icon={<Truck size={14} />}
+            vrijednost={formatIznos(ukupnoZt)}
+            naziv="Zavisni troškovi (ZT)"
+            boja={ZT_BOJA}
           />
         </div>
       )}

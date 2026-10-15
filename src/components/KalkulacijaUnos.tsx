@@ -1679,8 +1679,10 @@ export function KalkulacijaUnos() {
   // Računa se uvijek iz trenutnih stavki i troškova, pa redoslijed unosa nije
   // bitan.
   const ukupnaKolicina = stavke.reduce((z, s) => z + s.kolicina, 0);
+  // Na 5 decimala — isto kao naša ulazna cijena, pa prikaz i obračun
+  // koriste istu vrijednost.
   const ztPoJedinici =
-    ukupnaKolicina > 0 ? ukupnoTroskovi / ukupnaKolicina : 0;
+    ukupnaKolicina > 0 ? round5(ukupnoTroskovi / ukupnaKolicina) : 0;
   const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
     round5(s.fakturnaCijena + ztPoJedinici);
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
@@ -2963,7 +2965,7 @@ export function KalkulacijaUnos() {
                     <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
                       <span>ZT po jedinici količine</span>
                       <span className="tabular-nums">
-                        {formatBroj(ztPoJedinici, 4)}
+                        {formatBroj(ztPoJedinici, 5)}
                       </span>
                     </div>
                   )}

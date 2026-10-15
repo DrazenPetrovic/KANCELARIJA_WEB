@@ -503,30 +503,20 @@ export function IzvodiStatus() {
     <div className="space-y-4">
       {/* Naslov */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Landmark size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Status izvoda
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Otvaranje izvoda i tekući obračun po banci
-          </p>
-        </div>
+        <div className="flex-1 flex justify-center">
         {!loading && !greska && banke.length > 0 && (
-          <div className="hidden md:flex items-stretch rounded-xl border border-gray-100 dark:border-[#2d2648] bg-white dark:bg-[#261f38] shadow-sm divide-x divide-gray-100 dark:divide-[#2d2648]">
+          <div className="flex flex-wrap justify-center items-stretch rounded-xl border border-gray-100 dark:border-[#2d2648] bg-white dark:bg-[#261f38] shadow-sm divide-x divide-gray-100 dark:divide-[#2d2648]">
             {[
               { naziv: "Ukupno uplata", iznos: rekap.uplate, boja: ACCENT },
               { naziv: "Ukupno isplata", iznos: rekap.isplate, boja: "#ef4444" },
               { naziv: "Ukupno krajnje stanje", iznos: rekap.krajnje, boja: PRIMARY },
             ].map((r) => (
-              <div key={r.naziv} className="px-4 py-1.5 text-right">
-                <div className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+              <div key={r.naziv} className="px-6 py-2 text-center">
+                <div className="text-xs uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
                   {r.naziv}
                 </div>
                 <div
-                  className="text-sm font-bold tabular-nums"
+                  className="text-xl font-bold tabular-nums"
                   style={{ color: r.boja }}
                 >
                   {fmtKM(r.iznos)}
@@ -535,6 +525,7 @@ export function IzvodiStatus() {
             ))}
           </div>
         )}
+        </div>
         {!loading && !greska && (
           <span
             className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full"
@@ -557,18 +548,6 @@ export function IzvodiStatus() {
           <RotateCcw size={12} className={loading ? "animate-spin" : ""} />
           Osvježi
         </button>
-      </div>
-
-      <div
-        className="flex items-start gap-2 px-4 py-3 rounded-xl text-xs"
-        style={{ background: `${PRIMARY}12`, color: PRIMARY }}
-      >
-        <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-        <span>
-          Status se čita iz zadnjeg izvoda svake banke. Početno stanje novog
-          izvoda preuzima se iz krajnjeg stanja prethodnog. Unos stavki
-          dolazi u sljedećem koraku.
-        </span>
       </div>
 
       {loading && banke.length === 0 ? (

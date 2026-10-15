@@ -3052,7 +3052,9 @@ export function Dashboard({
               ? "pt-[10px] pb-0"
               : activeSection === "ulazi-kalkulacija-unos"
                 ? "pt-[10px] pb-8"
-                : "py-8"
+                : activeSection === "pregled-kalkulacija"
+                  ? "pt-[5px] pb-8"
+                  : "py-8"
           }`}
         >
           {activeSection === null && (
