@@ -187,17 +187,35 @@ const p2 = (n: number) => String(n).padStart(2, "0");
 // Polja koja u JSON idu kao decimalni broj sa tačno 5 decimala — npr.
 // 52 → 52.00000. JSON.stringify sam ispisuje 52, pa se vrijednost privremeno
 // pretvara u oznaku i vraća kao broj.
-const DECIMALNA_POLJA = new Set(["fakturisana_cijena", "nasa_ulazna_cijena"]);
+const DECIMALNA_POLJA = new Set([
+  "cijena",
+  "fakturisana_cijena",
+  "nasa_ulazna_cijena",
+]);
+
+// Iznosi u KM: cijeli broj ostaje cijeli (20, 1750), a decimalni ide sa
+// tačno 2 decimale (101.5 → 101.50).
+const IZNOS_POLJA = new Set([
+  "ukupno_km",
+  "duzi_se_za_iznos",
+  "ukupno_rab",
+  "ukupno_pdv",
+  "iznos",
+  "iznos_pdv",
+]);
 
 const decimalniBroj = (n: number) => n.toFixed(5);
 
 const uJsonSaDecimalama = (podaci: unknown, razmak?: number) =>
   JSON.stringify(
     podaci,
-    (kljuc, v) =>
-      DECIMALNA_POLJA.has(kljuc) && typeof v === "number" && Number.isFinite(v)
-        ? `__DEC__${decimalniBroj(v)}__`
-        : v,
+    (kljuc, v) => {
+      if (typeof v !== "number" || !Number.isFinite(v)) return v;
+      if (DECIMALNA_POLJA.has(kljuc)) return `__DEC__${decimalniBroj(v)}__`;
+      if (IZNOS_POLJA.has(kljuc) && !Number.isInteger(v))
+        return `__DEC__${v.toFixed(2)}__`;
+      return v;
+    },
     razmak,
   ).replace(/"__DEC__(-?\d+\.\d+)__"/g, "$1");
 
@@ -1971,22 +1989,23 @@ export function KalkulacijaUnos() {
                     {kufRezultat.troskovi.map((t, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-[#f4f1f9] dark:bg-[#1c1828]"
+                        className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 bg-[#f4f1f9] dark:bg-[#1c1828]"
                       >
-                        <div className="min-w-0 text-sm text-gray-700 dark:text-[#c5bfd8]">
-                          <div className="font-semibold truncate">
-                            {t.naziv}
+                        {/* Fokus na nazivu partnera, ispod broj fakture */}
+                        <div className="min-w-0">
+                          <div className="text-lg font-bold leading-tight truncate text-gray-800 dark:text-[#ede9f6]">
+                            {t.dobavljac}
                           </div>
-                          <div className="text-xs truncate text-gray-500 dark:text-[#9e96b8]">
-                            {t.dobavljac} · rn. {t.brojRacuna}
+                          <div className="text-sm truncate text-gray-500 dark:text-[#9e96b8]">
+                            Faktura br. {t.brojRacuna}
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-right">
-                          <div className="text-[10px] font-bold uppercase text-gray-500 dark:text-[#9e96b8]">
+                          <div className="text-xs font-bold uppercase text-gray-500 dark:text-[#9e96b8]">
                             KUF
                           </div>
                           <div
-                            className="text-2xl font-extrabold tabular-nums"
+                            className="text-4xl font-extrabold tabular-nums leading-none"
                             style={{ color: PRIMARY }}
                           >
                             {t.kuf}

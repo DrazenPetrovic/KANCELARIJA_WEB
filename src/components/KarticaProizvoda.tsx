@@ -357,7 +357,7 @@ export function KarticaProizvoda({
         {/* Naziv/šifra/JM odabranog proizvoda — centrirano na sredini ekrana, u ravnini naslova */}
         {odabraniProizvod && (
           <div className="hidden lg:block absolute left-1/2 -translate-x-1/2 text-center max-w-[45%] pointer-events-none">
-            <div className="text-base font-bold text-gray-800 dark:text-[#ede9f6] truncate">
+            <div className="text-2xl font-bold text-gray-800 dark:text-[#ede9f6] truncate">
               {odabraniProizvod.naziv_proizvoda}
             </div>
             <div className="text-xs text-gray-400 dark:text-[#5f5878]">
