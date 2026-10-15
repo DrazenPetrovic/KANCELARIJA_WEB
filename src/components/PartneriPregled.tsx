@@ -13,7 +13,6 @@ import {
   Phone,
   Search,
   Star,
-  Users,
   X,
   XCircle,
 } from "lucide-react";
@@ -104,13 +103,15 @@ const TIP_TELEFONA_LABEL: Record<Telefon["tip"], string> = {
 const TH = ({
   children,
   center,
+  width,
 }: {
   children: React.ReactNode;
   center?: boolean;
+  width?: string;
 }) => (
   <th
-    className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap bg-[#f4f1f9] dark:bg-[#2a2340] ${center ? "text-center" : "text-left"}`}
-    style={{ color: PRIMARY }}
+    className={`px-2 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340] ${center ? "text-center" : "text-left"}`}
+    style={{ color: PRIMARY, width }}
   >
     {children}
   </th>
@@ -123,16 +124,18 @@ const SortableTH = ({
   aktivno,
   smjer,
   onClick,
+  width,
 }: {
   children: React.ReactNode;
   aktivno: boolean;
   smjer: SmjerSortiranja;
   onClick: () => void;
+  width?: string;
 }) => (
   <th
     onClick={onClick}
-    className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap bg-[#f4f1f9] dark:bg-[#2a2340] text-left cursor-pointer select-none hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
-    style={{ color: PRIMARY }}
+    className="px-2 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340] text-left cursor-pointer select-none hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
+    style={{ color: PRIMARY, width }}
   >
     <span className="inline-flex items-center gap-1">
       {children}
@@ -157,7 +160,7 @@ const TD = ({
   center?: boolean;
 }) => (
   <td
-    className={`px-4 py-2.5 text-sm whitespace-nowrap border-b border-gray-100 dark:border-[#2d2648] text-gray-700 dark:text-[#c5bfd8] ${center ? "text-center" : ""}`}
+    className={`px-2 py-2 text-sm whitespace-nowrap overflow-hidden text-ellipsis border-b border-gray-100 dark:border-[#2d2648] text-gray-700 dark:text-[#c5bfd8] ${center ? "text-center" : ""}`}
   >
     {children}
   </td>
@@ -280,6 +283,61 @@ const praznaIzmjenaForme = (): IzmjenaForme => ({
   aktivan: true,
 });
 
+type EditTab = "osnovno" | "poslovnice" | "telefoni";
+
+interface PoslovnicaIzmjena {
+  poslovnica_id?: number;
+  sifra: string;
+  naziv: string;
+  jib: string;
+  adresa: string;
+  sifraDrzave: string;
+  sifraGrada: string;
+  postanskiBroj: string;
+  glavna: boolean;
+  napomena: string;
+  aktivan: boolean;
+}
+
+const praznaPoslovnicaIzmjena = (): PoslovnicaIzmjena => ({
+  sifra: "",
+  naziv: "",
+  jib: "",
+  adresa: "",
+  sifraDrzave: "",
+  sifraGrada: "",
+  postanskiBroj: "",
+  glavna: false,
+  napomena: "",
+  aktivan: true,
+});
+
+interface TelefonIzmjena {
+  // Legacy zapis (učitan iz erp.partneri_telefoni) — samo prikaz, nema
+  // procedure za izmjenu, pa se NE koristi za čuvanje preko kontakt-procedura.
+  telefon_id?: number;
+  tip: string;
+  primarni: boolean;
+  // Kontakt/telefon preko erp.partneri_telefoni_unos / _izmjena — upisuje i
+  // čita se iz erp.partneri_kontakti (odvojena, nezavisna numeracija id-a).
+  kontakt_id?: number;
+  broj: string;
+  sifraRadnika: string;
+  poslovnicaId: string;
+  opis: string;
+  aktivan: boolean;
+}
+
+const prazanTelefonIzmjena = (): TelefonIzmjena => ({
+  tip: "mobilni",
+  primarni: false,
+  broj: "",
+  sifraRadnika: "",
+  poslovnicaId: "",
+  opis: "",
+  aktivan: true,
+});
+
 // "Windowing" tabele partnera — kod velike baze partnera renderovanje SVIH
 // <tr> odjednom usporava DOM i React reconciliation. Isti pristup kao u
 // pregledu računa (racuniPregled.tsx): prati se scroll pozicija scroll-
@@ -291,7 +349,7 @@ const praznaIzmjenaForme = (): IzmjenaForme => ({
 const ROW_HEIGHT_PX = 56;
 const OVERSCAN_REDOVA = 15;
 const PRAG_VIRTUALIZACIJE = 150;
-const BROJ_KOLONA = 10;
+const BROJ_KOLONA = 9;
 
 export function PartneriPregled() {
   const [data, setData] = useState<Partner[]>([]);
@@ -334,6 +392,59 @@ export function PartneriPregled() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editUspjeh, setEditUspjeh] = useState(false);
+  const [editTab, setEditTab] = useState<EditTab>("osnovno");
+
+  const [editPoslovnice, setEditPoslovnice] = useState<PoslovnicaIzmjena[]>(
+    [],
+  );
+  const [editPoslovniceLoading, setEditPoslovniceLoading] = useState(false);
+  const [editPoslovniceError, setEditPoslovniceError] = useState<
+    string | null
+  >(null);
+  const [poslovnicaUCuvanju, setPoslovnicaUCuvanju] = useState<number | null>(
+    null,
+  );
+  const [poslovnicaGreska, setPoslovnicaGreska] = useState<string | null>(
+    null,
+  );
+  const [poslovnicaEditIndeksi, setPoslovnicaEditIndeksi] = useState<
+    Set<number>
+  >(new Set());
+
+  const [editTelefoni, setEditTelefoni] = useState<TelefonIzmjena[]>([]);
+  const [editTelefoniLoading, setEditTelefoniLoading] = useState(false);
+  const [editTelefoniError, setEditTelefoniError] = useState<string | null>(
+    null,
+  );
+  const [telefonUCuvanju, setTelefonUCuvanju] = useState<number | null>(null);
+  const [telefonGreska, setTelefonGreska] = useState<string | null>(null);
+  const [telefonEditIndeksi, setTelefonEditIndeksi] = useState<Set<number>>(
+    new Set(),
+  );
+
+  const prekiniEditPoslovnice = (indeks: number) => {
+    setPoslovnicaEditIndeksi((prev) => {
+      const sljedeci = new Set(prev);
+      sljedeci.delete(indeks);
+      return sljedeci;
+    });
+  };
+
+  const pokreniEditPoslovnice = (indeks: number) => {
+    setPoslovnicaEditIndeksi((prev) => new Set(prev).add(indeks));
+  };
+
+  const prekiniEditTelefona = (indeks: number) => {
+    setTelefonEditIndeksi((prev) => {
+      const sljedeci = new Set(prev);
+      sljedeci.delete(indeks);
+      return sljedeci;
+    });
+  };
+
+  const pokreniEditTelefona = (indeks: number) => {
+    setTelefonEditIndeksi((prev) => new Set(prev).add(indeks));
+  };
 
   useEffect(() => {
     const ucitaj = async () => {
@@ -375,6 +486,39 @@ export function PartneriPregled() {
       });
   }, []);
 
+  const poslovnicaUFormu = (pos: Poslovnica): PoslovnicaIzmjena => {
+    const drzavaPodudaranje = drzave.find((d) => d.naziv_drzave === pos.grad);
+    const gradPodudaranje = gradovi.find((g) => g.naziv_grada === pos.grad);
+    return {
+      poslovnica_id: pos.poslovnica_id,
+      sifra: pos.sifra ?? "",
+      naziv: pos.naziv ?? "",
+      jib: pos.jib ?? "",
+      adresa: pos.adresa ?? "",
+      sifraDrzave: gradPodudaranje
+        ? String(gradPodudaranje.sifra_drzave)
+        : drzavaPodudaranje
+          ? String(drzavaPodudaranje.sifra_drzave)
+          : "",
+      sifraGrada: gradPodudaranje ? String(gradPodudaranje.sifra_grada) : "",
+      postanskiBroj: pos.postanski_broj ?? "",
+      glavna: pos.glavna === 1,
+      napomena: pos.napomena ?? "",
+      aktivan: pos.aktivan === 1,
+    };
+  };
+
+  const telefonUFormu = (tel: Telefon): TelefonIzmjena => ({
+    telefon_id: tel.telefon_id,
+    tip: tel.tip ?? "mobilni",
+    primarni: tel.primarni === 1,
+    broj: tel.broj_original ?? "",
+    poslovnicaId: tel.poslovnica_id != null ? String(tel.poslovnica_id) : "",
+    sifraRadnika: "",
+    opis: "",
+    aktivan: tel.aktivan === 1,
+  });
+
   const otvoriIzmjenu = (partner: Partner) => {
     const drzavaPodudaranje = drzave.find(
       (d) => d.naziv_drzave === partner.drzava,
@@ -386,6 +530,7 @@ export function PartneriPregled() {
     );
 
     setEditPartner(partner);
+    setEditTab("osnovno");
     setEditForm({
       naziv: partner.naziv ?? "",
       jib: partner.jib ?? "",
@@ -406,12 +551,227 @@ export function PartneriPregled() {
       aktivan: partner.aktivan === 1,
     });
     setEditError(null);
+
+    setEditPoslovnice([]);
+    setEditPoslovniceError(null);
+    setPoslovnicaGreska(null);
+    setPoslovnicaEditIndeksi(new Set());
+    setEditPoslovniceLoading(true);
+    fetch(`${API_URL}/api/partneri/${partner.partner_id}/poslovnice`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Greška pri učitavanju poslovnica");
+        return res.json();
+      })
+      .then((json) =>
+        setEditPoslovnice(
+          ((json.data ?? []) as Poslovnica[]).map(poslovnicaUFormu),
+        ),
+      )
+      .catch((err) =>
+        setEditPoslovniceError(
+          err instanceof Error ? err.message : "Nepoznata greška",
+        ),
+      )
+      .finally(() => setEditPoslovniceLoading(false));
+
+    setEditTelefoni([]);
+    setEditTelefoniError(null);
+    setTelefonGreska(null);
+    setTelefonEditIndeksi(new Set());
+    setEditTelefoniLoading(true);
+    fetch(`${API_URL}/api/partneri/${partner.partner_id}/telefoni`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Greška pri učitavanju telefona");
+        return res.json();
+      })
+      .then((json) =>
+        setEditTelefoni(((json.data ?? []) as Telefon[]).map(telefonUFormu)),
+      )
+      .catch((err) =>
+        setEditTelefoniError(
+          err instanceof Error ? err.message : "Nepoznata greška",
+        ),
+      )
+      .finally(() => setEditTelefoniLoading(false));
   };
 
   const zatvoriIzmjenu = () => {
     setEditPartner(null);
     setEditForm(praznaIzmjenaForme());
     setEditError(null);
+    setEditTab("osnovno");
+    setEditPoslovnice([]);
+    setEditPoslovniceError(null);
+    setPoslovnicaGreska(null);
+    setPoslovnicaEditIndeksi(new Set());
+    setEditTelefoni([]);
+    setEditTelefoniError(null);
+    setTelefonGreska(null);
+    setTelefonEditIndeksi(new Set());
+  };
+
+  const dodajPraznuPoslovnicu = () => {
+    setEditPoslovnice((prev) => [...prev, praznaPoslovnicaIzmjena()]);
+    setPoslovnicaGreska(null);
+  };
+
+  const azurirajPoljePoslovnice = (
+    indeks: number,
+    izmjena: Partial<PoslovnicaIzmjena>,
+  ) => {
+    setEditPoslovnice((prev) =>
+      prev.map((p, idx) => (idx === indeks ? { ...p, ...izmjena } : p)),
+    );
+  };
+
+  const ukloniNesacuvanuPoslovnicu = (indeks: number) => {
+    setEditPoslovnice((prev) => prev.filter((_, idx) => idx !== indeks));
+  };
+
+  const sacuvajPoslovnicu = async (indeks: number) => {
+    if (!editPartner) return;
+    const red = editPoslovnice[indeks];
+    if (!red.naziv.trim()) {
+      setPoslovnicaGreska("Naziv poslovnice je obavezan");
+      return;
+    }
+
+    const nazivGrada = (sifra: string) =>
+      gradovi.find((g) => String(g.sifra_grada) === sifra)?.naziv_grada;
+
+    // Šifra poslovnice se NE šalje — dodjeljuje je automatski
+    // erp.partneri_poslovnice_unos (sekvenca po partneru).
+    const payload = {
+      partner_id: editPartner.partner_id,
+      naziv: red.naziv.trim(),
+      jib: red.jib.trim() || null,
+      adresa: red.adresa.trim() || null,
+      sifra_grada: red.sifraGrada ? Number(red.sifraGrada) : null,
+      grad: nazivGrada(red.sifraGrada) ?? null,
+      postanski_broj: red.postanskiBroj.trim() || null,
+      glavna: red.glavna ? 1 : 0,
+      napomena: red.napomena.trim() || null,
+      aktivan: red.aktivan ? 1 : 0,
+    };
+
+    setPoslovnicaGreska(null);
+    setPoslovnicaUCuvanju(indeks);
+    try {
+      const url = red.poslovnica_id
+        ? `${API_URL}/api/partneri/poslovnice/${red.poslovnica_id}`
+        : `${API_URL}/api/partneri/${editPartner.partner_id}/poslovnice`;
+      const method = red.poslovnica_id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri čuvanju poslovnice");
+      }
+
+      const noviId = json.data?.poslovnica_id ?? red.poslovnica_id;
+      const novaSifra =
+        json.data?.sifra != null ? String(json.data.sifra) : red.sifra;
+      prekiniEditPoslovnice(indeks);
+      setEditPoslovnice((prev) =>
+        prev.map((p, idx) =>
+          idx === indeks
+            ? { ...p, poslovnica_id: noviId, sifra: novaSifra }
+            : p,
+        ),
+      );
+    } catch (err) {
+      setPoslovnicaGreska(
+        err instanceof Error ? err.message : "Nepoznata greška",
+      );
+    } finally {
+      setPoslovnicaUCuvanju(null);
+    }
+  };
+
+  const dodajPrazanTelefon = () => {
+    setEditTelefoni((prev) => [...prev, prazanTelefonIzmjena()]);
+    setTelefonGreska(null);
+  };
+
+  const azurirajPoljeTelefona = (
+    indeks: number,
+    izmjena: Partial<TelefonIzmjena>,
+  ) => {
+    setEditTelefoni((prev) =>
+      prev.map((t, idx) => (idx === indeks ? { ...t, ...izmjena } : t)),
+    );
+  };
+
+  const ukloniNesacuvaniTelefon = (indeks: number) => {
+    setEditTelefoni((prev) => prev.filter((_, idx) => idx !== indeks));
+  };
+
+  // Unos i izmjena kontakt-telefona idu preko erp.partneri_telefoni_unos /
+  // _izmjena — obje upisuju/čitaju erp.partneri_kontakti, identifikovano
+  // preko kontakt_id (NE telefon_id — to je potpuno druga, legacy tabela
+  // erp.partneri_telefoni za koju trenutno nema procedure za izmjenu).
+  const sacuvajTelefon = async (indeks: number) => {
+    if (!editPartner) return;
+    const red = editTelefoni[indeks];
+
+    if (!red.sifraRadnika) {
+      setTelefonGreska("Radnik je obavezan");
+      return;
+    }
+    if (!red.broj.trim()) {
+      setTelefonGreska("Broj telefona je obavezan");
+      return;
+    }
+
+    const payload = {
+      partner_id: editPartner.partner_id,
+      poslovnica_id: red.poslovnicaId ? Number(red.poslovnicaId) : null,
+      sifra_radnika: Number(red.sifraRadnika),
+      napomena: red.broj.trim(),
+      dodatni_podaci_opis: red.opis.trim() || null,
+      aktivan: red.aktivan ? 1 : 0,
+    };
+
+    setTelefonGreska(null);
+    setTelefonUCuvanju(indeks);
+    try {
+      const url = red.kontakt_id
+        ? `${API_URL}/api/partneri/telefoni/${red.kontakt_id}`
+        : `${API_URL}/api/partneri/${editPartner.partner_id}/telefoni`;
+      const method = red.kontakt_id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Greška pri čuvanju telefona");
+      }
+
+      const noviId = json.data?.kontakt_id ?? red.kontakt_id;
+      prekiniEditTelefona(indeks);
+      setEditTelefoni((prev) =>
+        prev.map((t, idx) =>
+          idx === indeks ? { ...t, kontakt_id: noviId } : t,
+        ),
+      );
+    } catch (err) {
+      setTelefonGreska(
+        err instanceof Error ? err.message : "Nepoznata greška",
+      );
+    } finally {
+      setTelefonUCuvanju(null);
+    }
   };
 
   const sacuvajIzmjenu = async () => {
@@ -636,29 +996,10 @@ export function PartneriPregled() {
   const visinaPoslijeRedova = (filtrirani.length - endIndex) * ROW_HEIGHT_PX;
 
   return (
-    <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-            <Users size={20} style={{ color: PRIMARY }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-              Pregled partnera
-            </h2>
-            {!loading && !error && (
-              <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-                Ukupno: {filtrirani.length} / {data.length}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-2 max-w-[1600px] mx-auto">
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-72">
             <Search
               size={14}
@@ -696,6 +1037,12 @@ export function PartneriPregled() {
               </option>
             ))}
           </select>
+
+          {!loading && !error && (
+            <span className="ml-auto text-xs text-gray-400 dark:text-[#5f5878]">
+              Ukupno: {filtrirani.length} / {data.length}
+            </span>
+          )}
         </div>
       </div>
 
@@ -732,13 +1079,14 @@ export function PartneriPregled() {
                 : undefined
             }
           >
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <thead>
                 <tr className={jeVirtualizovano ? "sticky top-0 z-10" : undefined}>
                   <SortableTH
                     aktivno={sortPolje === "partner_id"}
                     smjer={sortSmjer}
                     onClick={() => promijeniSortiranje("partner_id")}
+                    width="4.5rem"
                   >
                     Šifra
                   </SortableTH>
@@ -746,17 +1094,23 @@ export function PartneriPregled() {
                     aktivno={sortPolje === "naziv"}
                     smjer={sortSmjer}
                     onClick={() => promijeniSortiranje("naziv")}
+                    width="17rem"
                   >
                     Naziv
                   </SortableTH>
-                  <TH>JIB / PIB</TH>
-                  <TH>Adresa</TH>
-                  <TH>Telefon</TH>
-                  <TH>Radnik</TH>
-                  <TH center>Valuta</TH>
-                  <TH center>Poslovnice / Kontakti / Telefoni</TH>
-                  <TH center>Status</TH>
-                  <TH center>Akcije</TH>
+                  <TH width="7rem">JIB / PIB</TH>
+                  <TH width="13rem">Adresa</TH>
+                  <TH width="9rem">Telefon</TH>
+                  <TH width="8rem">Radnik</TH>
+                  <TH center width="10rem">
+                    Poslovnice / Kontakti / Telefoni
+                  </TH>
+                  <TH center width="6rem">
+                    Status
+                  </TH>
+                  <TH center width="4rem">
+                    Akcije
+                  </TH>
                 </tr>
               </thead>
               <tbody>
@@ -816,9 +1170,6 @@ export function PartneriPregled() {
                       )}
                     </TD>
                     <TD>{p.naziv_radnika}</TD>
-                    <TD center>
-                      {p.valuta_placanja != null ? `${p.valuta_placanja} d.` : "–"}
-                    </TD>
                     <TD center>
                       <div className="flex items-center justify-center gap-3">
                         <Brojac
@@ -1108,7 +1459,7 @@ export function PartneriPregled() {
           }}
         >
           <div
-            className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2"
+            className="w-full max-w-2xl h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden border-2"
             style={{ borderColor: PRIMARY }}
           >
             <div
@@ -1136,7 +1487,49 @@ export function PartneriPregled() {
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-3">
+            <div className="flex border-b border-gray-100 dark:border-[#2d2648] bg-[#faf9fc] dark:bg-[#201a30]">
+              {(
+                [
+                  { key: "osnovno" as const, label: "Osnovni podaci" },
+                  {
+                    key: "poslovnice" as const,
+                    label: `Poslovnice (${editPoslovnice.length})`,
+                  },
+                  {
+                    key: "telefoni" as const,
+                    label: `Telefoni (${editTelefoni.length})`,
+                  },
+                ]
+              ).map((tab) => {
+                const aktivanTab = editTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setEditTab(tab.key)}
+                    className="px-4 py-2.5 text-xs font-semibold transition-colors border-b-2"
+                    style={{
+                      color: aktivanTab ? PRIMARY : undefined,
+                      borderColor: aktivanTab ? ACCENT : "transparent",
+                    }}
+                  >
+                    <span
+                      className={
+                        aktivanTab
+                          ? ""
+                          : "text-gray-500 dark:text-[#8a80a3]"
+                      }
+                    >
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex-1 p-5 overflow-y-auto space-y-3">
+              {editTab === "osnovno" && (
+                <>
               {editError && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30">
                   <AlertTriangle size={14} />
@@ -1359,6 +1752,620 @@ export function PartneriPregled() {
                 />
                 PDV obveznik
               </label>
+                </>
+              )}
+
+              {editTab === "poslovnice" && (
+                <>
+                  {poslovnicaGreska && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30">
+                      <AlertTriangle size={14} />
+                      {poslovnicaGreska}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={dodajPraznuPoslovnicu}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:brightness-110"
+                    style={{ background: "#ede8f5", color: PRIMARY }}
+                  >
+                    <Building2 size={13} />
+                    Dodaj poslovnicu
+                  </button>
+
+                  {editPoslovniceLoading && <StanjeUcitavanja />}
+                  {editPoslovniceError && (
+                    <StanjeGreske poruka={editPoslovniceError} />
+                  )}
+                  {!editPoslovniceLoading &&
+                    !editPoslovniceError &&
+                    editPoslovnice.length === 0 && (
+                      <StanjePrazno tekst="Partner nema evidentiranih poslovnica." />
+                    )}
+
+                  {!editPoslovniceLoading &&
+                    editPoslovnice.map((pos, indeks) => {
+                      const jeNovo = !pos.poslovnica_id;
+                      const jeUEditu = poslovnicaEditIndeksi.has(indeks);
+                      const prikaziFormu = jeNovo || jeUEditu;
+                      const gradNaziv = gradovi.find(
+                        (g) => String(g.sifra_grada) === pos.sifraGrada,
+                      )?.naziv_grada;
+
+                      return (
+                        <div
+                          key={pos.poslovnica_id ?? `nova-${indeks}`}
+                          className="rounded-xl p-3 space-y-2 transition-colors border-2"
+                          style={{
+                            borderColor: jeUEditu
+                              ? "#f59e0b"
+                              : jeNovo
+                                ? "#d1d5db"
+                                : PRIMARY,
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gray-500 dark:text-[#7d7498]">
+                              {pos.poslovnica_id
+                                ? `Poslovnica #${pos.poslovnica_id}${
+                                    pos.sifra ? ` (šifra ${pos.sifra})` : ""
+                                  }`
+                                : "Nova poslovnica — šifra se dodjeljuje automatski"}
+                            </span>
+                            {jeNovo && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  ukloniNesacuvanuPoslovnicu(indeks)
+                                }
+                                className="text-red-500 hover:text-red-600"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+
+                          {prikaziFormu ? (
+                            <>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <Field label="Naziv *">
+                                  <input
+                                    type="text"
+                                    value={pos.naziv}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        naziv: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  />
+                                </Field>
+                                <Field label="JIB">
+                                  <input
+                                    type="text"
+                                    value={pos.jib}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        jib: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  />
+                                </Field>
+                                <Field label="Adresa">
+                                  <input
+                                    type="text"
+                                    value={pos.adresa}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        adresa: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  />
+                                </Field>
+                                <Field label="Država">
+                                  <select
+                                    value={pos.sifraDrzave}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        sifraDrzave: e.target.value,
+                                        sifraGrada: "",
+                                      })
+                                    }
+                                    className={inputClass}
+                                  >
+                                    <option value="">
+                                      -- Izaberi državu --
+                                    </option>
+                                    {drzave.map((d) => (
+                                      <option
+                                        key={d.sifra_drzave}
+                                        value={d.sifra_drzave}
+                                      >
+                                        {d.naziv_drzave}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Grad">
+                                  <select
+                                    value={pos.sifraGrada}
+                                    onChange={(e) => {
+                                      const izabrani = gradovi.find(
+                                        (g) =>
+                                          String(g.sifra_grada) ===
+                                          e.target.value,
+                                      );
+                                      azurirajPoljePoslovnice(indeks, {
+                                        sifraGrada: e.target.value,
+                                        postanskiBroj:
+                                          izabrani?.ptt ?? pos.postanskiBroj,
+                                      });
+                                    }}
+                                    disabled={!pos.sifraDrzave}
+                                    className={inputClass}
+                                  >
+                                    <option value="">
+                                      {!pos.sifraDrzave
+                                        ? "-- Prvo izaberi državu --"
+                                        : "-- Izaberi grad --"}
+                                    </option>
+                                    {gradovi
+                                      .filter(
+                                        (g) =>
+                                          String(g.sifra_drzave) ===
+                                          pos.sifraDrzave,
+                                      )
+                                      .map((g) => (
+                                        <option
+                                          key={g.sifra_grada}
+                                          value={g.sifra_grada}
+                                        >
+                                          {g.naziv_grada}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </Field>
+                                <Field label="Poštanski broj">
+                                  <input
+                                    type="text"
+                                    value={pos.postanskiBroj}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        postanskiBroj: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  />
+                                </Field>
+                                <Field label="Napomena">
+                                  <input
+                                    type="text"
+                                    value={pos.napomena}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        napomena: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  />
+                                </Field>
+                              </div>
+                              <div className="flex items-center justify-between pt-1">
+                                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8]">
+                                  <input
+                                    type="checkbox"
+                                    checked={pos.glavna}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        glavna: e.target.checked,
+                                      })
+                                    }
+                                    className="w-4 h-4 rounded"
+                                    style={{ accentColor: PRIMARY }}
+                                  />
+                                  Glavna poslovnica
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8]">
+                                  <input
+                                    type="checkbox"
+                                    checked={pos.aktivan}
+                                    onChange={(e) =>
+                                      azurirajPoljePoslovnice(indeks, {
+                                        aktivan: e.target.checked,
+                                      })
+                                    }
+                                    className="w-4 h-4 rounded"
+                                    style={{ accentColor: PRIMARY }}
+                                  />
+                                  Aktivna
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  {jeUEditu && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        prekiniEditPoslovnice(indeks)
+                                      }
+                                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 dark:text-[#8a80a3] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors"
+                                    >
+                                      Otkaži
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void sacuvajPoslovnicu(indeks)
+                                    }
+                                    disabled={poslovnicaUCuvanju === indeks}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                                    style={{ background: PRIMARY }}
+                                  >
+                                    {poslovnicaUCuvanju === indeks && (
+                                      <Loader2
+                                        size={12}
+                                        className="animate-spin"
+                                      />
+                                    )}
+                                    Sačuvaj
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6]">
+                                  {pos.naziv}
+                                </span>
+                                {pos.glavna && (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-xs font-semibold"
+                                    style={{ color: ACCENT }}
+                                  >
+                                    <Star size={12} fill={ACCENT} />
+                                    Glavna
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-[#a99fc2]">
+                                {[pos.adresa, gradNaziv, pos.postanskiBroj]
+                                  .filter(Boolean)
+                                  .join(", ") || "Adresa nije unesena"}
+                              </div>
+                              {pos.jib && (
+                                <div className="text-xs text-gray-400 dark:text-[#5f5878]">
+                                  JIB: {pos.jib}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between pt-1">
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    pos.aktivan
+                                      ? ""
+                                      : "text-red-500 dark:text-red-400"
+                                  }`}
+                                  style={pos.aktivan ? { color: ACCENT } : undefined}
+                                >
+                                  {pos.aktivan ? "Aktivna" : "Neaktivna"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    pokreniEditPoslovnice(indeks)
+                                  }
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:brightness-110"
+                                  style={{ background: "#ede8f5", color: PRIMARY }}
+                                >
+                                  <Pencil size={12} />
+                                  Izmijeni
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                </>
+              )}
+
+              {editTab === "telefoni" && (
+                <>
+                  {telefonGreska && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30">
+                      <AlertTriangle size={14} />
+                      {telefonGreska}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={dodajPrazanTelefon}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:brightness-110"
+                    style={{ background: "#ede8f5", color: PRIMARY }}
+                  >
+                    <Phone size={13} />
+                    Dodaj telefon
+                  </button>
+
+                  {editTelefoniLoading && <StanjeUcitavanja />}
+                  {editTelefoniError && (
+                    <StanjeGreske poruka={editTelefoniError} />
+                  )}
+                  {!editTelefoniLoading &&
+                    !editTelefoniError &&
+                    editTelefoni.length === 0 && (
+                      <StanjePrazno tekst="Partner nema evidentiranih telefona." />
+                    )}
+
+                  {!editTelefoniLoading &&
+                    editTelefoni.map((tel, indeks) => {
+                      // Legacy zapis (erp.partneri_telefoni) — samo prikaz,
+                      // nema procedure za izmjenu preko kontakt-sistema.
+                      const jeLegacy = !!tel.telefon_id;
+                      const jeNovo = !jeLegacy && !tel.kontakt_id;
+                      const jeUEditu =
+                        !jeLegacy && telefonEditIndeksi.has(indeks);
+                      const prikaziFormu =
+                        !jeLegacy && (jeNovo || jeUEditu);
+                      const poslovnicaNaziv = editPoslovnice.find(
+                        (p) => String(p.poslovnica_id) === tel.poslovnicaId,
+                      )?.naziv;
+                      const radnikNaziv = komercijalisti.find(
+                        (k) => String(k.sifra_radnika) === tel.sifraRadnika,
+                      )?.naziv_radnika;
+
+                      return (
+                        <div
+                          key={
+                            tel.telefon_id ?? tel.kontakt_id ?? `novi-${indeks}`
+                          }
+                          className="rounded-xl p-3 space-y-2 transition-colors border-2"
+                          style={{
+                            borderColor: jeLegacy
+                              ? "#d1d5db"
+                              : jeUEditu
+                                ? "#f59e0b"
+                                : jeNovo
+                                  ? "#d1d5db"
+                                  : PRIMARY,
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gray-500 dark:text-[#7d7498]">
+                              {jeLegacy
+                                ? `Telefon #${tel.telefon_id} (stari zapis)`
+                                : tel.kontakt_id
+                                  ? `Kontakt #${tel.kontakt_id}`
+                                  : "Novi telefon"}
+                            </span>
+                            {jeNovo && (
+                              <button
+                                type="button"
+                                onClick={() => ukloniNesacuvaniTelefon(indeks)}
+                                className="text-red-500 hover:text-red-600"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+
+                          {jeLegacy && (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Phone size={14} style={{ color: PRIMARY }} />
+                                <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6]">
+                                  {tel.broj}
+                                </span>
+                                {tel.primarni && (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-xs font-semibold"
+                                    style={{ color: ACCENT }}
+                                  >
+                                    <Star size={12} fill={ACCENT} />
+                                    Primarni
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-[#a99fc2]">
+                                {TIP_TELEFONA_LABEL[tel.tip as Telefon["tip"]] ??
+                                  tel.tip}
+                                {poslovnicaNaziv ? ` — ${poslovnicaNaziv}` : ""}
+                              </div>
+                              <div className="flex items-center justify-between pt-1">
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    tel.aktivan
+                                      ? ""
+                                      : "text-red-500 dark:text-red-400"
+                                  }`}
+                                  style={
+                                    tel.aktivan ? { color: ACCENT } : undefined
+                                  }
+                                >
+                                  {tel.aktivan ? "Aktivan" : "Neaktivan"}
+                                </span>
+                                <span className="text-xs italic text-gray-400 dark:text-[#5f5878]">
+                                  Izmjena nije podržana
+                                </span>
+                              </div>
+                            </>
+                          )}
+
+                          {!jeLegacy && !prikaziFormu && (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Phone size={14} style={{ color: PRIMARY }} />
+                                <span className="font-semibold text-sm text-gray-800 dark:text-[#ede9f6]">
+                                  {tel.broj}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-[#a99fc2]">
+                                {radnikNaziv ?? "Nepoznat radnik"}
+                                {poslovnicaNaziv ? ` — ${poslovnicaNaziv}` : ""}
+                              </div>
+                              {tel.opis && (
+                                <div className="text-xs text-gray-400 dark:text-[#5f5878] italic">
+                                  {tel.opis}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between pt-1">
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    tel.aktivan
+                                      ? ""
+                                      : "text-red-500 dark:text-red-400"
+                                  }`}
+                                  style={
+                                    tel.aktivan ? { color: ACCENT } : undefined
+                                  }
+                                >
+                                  {tel.aktivan ? "Aktivan" : "Neaktivan"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => pokreniEditTelefona(indeks)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:brightness-110"
+                                  style={{ background: "#ede8f5", color: PRIMARY }}
+                                >
+                                  <Pencil size={12} />
+                                  Izmijeni
+                                </button>
+                              </div>
+                            </>
+                          )}
+
+                          {prikaziFormu && (
+                            <>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <Field label="Broj telefona *">
+                                  <input
+                                    type="text"
+                                    value={tel.broj}
+                                    onChange={(e) =>
+                                      azurirajPoljeTelefona(indeks, {
+                                        broj: e.target.value,
+                                      })
+                                    }
+                                    placeholder="+387 65 123 456"
+                                    className={inputClass}
+                                  />
+                                </Field>
+                                <Field label="Radnik *">
+                                  <select
+                                    value={tel.sifraRadnika}
+                                    onChange={(e) =>
+                                      azurirajPoljeTelefona(indeks, {
+                                        sifraRadnika: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  >
+                                    <option value="">
+                                      -- Izaberi radnika --
+                                    </option>
+                                    {komercijalisti.map((k) => (
+                                      <option
+                                        key={k.sifra_radnika}
+                                        value={k.sifra_radnika}
+                                      >
+                                        {k.naziv_radnika}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Poslovnica">
+                                  <select
+                                    value={tel.poslovnicaId}
+                                    onChange={(e) =>
+                                      azurirajPoljeTelefona(indeks, {
+                                        poslovnicaId: e.target.value,
+                                      })
+                                    }
+                                    className={inputClass}
+                                  >
+                                    <option value="">-- Nema --</option>
+                                    {editPoslovnice
+                                      .filter((p) => p.poslovnica_id)
+                                      .map((p) => (
+                                        <option
+                                          key={p.poslovnica_id}
+                                          value={p.poslovnica_id}
+                                        >
+                                          {p.sifra}{" "}
+                                          {p.naziv ? `— ${p.naziv}` : ""}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </Field>
+                                <Field label="Opis">
+                                  <input
+                                    type="text"
+                                    value={tel.opis}
+                                    onChange={(e) =>
+                                      azurirajPoljeTelefona(indeks, {
+                                        opis: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Osoba zadužena za narudžbe"
+                                    className={inputClass}
+                                  />
+                                </Field>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#c5bfd8]">
+                                  <input
+                                    type="checkbox"
+                                    checked={tel.aktivan}
+                                    onChange={(e) =>
+                                      azurirajPoljeTelefona(indeks, {
+                                        aktivan: e.target.checked,
+                                      })
+                                    }
+                                    className="w-4 h-4 rounded"
+                                    style={{ accentColor: PRIMARY }}
+                                  />
+                                  Aktivan
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  {jeUEditu && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        prekiniEditTelefona(indeks)
+                                      }
+                                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 dark:text-[#8a80a3] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors"
+                                    >
+                                      Otkaži
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => void sacuvajTelefon(indeks)}
+                                    disabled={telefonUCuvanju === indeks}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                                    style={{ background: PRIMARY }}
+                                  >
+                                    {telefonUCuvanju === indeks && (
+                                      <Loader2
+                                        size={12}
+                                        className="animate-spin"
+                                      />
+                                    )}
+                                    Sačuvaj
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                </>
+              )}
             </div>
 
             <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-gray-100 dark:border-[#2d2648]">
@@ -1368,18 +2375,20 @@ export function PartneriPregled() {
                 disabled={editSaving}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-100 dark:hover:bg-[#2d2648] transition-colors disabled:opacity-50"
               >
-                Otkaži
+                {editTab === "osnovno" ? "Otkaži" : "Zatvori"}
               </button>
-              <button
-                type="button"
-                onClick={() => void sacuvajIzmjenu()}
-                disabled={editSaving}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
-                style={{ background: PRIMARY }}
-              >
-                {editSaving && <Loader2 size={14} className="animate-spin" />}
-                Sačuvaj izmjene
-              </button>
+              {editTab === "osnovno" && (
+                <button
+                  type="button"
+                  onClick={() => void sacuvajIzmjenu()}
+                  disabled={editSaving}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: PRIMARY }}
+                >
+                  {editSaving && <Loader2 size={14} className="animate-spin" />}
+                  Sačuvaj izmjene
+                </button>
+              )}
             </div>
           </div>
         </div>

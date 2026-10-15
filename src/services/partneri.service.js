@@ -1,5 +1,10 @@
 import { withConnection } from "./db.service.js";
 
+// MySQL DATETIME format (YYYY-MM-DD HH:MM:SS) — koristi se za "izmijenjeno"
+// vrijeme koje se šalje u JSON-u proceduri (umjesto da procedura sama zove NOW()).
+const trenutniDatumVrijeme = () =>
+  new Date().toISOString().slice(0, 19).replace("T", " ");
+
 export const getPartneri = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute("CALL erp.sp_pregled_partnera()");
@@ -274,6 +279,81 @@ export const azurirajPartneriGlavno = async (partnerId, partner) => {
     }
 
     return rezultat;
+  });
+};
+
+// Dodavanje nove poslovnice postojećem partneru. Vidi erp.partneri_poslovnice_unos.
+// Šifra poslovnice se dodjeljuje automatski u proceduri (sekvenca po partneru) —
+// ne šalje se u JSON-u. Procedura validaciju/greške signalizuje kao SQL izuzetak
+// (ne kroz status=0 polje), što već hvata kontroler.
+export const dodajPoslovnicu = async (partnerId, poslovnica) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({ ...poslovnica, partner_id: partnerId });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_poslovnice_unos(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { success: true };
+  });
+};
+
+// Izmjena postojeće poslovnice. Vidi erp.partneri_poslovnice_izmjena.
+// partner_id dolazi iz frontend payload-a (poznat je u editPartner-u), a
+// izmijenjeno se postavlja ovdje (server-side vrijeme), ne na frontend-u.
+export const azurirajPoslovnicu = async (poslovnicaId, poslovnica) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({
+      ...poslovnica,
+      poslovnica_id: poslovnicaId,
+      izmijenjeno: trenutniDatumVrijeme(),
+    });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_poslovnice_izmjena(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { success: true };
+  });
+};
+
+// Dodavanje telefonskog kontakta postojećem partneru. Upisuje u
+// erp.partneri_kontakti (NE erp.partneri_telefoni) — JSON: partner_id,
+// poslovnica_id (opciono), sifra_radnika, napomena (= broj telefona),
+// dodatni_podaci_opis, aktivan. Vidi erp.partneri_telefoni_unos. Greške
+// (nepostojeći partner/radnik/poslovnica) stižu kao SQL izuzetak.
+export const dodajTelefonPartnera = async (partnerId, telefon) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({ ...telefon, partner_id: partnerId });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_telefoni_unos(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { success: true };
+  });
+};
+
+// Izmjena postojećeg kontakt-telefona. Upisuje u erp.partneri_kontakti
+// (identifikator je kontakt_id, NE telefon_id iz erp.partneri_telefoni —
+// to je potpuno druga tabela/numeracija). Vidi erp.partneri_telefoni_izmjena.
+export const azurirajTelefonPartnera = async (kontaktId, telefon) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({ ...telefon, kontakt_id: kontaktId });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_telefoni_izmjena(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { success: true };
   });
 };
 

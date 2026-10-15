@@ -256,3 +256,65 @@ export const updatePartnerGlavni = async (req, res) => {
     });
   }
 };
+
+export const createPoslovnica = async (req, res) => {
+  try {
+    const partnerId = Number(req.params.id);
+    const data = await PartneriService.dodajPoslovnicu(partnerId, req.body);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos poslovnice error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri unosu poslovnice",
+    });
+  }
+};
+
+export const updatePoslovnica = async (req, res) => {
+  try {
+    const poslovnicaId = Number(req.params.poslovnicaId);
+    const data = await PartneriService.azurirajPoslovnicu(
+      poslovnicaId,
+      req.body,
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Izmjena poslovnice error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri izmjeni poslovnice",
+    });
+  }
+};
+
+export const createTelefonPartnera = async (req, res) => {
+  try {
+    const partnerId = Number(req.params.id);
+    const data = await PartneriService.dodajTelefonPartnera(partnerId, req.body);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Unos telefona (partner) error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri unosu telefona",
+    });
+  }
+};
+
+export const updateTelefonPartnera = async (req, res) => {
+  try {
+    const kontaktId = Number(req.params.telefonId);
+    const data = await PartneriService.azurirajTelefonPartnera(
+      kontaktId,
+      req.body,
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Izmjena telefona (partner) error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri izmjeni telefona",
+    });
+  }
+};
