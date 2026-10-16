@@ -466,10 +466,12 @@ export const unesiPartneriGrad = async ({
   aktivan,
 }) => {
   return withConnection(async (connection) => {
+    // Prazan entitet/PTT se izostavlja iz JSON-a: JSON null bi procedura kroz
+    // JSON_UNQUOTE dobila kao tekst 'null', a nepostojeći ključ daje SQL NULL.
     const json = JSON.stringify({
       naziv_grada: nazivGrada,
-      entitet: entitet || null,
-      ptt: ptt || null,
+      ...(entitet ? { entitet } : {}),
+      ...(ptt ? { ptt } : {}),
       sifra_drzave: sifraDrzave,
       aktivan: aktivan ? 1 : 0,
     });

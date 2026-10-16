@@ -3054,7 +3054,9 @@ export function Dashboard({
                 ? "pt-[10px] pb-8"
                 : activeSection === "pregled-kalkulacija"
                   ? "pt-[5px] pb-8"
-                  : "py-8"
+                  : activeSection === "artikli-pregled"
+                    ? "pt-[10px] pb-8"
+                    : "py-8"
           }`}
         >
           {activeSection === null && (

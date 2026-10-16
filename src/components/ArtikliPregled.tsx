@@ -10,7 +10,6 @@ import {
   CreditCard,
   FlaskConical,
   Loader2,
-  Package,
   Pencil,
   Plus,
   RefreshCcw,
@@ -701,7 +700,7 @@ export function ArtikliPregled() {
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <div className="flex flex-nowrap items-center gap-3">
-            <div className="relative w-72">
+            <div className="relative w-[346px]">
               <Search
                 size={14}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
@@ -715,54 +714,6 @@ export function ArtikliPregled() {
               />
             </div>
 
-            <select
-              value={grupaFilter}
-              onChange={(e) => setGrupaFilter(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
-            >
-              <option value="sve">Sve grupe</option>
-              {grupe.map((g) => (
-                <option key={g.sifra_grupe} value={String(g.sifra_grupe)}>
-                  {g.naziv_grupe}
-                </option>
-              ))}
-            </select>
-
-            <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={sakrijBezStanja}
-                onChange={(e) => setSakrijBezStanja(e.target.checked)}
-                className="w-4 h-4 rounded accent-[#785E9E]"
-              />
-              Sakrij artikle bez stanja
-            </label>
-
-            <label className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={samoSaNormativom}
-                onChange={(e) => setSamoSaNormativom(e.target.checked)}
-                className="w-4 h-4 rounded accent-[#785E9E]"
-              />
-              Samo proizvodi sa normativom
-            </label>
-          </div>
-
-          <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] shrink-0">
-              <Package size={20} style={{ color: PRIMARY }} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                Pregled artikala
-              </h2>
-              {!loading && !error && (
-                <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-                  Ukupno: {filtrirani.length} / {data.length}
-                </p>
-              )}
-            </div>
             <button
               type="button"
               onClick={() => void osvjeziPodatke()}
@@ -777,7 +728,44 @@ export function ArtikliPregled() {
               />
               Osvježi
             </button>
+
+            <select
+              value={grupaFilter}
+              onChange={(e) => setGrupaFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
+            >
+              <option value="sve">Sve grupe</option>
+              {grupe.map((g) => (
+                <option key={g.sifra_grupe} value={String(g.sifra_grupe)}>
+                  {g.naziv_grupe}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={sakrijBezStanja}
+                  onChange={(e) => setSakrijBezStanja(e.target.checked)}
+                  className="w-4 h-4 rounded accent-[#785E9E]"
+                />
+                Sakrij artikle bez stanja
+              </label>
+
+              <label className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={samoSaNormativom}
+                  onChange={(e) => setSamoSaNormativom(e.target.checked)}
+                  className="w-4 h-4 rounded accent-[#785E9E]"
+                />
+                Samo proizvodi sa normativom
+              </label>
+            </div>
           </div>
+
+          <div />
 
           {!loading && !error ? (
             <div className="flex flex-col items-end justify-self-end">

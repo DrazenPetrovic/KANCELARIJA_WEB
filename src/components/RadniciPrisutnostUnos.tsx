@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Loader2,
   Lock,
@@ -189,10 +191,41 @@ const opisSatiPoVrsti = (sati: Record<string, string>): string => {
     : "Prisutnost";
 };
 
-// Računa početak/kraj smjene za današnji datum. Ako kraj ispadne prije ili
+// "yyyy-MM-dd" -> lokalni Date (ponoć tog dana).
+const isoUDatum = (iso: string): Date => {
+  const [yyyy, MM, dd] = iso.split("-").map(Number);
+  return new Date(yyyy, MM - 1, dd);
+};
+
+// Pomjera "yyyy-MM-dd" za dati broj dana.
+const pomjeriDan = (iso: string, brojDana: number): string => {
+  const d = isoUDatum(iso);
+  d.setDate(d.getDate() + brojDana);
+  return formatirajDatumZaUnos(d);
+};
+
+const razlikaUDanima = (odIso: string, doIso: string): number =>
+  Math.round((isoUDatum(doIso).getTime() - isoUDatum(odIso).getTime()) / 86400000);
+
+const NAZIVI_DANA = [
+  "nedjelja",
+  "ponedjeljak",
+  "utorak",
+  "srijeda",
+  "četvrtak",
+  "petak",
+  "subota",
+];
+
+// Ključ zaključavanja — radnik je zaključan samo za konkretan dan, pa se za
+// isti radnik može naknadno unijeti prisutnost i za druge (propuštene) dane.
+const kljucZakljucavanja = (dan: string, sifra: number) => `${dan}|${sifra}`;
+
+// Računa početak/kraj smjene za dati radni dan. Ako kraj ispadne prije ili
 // jednak početku (npr. noćna smjena 22:00–06:00), kraj se pomjera na sljedeći dan.
 const izracunajVremenaZaSmjenu = (
   kod: string,
+  dan: string,
 ): {
   pocetakDatum: string;
   pocetakVrijeme: string;
@@ -201,11 +234,11 @@ const izracunajVremenaZaSmjenu = (
 } | null => {
   const def = SMJENA_DEFINICIJE[kod];
   if (!def) return null;
-  const danas = new Date();
+  const osnova = isoUDatum(dan);
   const pocetak = new Date(
-    danas.getFullYear(),
-    danas.getMonth(),
-    danas.getDate(),
+    osnova.getFullYear(),
+    osnova.getMonth(),
+    osnova.getDate(),
     def.pocetakSat,
     def.pocetakMin,
     0,
@@ -355,12 +388,22 @@ export function RadniciPrisutnostUnos() {
     new Set(),
   );
 
-  // Radnici za koje je prisutnost već upisana danas (učitano sa servera) ili
+  // Dan za koji se unosi prisutnost — podrazumijevano danas, ali se može
+  // izabrati i raniji dan (naknadni unos ako je operater zaboravio).
+  const danas = formatirajDatumZaUnos(new Date());
+  const [radniDan, setRadniDan] = useState(danas);
+  const jeDanas = radniDan === danas;
+  const radniDanRef = useRef<HTMLInputElement>(null);
+
+  // Radnici za koje je prisutnost već upisana (učitano sa servera) ili
   // pripremljena u ovoj sesiji preko dugmeta "Prihvati" — takvi se prikazuju
-  // zaključani (katanac) i ne mogu se ponovo birati.
-  const [zakljucani, setZakljucani] = useState<Map<number, ZakljucanZapis>>(
+  // zaključani (katanac) i ne mogu se ponovo birati. Ključ je dan|sifra
+  // (vidi kljucZakljucavanja), tj. zaključavanje važi samo za taj dan.
+  const [zakljucani, setZakljucani] = useState<Map<string, ZakljucanZapis>>(
     new Map(),
   );
+  // Povećava se nakon čuvanja da se ponovo učita stanje iz baze.
+  const [osvjezi, setOsvjezi] = useState(0);
   // Zapisi pripremljeni preko "Prihvati", čekaju na konačno čuvanje.
   const [stagedZapisi, setStagedZapisi] = useState<ZapisPrisutnosti[]>([]);
   // sifra_radnika čiji je zapis trenutno u procesu brisanja/otključavanja.
@@ -417,20 +460,28 @@ export function RadniciPrisutnostUnos() {
       .finally(() => setLoadingPristigli(false));
   }, []);
 
-  // Provjera da li je prisutnost za neke radnike već upisana danas — takvi se
-  // odmah prikazuju zaključani da se spriječi dupli unos za isti dan.
+  // Provjera da li je prisutnost za neke radnike već upisana za izabrani dan —
+  // takvi se odmah prikazuju zaključani da se spriječi dupli unos za isti dan.
   useEffect(() => {
-    fetch(`${API_URL}/api/radnici/prisutnost/po-danu`, {
-      credentials: "include",
-    })
+    let otkazano = false;
+    fetch(
+      `${API_URL}/api/radnici/prisutnost/po-danu?datum=${encodeURIComponent(radniDan)}`,
+      { credentials: "include" },
+    )
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((json) => {
+        if (otkazano) return;
         const lista: PrisutnostZapisBaza[] = json.data ?? [];
-        if (lista.length === 0) return;
         setZakljucani((prev) => {
           const mapa = new Map(prev);
+          // Zapisi iz baze za ovaj dan se zamjenjuju svježim stanjem.
+          Array.from(mapa.entries()).forEach(([kljuc, z]) => {
+            if (z.izvor === "baza" && kljuc.startsWith(`${radniDan}|`)) {
+              mapa.delete(kljuc);
+            }
+          });
           lista.forEach((z) => {
-            mapa.set(z.sifra_radnika, {
+            mapa.set(kljucZakljucavanja(radniDan, z.sifra_radnika), {
               pocetak: izvuciVrijeme(z.datum_pocetka) ?? "",
               kraj: izvuciVrijeme(z.datum_kraja),
               opis: odrediVrstuRadaOpis(z),
@@ -442,7 +493,22 @@ export function RadniciPrisutnostUnos() {
         });
       })
       .catch(() => {});
-  }, []);
+    return () => {
+      otkazano = true;
+    };
+  }, [radniDan, osvjezi]);
+
+  // Zaključani radnici samo za izabrani radni dan (sifra -> zapis).
+  const zakljucaniDan = useMemo(() => {
+    const mapa = new Map<number, ZakljucanZapis>();
+    const prefiks = `${radniDan}|`;
+    zakljucani.forEach((z, kljuc) => {
+      if (kljuc.startsWith(prefiks)) {
+        mapa.set(Number(kljuc.slice(prefiks.length)), z);
+      }
+    });
+    return mapa;
+  }, [zakljucani, radniDan]);
 
   const aktivniRadnici = useMemo(
     () =>
@@ -471,7 +537,7 @@ export function RadniciPrisutnostUnos() {
   }, [aktivniRadnici, pretragaRadnika]);
 
   const preklopiRadnika = (sifra: number) => {
-    if (zakljucani.has(sifra)) return;
+    if (zakljucaniDan.has(sifra)) return;
     setOdabraniRadnici((prev) => {
       const sledeci = new Set(prev);
       if (sledeci.has(sifra)) sledeci.delete(sifra);
@@ -484,7 +550,7 @@ export function RadniciPrisutnostUnos() {
     setOdabraniRadnici((prev) => {
       const sledeci = new Set(prev);
       filtriraniRadnici.forEach((r) => {
-        if (r.sifra_radnika != null && !zakljucani.has(r.sifra_radnika)) {
+        if (r.sifra_radnika != null && !zakljucaniDan.has(r.sifra_radnika)) {
           sledeci.add(r.sifra_radnika);
         }
       });
@@ -494,9 +560,41 @@ export function RadniciPrisutnostUnos() {
 
   const poništiSve = () => setOdabraniRadnici(new Set());
 
+  // Promjena radnog dana: izbor radnika se poništava (zaključavanja su po
+  // danu), a datumi početka/kraja se prenose na novi dan — preko smjene ako je
+  // izabrana, inače pomjeranjem za isti broj dana.
+  const handleRadniDanChange = (noviDan: string) => {
+    if (!noviDan || noviDan === radniDan) return;
+    setRadniDan(noviDan);
+    setOdabraniRadnici(new Set());
+    const vremena = smjena ? izracunajVremenaZaSmjenu(smjena, noviDan) : null;
+    if (vremena) {
+      setDatumPocetkaDan(vremena.pocetakDatum);
+      setDatumPocetkaVrijeme(vremena.pocetakVrijeme);
+      setDatumKrajaDan(vremena.krajDatum);
+      setDatumKrajaVrijeme(vremena.krajVrijeme);
+      return;
+    }
+    if (datumPocetkaDan) {
+      const pomak = razlikaUDanima(datumPocetkaDan, noviDan);
+      setDatumPocetkaDan(noviDan);
+      if (datumKrajaDan) setDatumKrajaDan(pomjeriDan(datumKrajaDan, pomak));
+    }
+  };
+
+  // Ručna promjena datuma početka prebacuje i radni dan na taj datum (da
+  // zaključavanja odgovaraju danu za koji se zapis pravi).
+  const postaviDatumPocetka = (dan: string) => {
+    setDatumPocetkaDan(dan);
+    if (dan && dan !== radniDan) {
+      setRadniDan(dan);
+      setOdabraniRadnici(new Set());
+    }
+  };
+
   const handleSmjenaChange = (v: string) => {
     setSmjena(v);
-    const vremena = izracunajVremenaZaSmjenu(v);
+    const vremena = izracunajVremenaZaSmjenu(v, radniDan);
     if (vremena) {
       setDatumPocetkaDan(vremena.pocetakDatum);
       setDatumPocetkaVrijeme(vremena.pocetakVrijeme);
@@ -574,7 +672,7 @@ export function RadniciPrisutnostUnos() {
     const kartica = zapis.broj_kartice?.trim();
     const radnik = kartica ? radnikPoOznaci.get(kartica) : undefined;
     if (!radnik || radnik.sifra_radnika == null) return;
-    if (zakljucani.has(radnik.sifra_radnika)) return;
+    if (zakljucaniDan.has(radnik.sifra_radnika)) return;
 
     const detektovanaSmjena = detektujSmjenu(zapis.autentifikacija_vrijeme);
     if (detektovanaSmjena) {
@@ -609,16 +707,23 @@ export function RadniciPrisutnostUnos() {
   // prvo se briše na serveru (erp.radnici_prisutnost_obrisi), pa se tek onda
   // otključava — da se izbjegne da se "otključa" red koji zapravo nije obrisan.
   const handleOtkljucaj = async (sifra: number) => {
-    const zapis = zakljucani.get(sifra);
+    const kljuc = kljucZakljucavanja(radniDan, sifra);
+    const zapis = zakljucani.get(kljuc);
     if (!zapis) return;
 
     if (zapis.izvor === "sesija") {
       setStagedZapisi((prev) =>
-        prev.filter((z) => z.sifra_radnika !== sifra),
+        prev.filter(
+          (z) =>
+            !(
+              z.sifra_radnika === sifra &&
+              String(z.datum_pocetka).startsWith(radniDan)
+            ),
+        ),
       );
       setZakljucani((prev) => {
         const mapa = new Map(prev);
-        mapa.delete(sifra);
+        mapa.delete(kljuc);
         return mapa;
       });
       setPotvrdaBrisanja(null);
@@ -644,7 +749,7 @@ export function RadniciPrisutnostUnos() {
       }
       setZakljucani((prev) => {
         const mapa = new Map(prev);
-        mapa.delete(sifra);
+        mapa.delete(kljuc);
         return mapa;
       });
       setPotvrdaBrisanja(null);
@@ -675,6 +780,12 @@ export function RadniciPrisutnostUnos() {
     if (!datumPocetkaSql) {
       setGreska(
         `Izaberite datum početka i unesite vrijeme u formatu ${VRIJEME_PLACEHOLDER}`,
+      );
+      return;
+    }
+    if (datumPocetkaDan !== radniDan) {
+      setGreska(
+        `Datum početka (${prikaziDatum(datumPocetkaDan)}) se ne poklapa sa izabranim radnim danom (${prikaziDatum(radniDan)}).`,
       );
       return;
     }
@@ -716,7 +827,7 @@ export function RadniciPrisutnostUnos() {
     setZakljucani((prev) => {
       const mapa = new Map(prev);
       odabraniRadnici.forEach((sifra) => {
-        mapa.set(sifra, {
+        mapa.set(kljucZakljucavanja(radniDan, sifra), {
           pocetak: datumPocetkaVrijeme.slice(0, 5),
           kraj: datumKrajaVrijeme ? datumKrajaVrijeme.slice(0, 5) : null,
           opis,
@@ -755,6 +866,16 @@ export function RadniciPrisutnostUnos() {
       }
       setUspjeh(`Prisutnost sačuvana (${stagedZapisi.length} zapisa).`);
       setStagedZapisi([]);
+      // Pripremljeni zapisi su sada u bazi — skidaju se lokalna zaključavanja
+      // i ponovo se učitava stvarno stanje (sa sifra_tabele za brisanje).
+      setZakljucani((prev) => {
+        const mapa = new Map(prev);
+        Array.from(mapa.entries()).forEach(([kljuc, z]) => {
+          if (z.izvor === "sesija") mapa.delete(kljuc);
+        });
+        return mapa;
+      });
+      setOsvjezi((n) => n + 1);
       setDatumPocetkaDan("");
       setDatumPocetkaVrijeme("");
       setDatumKrajaDan("");
@@ -770,18 +891,9 @@ export function RadniciPrisutnostUnos() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Clock size={20} style={{ color: PRIMARY }} />
-        </div>
-        <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-          Unos prisutnosti
-        </h2>
-      </div>
-
       <div className="flex flex-col xl:flex-row gap-4 items-start">
         {/* LIJEVO: izbor radnika — što više odjednom vidljivo */}
-        <div className="min-w-0 w-full xl:w-1/2 xl:shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5 space-y-3">
+        <div className="min-w-0 w-full xl:w-2/5 xl:shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-5 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span
               className="text-xs font-bold uppercase tracking-wider"
@@ -836,7 +948,7 @@ export function RadniciPrisutnostUnos() {
             />
           </div>
 
-          <div className="max-h-[75vh] overflow-y-auto rounded-xl border border-gray-100 dark:border-[#2d2648] p-2">
+          <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] p-2">
             {loadingRadnici && (
               <div className="flex items-center justify-center py-8 gap-2">
                 <Loader2 size={16} className="animate-spin" style={{ color: PRIMARY }} />
@@ -867,10 +979,10 @@ export function RadniciPrisutnostUnos() {
                         ({grupa.radnici.length})
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 gap-y-1">
+                    <div className="grid grid-cols-1 gap-y-0.5">
                       {grupa.radnici.map((r) => {
                         const sifra = r.sifra_radnika as number;
-                        const zakljucanZapis = zakljucani.get(sifra);
+                        const zakljucanZapis = zakljucaniDan.get(sifra);
 
                         if (zakljucanZapis) {
                           return (
@@ -878,14 +990,14 @@ export function RadniciPrisutnostUnos() {
                               key={sifra}
                               title={`Zaključano — ${
                                 zakljucanZapis.izvor === "baza"
-                                  ? "već upisano danas"
+                                  ? "već upisano za ovaj dan"
                                   : "pripremljeno za čuvanje"
                               }: ${zakljucanZapis.opis}, ${zakljucanZapis.pocetak}${
                                 zakljucanZapis.kraj
                                   ? `–${zakljucanZapis.kraj}`
                                   : ""
                               }`}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border ${
+                              className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm border ${
                                 zakljucanZapis.izvor === "sesija"
                                   ? "border-[#8FC74A]/60 bg-green-50/40 dark:bg-[#1a2c12]/40"
                                   : "border-gray-200 dark:border-[#3a3158] bg-gray-50 dark:bg-[#1e1a2d]"
@@ -936,7 +1048,7 @@ export function RadniciPrisutnostUnos() {
                         return (
                           <label
                             key={sifra}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors border ${
+                            className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm cursor-pointer transition-colors border ${
                               izabran
                                 ? "border-[#785E9E] bg-purple-50/60 dark:bg-[#271f40]/60"
                                 : "border-transparent hover:bg-gray-50 dark:hover:bg-[#1e1a2d]"
@@ -948,7 +1060,7 @@ export function RadniciPrisutnostUnos() {
                               onChange={() => preklopiRadnika(sifra)}
                               className="w-4 h-4 shrink-0 accent-[#785E9E]"
                             />
-                            <span className="max-w-[30ch] truncate text-gray-700 dark:text-[#c5bfd8] border border-gray-200 dark:border-[#3a3158] rounded px-1.5 py-0.5">
+                            <span className="max-w-[30ch] truncate text-gray-700 dark:text-[#c5bfd8]">
                               {r.naziv_radnika}
                             </span>
                             {izabran && (
@@ -984,6 +1096,78 @@ export function RadniciPrisutnostUnos() {
 
         {/* SREDINA: vrijeme i vrsta rada, zajednički za izabrane; "Prihvati" ih zaključava */}
         <div className="w-full xl:w-[26rem] shrink-0 xl:sticky xl:top-4 space-y-4">
+          <div
+            className={`bg-white dark:bg-[#261f38] rounded-2xl border shadow-sm p-4 ${
+              jeDanas
+                ? "border-gray-100 dark:border-[#2d2648]"
+                : "border-amber-300 dark:border-amber-600/60"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-[#a89fc2]">
+                Radni dan
+              </span>
+              {jeDanas ? (
+                <span className="text-[11px] text-gray-400 dark:text-[#5f5878]">
+                  danas
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleRadniDanChange(danas)}
+                  className="text-[11px] font-semibold hover:underline"
+                  style={{ color: PRIMARY }}
+                >
+                  Vrati na danas
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleRadniDanChange(pomjeriDan(radniDan, -1))}
+                title="Prethodni dan"
+                className="p-2 rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#a99fc2] hover:bg-gray-50 dark:hover:bg-[#1e1a2d]"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div
+                className="relative cursor-pointer flex-1"
+                onClick={() => otvoriPicker(radniDanRef)}
+              >
+                <input
+                  ref={radniDanRef}
+                  type="date"
+                  value={radniDan}
+                  max={danas}
+                  onChange={(e) => handleRadniDanChange(e.target.value)}
+                  style={{ color: "transparent" }}
+                  className={`${inputClass} cursor-pointer`}
+                />
+                <div className="absolute inset-0 flex items-center px-3 text-sm pointer-events-none text-gray-800 dark:text-[#ede9f6]">
+                  <span className="font-mono">{prikaziDatum(radniDan)}</span>
+                  <span className="ml-2 text-xs text-gray-400 dark:text-[#8a80a3]">
+                    {NAZIVI_DANA[isoUDatum(radniDan).getDay()]}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRadniDanChange(pomjeriDan(radniDan, 1))}
+                disabled={jeDanas}
+                title="Sljedeći dan"
+                className="p-2 rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#a99fc2] hover:bg-gray-50 dark:hover:bg-[#1e1a2d] disabled:opacity-40"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            {!jeDanas && (
+              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                Naknadni unos za {prikaziDatum(radniDan)} — zaključani su samo radnici koji već imaju upis za taj dan.
+              </p>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={handlePrihvati}
@@ -1023,7 +1207,7 @@ export function RadniciPrisutnostUnos() {
                     ref={datumPocetkaRef}
                     type="date"
                     value={datumPocetkaDan}
-                    onChange={(e) => setDatumPocetkaDan(e.target.value)}
+                    onChange={(e) => postaviDatumPocetka(e.target.value)}
                     style={{ color: "transparent" }}
                     className={`${inputClass} cursor-pointer`}
                   />
@@ -1049,7 +1233,7 @@ export function RadniciPrisutnostUnos() {
                 type="button"
                 onClick={() => {
                   const sada = new Date();
-                  setDatumPocetkaDan(formatirajDatumZaUnos(sada));
+                  postaviDatumPocetka(formatirajDatumZaUnos(sada));
                   setDatumPocetkaVrijeme(formatirajVrijemeZaUnos(sada));
                 }}
                 className="mt-1 text-xs font-semibold hover:underline"
@@ -1160,7 +1344,17 @@ export function RadniciPrisutnostUnos() {
               Klik na radnika prepoznaje smjenu po vremenu dolaska i označava ga za unos.
             </p>
 
-            <div className="max-h-[75vh] overflow-y-auto space-y-1">
+            {!jeDanas && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                Dolasci sa čitača kartica važe samo za današnji dan — za naknadni unos birajte radnike iz liste lijevo.
+              </p>
+            )}
+
+            <div
+              className={`max-h-[75vh] overflow-y-auto space-y-1 ${
+                jeDanas ? "" : "opacity-40 pointer-events-none"
+              }`}
+            >
               {loadingPristigli && (
                 <div className="flex items-center justify-center py-4 gap-2">
                   <Loader2 size={14} className="animate-spin" style={{ color: PRIMARY }} />
@@ -1181,7 +1375,7 @@ export function RadniciPrisutnostUnos() {
                   const kartica = z.broj_kartice?.trim();
                   const radnik = kartica ? radnikPoOznaci.get(kartica) : undefined;
                   const sifra = radnik?.sifra_radnika ?? null;
-                  const jeZakljucan = sifra != null && zakljucani.has(sifra);
+                  const jeZakljucan = sifra != null && zakljucaniDan.has(sifra);
                   const jeIzabran = sifra != null && odabraniRadnici.has(sifra);
                   const mogucOdabir = sifra != null && !jeZakljucan;
 

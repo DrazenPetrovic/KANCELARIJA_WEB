@@ -284,13 +284,20 @@ function GradoviSekcija({ drzave }: { drzave: Drzava[] }) {
     [drzave],
   );
 
-  const entiteti = useMemo(
-    () =>
-      Array.from(
-        new Set(gradovi.map((g) => g.entitet).filter((e): e is string => !!e)),
-      ).sort((a, b) => a.localeCompare(b)),
-    [gradovi],
-  );
+  // U bazi isti entitet zna biti upisan sa razmakom ili drugačijim velikim/malim
+  // slovima ("FBIH", "FBiH ") — u listi se prikazuje samo jednom.
+  const entiteti = useMemo(() => {
+    const jedinstveni = new Map<string, string>();
+    for (const g of gradovi) {
+      const e = String(g.entitet ?? "").trim();
+      if (e && !jedinstveni.has(e.toUpperCase())) {
+        jedinstveni.set(e.toUpperCase(), e);
+      }
+    }
+    return Array.from(jedinstveni.values()).sort((a, b) =>
+      a.localeCompare(b, "sr"),
+    );
+  }, [gradovi]);
 
   // Isti naziv grada smije postojati samo jednom unutar iste države.
   const postoji = useMemo(() => {
