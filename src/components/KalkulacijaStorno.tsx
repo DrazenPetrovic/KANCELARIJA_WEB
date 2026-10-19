@@ -17,8 +17,8 @@ const ACCENT = "#8FC74A";
 const DANGER = "#ef4444";
 const ZT_BOJA = "#E0913A";
 
-// Storno kalkulacije: lista samo KALK zapisa (ZT i KO se ne prikazuju, a ni
-// storno kalkulacije — one imaju veza = šifra originala). Klik otvara modal
+// Storno kalkulacije: lista samo KALK zapisa (ZT i KO se ne prikazuju). Klik
+// otvara modal
 // sa stavkama i pripadajućim ZT-ovima; potvrda šalje samo šifru na
 // POST /api/kalkulacije/storno (erp.kalkulacija_unos_storno), koja sama čita
 // original iz baze, upisuje storno KALK i ZT-ove sa okrenutim predznacima,
@@ -35,7 +35,6 @@ interface KalkulacijaGlavni {
   duzi_se_za_iznos: number;
   vrsta_kalkulacije: string | null;
   valuta: string | null;
-  veza: string | number | null;
   vp_vrednost: number;
   // 0 = kalkulacija, 1 = stornirana.
   kalkulacija_stornirana: string | number | null;
@@ -76,11 +75,6 @@ const vrsta = (k: { vrsta_kalkulacije: string | null }) =>
   (k.vrsta_kalkulacije ?? "").trim().toUpperCase();
 const jeStornirana = (k: KalkulacijaGlavni) =>
   Number(k.kalkulacija_stornirana) === 1;
-// Storno kalkulacija nosi šifru originala u polju veza (obične imaju '0').
-const jeStornoDokument = (k: KalkulacijaGlavni) => {
-  const v = String(k.veza ?? "").trim();
-  return v !== "" && v !== "0";
-};
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const formatDatumDMY = (v: string | null | undefined): string => {
@@ -242,7 +236,7 @@ export function KalkulacijaStorno() {
   const samoKalk = useMemo(
     () =>
       kalkulacije
-        .filter((k) => vrsta(k) === "KALK" && !jeStornoDokument(k))
+        .filter((k) => vrsta(k) === "KALK")
         .sort((a, b) => Number(b.sifra_kalkulacije) - Number(a.sifra_kalkulacije)),
     [kalkulacije],
   );
@@ -389,9 +383,14 @@ export function KalkulacijaStorno() {
                           ? "cursor-not-allowed opacity-60"
                           : "cursor-pointer hover:bg-red-50 dark:hover:bg-red-500/10"
                       } ${
-                        i % 2 === 0
-                          ? "bg-white dark:bg-[#1a1528]"
-                          : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                        // Kalkulacije sa ZT — narandžasta pozadina (ZT_BOJA).
+                        brojZt > 0
+                          ? i % 2 === 0
+                            ? "bg-orange-100 dark:bg-orange-500/20"
+                            : "bg-orange-200/70 dark:bg-orange-500/25"
+                          : i % 2 === 0
+                            ? "bg-white dark:bg-[#1a1528]"
+                            : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                       }`}
                     >
                       <td
