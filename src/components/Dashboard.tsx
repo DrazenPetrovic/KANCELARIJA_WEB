@@ -23,6 +23,7 @@ import { RadniciPrisutnostPregled } from "./RadniciPrisutnostPregled";
 import { ArtikliPregled } from "./ArtikliPregled";
 import { ArtikliUnos } from "./ArtikliUnos";
 import { NivelacijaUnos } from "./NivelacijaUnos";
+import { LagerListe } from "./LagerListe";
 import { NivelacijePregled } from "./NivelacijePregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
@@ -170,6 +171,7 @@ type MenuSection =
   | "artikli-unos"
   | "artikli-pregled"
   | "artikli-kartica"
+  | "artikli-lager-liste"
   | "artikli-nivelacija-unos"
   | "artikli-nivelacija-pregled"
   | "ulazi-kalkulacija-unos"
@@ -224,6 +226,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "partneri-kartica": "Kartica partnera",
   "partneri-drzave-gradovi": "Unos država - gradova",
   "artikli-kartica": "Kartica artikla",
+  "artikli-lager-liste": "Lager liste",
   "trgovacke-knjige-veleprodaja": "Trgovačka knjiga – veleprodaja",
   "trgovacke-knjige-maloprodaja": "Trgovačka knjiga – maloprodaja",
   "narudzbe-pregled": "Pregled narudžbi",
@@ -1623,6 +1626,44 @@ export function Dashboard({
                             />
                           </span>
                           Kartica artikla
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("artikli-lager-liste")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "artikli-lager-liste",
+                          )}
+                          style={
+                            activeSection === "artikli-lager-liste"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "artikli-lager-liste"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "artikli-lager-liste"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Layers
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "artikli-lager-liste"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Lager liste
                         </button>
 
                         {/* Nivelacija toggle */}
@@ -3096,6 +3137,7 @@ export function Dashboard({
                 : activeSection === "pregled-kalkulacija"
                   ? "pt-[5px] pb-8"
                   : activeSection === "artikli-pregled" ||
+                      activeSection === "artikli-lager-liste" ||
                       activeSection === "racuni-knjizna-virmanski" ||
                       activeSection === "ulazi-kalkulacija-storno"
                     ? "pt-[10px] pb-8"
@@ -3240,6 +3282,8 @@ export function Dashboard({
           {activeSection === "artikli-kartica" && (
             <KarticaProizvoda initialSifraProizvoda={initSifraKartica} />
           )}
+
+          {activeSection === "artikli-lager-liste" && <LagerListe />}
 
           {activeSection === "artikli-nivelacija-unos" && <NivelacijaUnos />}
 

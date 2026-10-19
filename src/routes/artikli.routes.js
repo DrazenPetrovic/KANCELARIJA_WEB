@@ -5,6 +5,7 @@ const router = Router();
 
 router.get("/", ArtikliController.getArtikli);
 router.get("/pregled-sve", ArtikliController.getArtikliPregledSve);
+router.get("/poluproizvodi", ArtikliController.getArtikliPoluproizvodi);
 router.get("/nabavna-cijena/:id", ArtikliController.getArtikliNabavnaCijena);
 router.get("/grupe", ArtikliController.getArtikliGrupe);
 router.get("/grupe-unos", ArtikliController.getArtikliGrupeZaUnos);

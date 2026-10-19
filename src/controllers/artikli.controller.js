@@ -22,6 +22,18 @@ export const getArtikliPregledSve = async (req, res) => {
   }
 };
 
+export const getArtikliPoluproizvodi = async (req, res) => {
+  try {
+    const data = await ArtikliService.getArtikliPoluproizvodi();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled poluproizvoda error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju poluproizvoda" });
+  }
+};
+
 export const getArtikliNabavnaCijena = async (req, res) => {
   try {
     const data = await ArtikliService.getArtikliNabavnaCijena(req.params.id);

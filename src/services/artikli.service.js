@@ -18,6 +18,17 @@ export const getArtikliPregledSve = async () => {
   });
 };
 
+// Lager proizvoda – magacin 1 (poluproizvodi): količina, proizvodna i
+// transferna cijena/vrijednost. Vidi erp.artikli_poluproizvodi_pregled.
+export const getArtikliPoluproizvodi = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.artikli_poluproizvodi_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 // Trenutna nabavna cijena (cijena_bez) i VPC za proizvod, direktno iz
 // erp.artikli — koristi se u kartici proizvoda (prikaz pored tabele). Vidi
 // erp.artikli_nabavna_cijena_pregled.

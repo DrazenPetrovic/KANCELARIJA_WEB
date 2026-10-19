@@ -21,7 +21,6 @@ import {
   StickyNote,
   Tag,
   Trash2,
-  UserPlus,
   Users,
   User,
   X,
@@ -754,7 +753,10 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         });
         if (res.ok) {
           const d = await res.json();
-          const lista: RacunPodgrupa[] = d.data ?? [];
+          // Podgrupe 50 i 51 se ne koriste na žiralnom računu.
+          const lista: RacunPodgrupa[] = (
+            (d.data ?? []) as RacunPodgrupa[]
+          ).filter((p) => ![50, 51].includes(Number(p.sifra_podgrupe)));
           setPodgrupeRacuna(lista);
           const podrazumijevana = lista.find(
             (p) => Number(p.sifra_podgrupe) === 10,
@@ -2308,16 +2310,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               )}
           </div>
 
-          {/* Dva dugmeta — po pola visine, između pretrage i kartice */}
+          {/* Dugme za pregled partnera — između pretrage i kartice */}
           <div className="flex flex-col gap-1 flex-shrink-0">
-            <button
-              className="flex-1 flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110"
-              style={{ background: ACCENT }}
-              title="Dodaj partnera"
-            >
-              <UserPlus size={13} />
-              Dodaj
-            </button>
             <button
               onClick={() => setPokazuiModal(true)}
               className="flex-1 flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold text-white transition-all hover:brightness-110"
@@ -2508,12 +2502,6 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             className="flex-shrink-0 flex flex-col items-center justify-center gap-1 px-5 rounded-2xl border-2 border-dashed"
             style={{ borderColor: PRIMARY }}
           >
-            <span
-              className="text-sm font-extrabold uppercase tracking-widest"
-              style={{ color: PRIMARY }}
-            >
-              Žiralni račun
-            </span>
             <span
               className={`flex items-center gap-1.5 text-[10px] font-semibold ${
                 statusKase === "dostupna"
