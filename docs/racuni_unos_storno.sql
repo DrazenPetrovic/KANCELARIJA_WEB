@@ -2,6 +2,7 @@
 -- Preuzeto sa baze; izmjena: u stavkama (racun_po) kolicina, rabat_proc i
 -- rabat_km idu NEGATIVNO, sve ostalo (cijene, vpc, rabat_*_2/_3, pdv_po_artiklu)
 -- ostaje pozitivno kao na originalu.
+-- Izmjena 2: valuta storna = datum storniranja (CURDATE()), ne valuta originala.
 
 DROP PROCEDURE IF EXISTS erp.racuni_unos_storno;
 DELIMITER $$
@@ -138,7 +139,7 @@ BEGIN
         gl.ukupno * -1,
         gl.sifra_radnika,                            -- komercijalista sa originala
         gl.slovima,
-        gl.valuta,
+        CURDATE(),                                   -- valuta = datum storniranja
         gl.datum_isporuke,
         CONCAT('STORNO racuna br. ', gl.broj_racuna,
                ' (sifra_tabele ', gl.sifra_tabele, ')'),

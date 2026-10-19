@@ -33,6 +33,7 @@ import { Kif } from "./Kif";
 import { Kuf } from "./Kuf";
 import { KalkulacijePregled } from "./KalkulacijePregled";
 import { KalkulacijaUnos } from "./KalkulacijaUnos";
+import { KalkulacijaStorno } from "./KalkulacijaStorno";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { IzvodiStatus } from "./IzvodiStatus";
 import { IzvodiUnos } from "./IzvodiUnos";
@@ -85,6 +86,7 @@ import {
   PackagePlus,
   PenLine,
   Receipt,
+  RotateCcw,
   Settings,
   ShoppingCart,
   Sun,
@@ -171,6 +173,7 @@ type MenuSection =
   | "artikli-nivelacija-unos"
   | "artikli-nivelacija-pregled"
   | "ulazi-kalkulacija-unos"
+  | "ulazi-kalkulacija-storno"
   | "pregledi-racuna"
   | "pregled-kalkulacija"
   | "ugovorene-cijene"
@@ -214,6 +217,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "artikli-nivelacija-unos": "Unos nivelacije",
   "artikli-nivelacija-pregled": "Pregled nivelacija",
   "ulazi-kalkulacija-unos": "Unos kalkulacija",
+  "ulazi-kalkulacija-storno": "Storniranje kalkulacija",
   "pregledi-racuna": "Pregledi računa",
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
@@ -1962,6 +1966,43 @@ export function Dashboard({
                           </span>
                           Unos kalkulacija
                         </button>
+                        <button
+                          onClick={() =>
+                            handleSectionChange("ulazi-kalkulacija-storno")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "ulazi-kalkulacija-storno",
+                          )}
+                          style={
+                            activeSection === "ulazi-kalkulacija-storno"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "ulazi-kalkulacija-storno"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "ulazi-kalkulacija-storno"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <RotateCcw
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "ulazi-kalkulacija-storno"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Storniranje kalkulacija
+                        </button>
                       </div>
                     </div>,
                     document.body,
@@ -3055,7 +3096,8 @@ export function Dashboard({
                 : activeSection === "pregled-kalkulacija"
                   ? "pt-[5px] pb-8"
                   : activeSection === "artikli-pregled" ||
-                      activeSection === "racuni-knjizna-virmanski"
+                      activeSection === "racuni-knjizna-virmanski" ||
+                      activeSection === "ulazi-kalkulacija-storno"
                     ? "pt-[10px] pb-8"
                     : "py-8"
           }`}
@@ -3206,6 +3248,7 @@ export function Dashboard({
           )}
 
           {activeSection === "ulazi-kalkulacija-unos" && <KalkulacijaUnos />}
+          {activeSection === "ulazi-kalkulacija-storno" && <KalkulacijaStorno />}
 
           {activeSection === "pregledi-racuna" && <RacuniPregled />}
 

@@ -106,6 +106,13 @@ interface VpcRazlika {
   razlika: number;
 }
 
+interface LogStavka {
+  vrijeme: Date;
+  nivo: "INFO" | "UPOZ" | "GRESKA";
+  poruka: string;
+  podaci?: unknown;
+}
+
 interface TrenutniArtikal {
   vpc: number;
   vrsta: number;
@@ -167,6 +174,56 @@ export function KnjiznaVirmanski() {
   // ponovnog pokušaja se preskaču da se ista razlika ne niveliše dvaput.
   const nivelacijaUradjenoRef = useRef<Map<0 | 1, string>>(new Map());
 
+  // Log storna za praćenje grešaka — vodi se u memoriji od otvaranja modala i
+  // preuzima se SAMO klikom na "Preuzmi log" (nikad automatski).
+  const logRef = useRef<LogStavka[]>([]);
+  const [brojLogStavki, setBrojLogStavki] = useState(0);
+  const zapisiLog = (nivo: LogStavka["nivo"], poruka: string, podaci?: unknown) => {
+    logRef.current.push({ vrijeme: new Date(), nivo, poruka, podaci });
+    setBrojLogStavki(logRef.current.length);
+  };
+  const porukaGreske = (error: unknown) =>
+    error instanceof Error ? error.message : String(error);
+
+  const preuzmiLog = () => {
+    const r = odabraniRacun;
+    const sada = new Date();
+    const vrijeme = (d: Date) =>
+      `${formatDatumIso(d)} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+    const zaglavlje = [
+      "STORNO VP — LOG",
+      `Preuzeto: ${vrijeme(sada)}`,
+      `Korisnik: ${getCurrentUser()?.username ?? "-"}`,
+      `API: ${API_URL}`,
+      r
+        ? `Račun: ${r.vrsta_racuna_novo ?? r.broj_racuna} (sifra_tabele ${r.sifra_tabele}), partner ${r.naziv_partnera}, br. fiskalnog ${r.br_fiskalnog ?? "-"}`
+        : "Račun: -",
+      "=".repeat(70),
+    ];
+    const redovi = logRef.current.map((s) => {
+      const osnova = `[${vrijeme(s.vrijeme)}] ${s.nivo.padEnd(7)} ${s.poruka}`;
+      if (s.podaci === undefined) return osnova;
+      let json: string;
+      try {
+        json = JSON.stringify(s.podaci, null, 2);
+      } catch {
+        json = String(s.podaci);
+      }
+      return `${osnova}\n${json.replace(/^/gm, "    ")}`;
+    });
+    const blob = new Blob([[...zaglavlje, ...redovi].join("\n") + "\n"], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `storno_vp_${r?.sifra_tabele ?? "x"}_${formatDatumIso(sada)}_${p2(sada.getHours())}${p2(sada.getMinutes())}${p2(sada.getSeconds())}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   // Trenutni VPC i vrsta po šifri artikla — uvijek svježe sa servera (provjera
   // pri otvaranju modala i ponovo neposredno prije nivelacije).
   const ucitajTrenutneArtikle = async () => {
@@ -226,10 +283,18 @@ export function KnjiznaVirmanski() {
       }
       const razlike = [...poKljucu.values()];
       if (token === vpcProvjeraTokenRef.current) {
+        zapisiLog(
+          razlike.length > 0 ? "UPOZ" : "INFO",
+          razlike.length > 0
+            ? `Provjera VPC: ${razlike.length} stavki sa neslaganjem`
+            : "Provjera VPC: nema neslaganja",
+          razlike.length > 0 ? razlike : undefined,
+        );
         setVpcProvjera({ loading: false, greska: null, razlike });
       }
     } catch (error) {
       if (token === vpcProvjeraTokenRef.current) {
+        zapisiLog("GRESKA", `Provjera VPC nije urađena: ${porukaGreske(error)}`);
         setVpcProvjera({
           loading: false,
           greska: error instanceof Error ? error.message : String(error),
@@ -255,7 +320,18 @@ export function KnjiznaVirmanski() {
           Math.abs((svjeze.get(d.sifra_proizvoda)?.vpc ?? NaN) - d.vpcTrenutna) >=
             0.005 || !svjeze.has(d.sifra_proizvoda),
       );
+      zapisiLog("INFO", "Nivelacija: početak", {
+        vec_uradjeno: Object.fromEntries(nivelacijaUradjenoRef.current),
+      });
       if (promijenjene.length > 0) {
+        zapisiLog(
+          "UPOZ",
+          "Nivelacija: VPC se promijenila u međuvremenu",
+          promijenjene.map((d) => ({
+            ...d,
+            vpc_sada: svjeze.get(d.sifra_proizvoda)?.vpc ?? null,
+          })),
+        );
         throw new Error(
           `VPC se u međuvremenu promijenila za: ${promijenjene
             .map((d) => d.naziv_proizvoda)
@@ -275,23 +351,30 @@ export function KnjiznaVirmanski() {
       const sifre = () => [...uradjeno.values()];
       for (const g of grupe) {
         if (g.stavke.length === 0 || uradjeno.has(g.nivelacijaRobe)) continue;
+        const tijelo = {
+          datum_nivelacije: datumZaBazu(new Date()),
+          nivelacija_robe: g.nivelacijaRobe,
+          sifra_knjizenja: 0,
+          stavke: g.stavke.map((d) => ({
+            sifra_proizvoda: Number(d.sifra_proizvoda),
+            kolicina_proizvoda: d.kolicina,
+            cijena_stara: d.vpcRacun,
+            cijena_nova: d.vpcTrenutna,
+          })),
+        };
+        zapisiLog("INFO", "Nivelacija: POST /api/nivelacije/unos", tijelo);
         const res = await fetch(`${API_URL}/api/nivelacije/unos`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            datum_nivelacije: datumZaBazu(new Date()),
-            nivelacija_robe: g.nivelacijaRobe,
-            sifra_knjizenja: 0,
-            stavke: g.stavke.map((d) => ({
-              sifra_proizvoda: Number(d.sifra_proizvoda),
-              kolicina_proizvoda: d.kolicina,
-              cijena_stara: d.vpcRacun,
-              cijena_nova: d.vpcTrenutna,
-            })),
-          }),
+          body: JSON.stringify(tijelo),
         });
         const json = await res.json().catch(() => null);
+        zapisiLog(
+          res.ok && json?.success ? "INFO" : "GRESKA",
+          `Nivelacija: odgovor HTTP ${res.status}`,
+          json,
+        );
         if (!res.ok || !json?.success) {
           throw new Error(
             `${uradjeno.size > 0 ? `Nivelacija br. ${sifre().join(", ")} je sačuvana, ali ` : ""}nivelacija ${
@@ -316,6 +399,7 @@ export function KnjiznaVirmanski() {
         greska: null,
       });
     } catch (error) {
+      zapisiLog("GRESKA", `Nivelacija nije završena: ${porukaGreske(error)}`);
       setNivelacijaStatus({
         loading: false,
         uspjeh: null,
@@ -344,6 +428,7 @@ export function KnjiznaVirmanski() {
       if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
       stavke = json.data ?? [];
     } catch (error) {
+      zapisiLog("UPOZ", `Štampa: stavke storna nisu učitane: ${porukaGreske(error)}`);
       setStorniranjeUpozorenje(
         `Storno je sačuvan, ali stavke za štampu nisu učitane: ${
           error instanceof Error ? error.message : String(error)
@@ -400,7 +485,8 @@ export function KnjiznaVirmanski() {
             broj_racuna: brojRacunaZaStampu,
             datum_izdavanja: datum,
             datum_isporuke: String(original.datum_isporuke ?? datum),
-            valuta: String(original.valuta ?? datum),
+            // Valuta storna = datum storniranja (isto upisuje erp.racuni_unos_storno).
+            valuta: datum,
             sifra_tabele: sifraStorna,
             naziv_partnera: original.naziv_partnera,
             adresa_partnera: (original.adresa_partnera as string | null) ?? null,
@@ -436,14 +522,15 @@ export function KnjiznaVirmanski() {
     setNivelacijaZeljena(false);
     setNivelacijaStatus(null);
     nivelacijaUradjenoRef.current = new Map();
+    logRef.current = [];
+    zapisiLog("INFO", "Otvoren modal storna", r);
     void provjeriVpc(r);
   };
 
   const zatvoriModal = () => {
-    if (storniranjeLoading) return;
+    if (storniranjeLoading || nivelacijaStatus?.loading) return;
     setOdabraniRacun(null);
     resetujStanjeStorna();
-    if (nivelacijaStatus?.loading) return;
     vpcProvjeraTokenRef.current++;
     setVpcProvjera(null);
     setNivelacijaZeljena(false);
@@ -467,11 +554,22 @@ export function KnjiznaVirmanski() {
       invoiceResponse = await proveriFiskalizacijuPoRequestId(
         "ziralni",
         requestId,
-      ).catch(() => null);
+      ).catch((e) => {
+        zapisiLog("UPOZ", `ESIR: provjera po RequestId nije uspjela: ${porukaGreske(e)}`);
+        return null;
+      });
+      zapisiLog(
+        "INFO",
+        `ESIR: provjera po RequestId ${requestId} — ${
+          invoiceResponse ? "refundacija već postoji" : "nema refundacije"
+        }`,
+        invoiceResponse ?? undefined,
+      );
     }
 
     if (!invoiceResponse) {
       setStorniranjeKorak("Slanje refundacije na ESIR...");
+      zapisiLog("INFO", `ESIR: slanje refundacije (RequestId ${requestId})`, zahtjev);
       const rezultat = await izdajFiskalniRacun(
         "ziralni",
         zahtjev,
@@ -486,24 +584,34 @@ export function KnjiznaVirmanski() {
       );
       invoiceResponse = rezultat.invoiceResponse;
       upozorenje = rezultat.upozorenje;
+      zapisiLog(
+        upozorenje ? "UPOZ" : "INFO",
+        `ESIR: refundacija izvršena${upozorenje ? ` (upozorenje: ${upozorenje})` : ""}`,
+        // QR slika je velik base64 — u logu nije potrebna.
+        { ...invoiceResponse, verificationQRCode: undefined },
+      );
     }
 
     const { brFiskalnog, datumVremeFiskalnog } =
       izdvojiFiskalnePodatke(invoiceResponse);
 
     setStorniranjeKorak("Upis fiskalnog broja storna u bazu...");
+    const tijelo = {
+      sifra_tabele: sifraStorna,
+      br_fiskalnog: brFiskalnog,
+      datum_vreme_fiskalnog: datumVremeFiskalnog,
+    };
+    zapisiLog("INFO", "Upis fiskalnog broja: POST /api/racuni/azuriraj-fiskalne-podatke", tijelo);
     const res = await fetch(`${API_URL}/api/racuni/azuriraj-fiskalne-podatke`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({
-        sifra_tabele: sifraStorna,
-        br_fiskalnog: brFiskalnog,
-        datum_vreme_fiskalnog: datumVremeFiskalnog,
-      }),
+      body: JSON.stringify(tijelo),
     });
+    zapisiLog(res.ok ? "INFO" : "GRESKA", `Upis fiskalnog broja: HTTP ${res.status}`);
     if (!res.ok) {
       const g = await res.json().catch(() => null);
+      zapisiLog("GRESKA", "Upis fiskalnog broja: odgovor servera", g);
       throw new Error(
         `ESIR refundacija je izvršena (fiskalni broj ${brFiskalnog}), ali upis u bazu nije uspio: ${
           g?.error || `HTTP ${res.status}`
@@ -519,6 +627,11 @@ export function KnjiznaVirmanski() {
     const brFiskalnogOriginala = String(odabraniRacun.br_fiskalnog ?? "").trim();
     setStorniranjeLoading(true);
     resetujStanjeStorna();
+    zapisiLog("INFO", "Potvrđen storno", {
+      sifra_tabele: sifraOriginala,
+      br_fiskalnog: brFiskalnogOriginala,
+      nivelacija_oznacena: nivelacijaZeljena,
+    });
 
     // Faza 1 — sve provjere PRIJE upisa u bazu: ako ESIR nije spreman ili
     // original nije na uređaju, ništa se ne upisuje.
@@ -536,6 +649,7 @@ export function KnjiznaVirmanski() {
       }
       setStorniranjeKorak("Provjera ESIR uređaja...");
       const status = await preuzmiStatusEsira("ziralni");
+      zapisiLog("INFO", "ESIR: status uređaja", status);
       if (jePotrebanPin(status)) {
         throw new Error(
           "ESIR žiralni traži PIN — unesite PIN (ekran Žiralni račun) pa pokušajte ponovo.",
@@ -546,11 +660,19 @@ export function KnjiznaVirmanski() {
         "ziralni",
         brFiskalnogOriginala,
       );
+      zapisiLog("INFO", "ESIR: preuzet originalni fiskalni račun", {
+        invoiceRequest: original.invoiceRequest,
+        invoiceResponse: {
+          ...original.invoiceResponse,
+          verificationQRCode: undefined,
+        },
+      });
       zahtjev = pripremiRefundZahtjev(
         original,
         (getCurrentUser()?.username ?? "").toUpperCase(),
       );
     } catch (error) {
+      zapisiLog("GRESKA", `Faza 1 (provjere prije upisa): ${porukaGreske(error)}`);
       setStorniranjeGreska(
         `Storno nije urađen (ništa nije upisano): ${
           error instanceof Error ? error.message : String(error)
@@ -573,6 +695,11 @@ export function KnjiznaVirmanski() {
         body: JSON.stringify({ sifra_tabele: sifraOriginala }),
       });
       const json = await res.json().catch(() => null);
+      zapisiLog(
+        res.ok && json?.success ? "INFO" : "GRESKA",
+        `Upis storna: POST /api/racuni/storno — HTTP ${res.status}`,
+        json,
+      );
       if (!res.ok || !json?.success) {
         throw new Error(
           json?.error || `Greška pri storniranju računa (HTTP ${res.status})`,
@@ -591,6 +718,7 @@ export function KnjiznaVirmanski() {
         ),
       );
     } catch (error) {
+      zapisiLog("GRESKA", `Faza 2 (upis storna): ${porukaGreske(error)}`);
       setStorniranjeGreska(
         error instanceof Error ? error.message : "Greška pri storniranju računa.",
       );
@@ -617,6 +745,7 @@ export function KnjiznaVirmanski() {
         zahtjev,
         false,
       );
+      zapisiLog("INFO", `Storno završen (fiskalni broj ${brFiskalnog})`);
       void otvoriStampuStorna(original, sifraStorna, brojStorna, invoiceResponse);
       setStorniranjeUspjeh(
         `Račun je storniran${brojStorna !== null ? ` (storno br. ${brojStorna})` : ""} i refundacija je fiskalizovana (fiskalni broj ${brFiskalnog}).`,
@@ -627,6 +756,7 @@ export function KnjiznaVirmanski() {
         );
       }
     } catch (error) {
+      zapisiLog("GRESKA", `Faza 3 (ESIR refundacija): ${porukaGreske(error)}`);
       setEsirNedovrsen({ sifraStorna, brojStorna, zahtjev, original });
       void otvoriStampuStorna(original, sifraStorna, brojStorna, null);
       setStorniranjeGreska(
@@ -646,12 +776,14 @@ export function KnjiznaVirmanski() {
     setStorniranjeLoading(true);
     setStorniranjeGreska(null);
     setStorniranjeUpozorenje(null);
+    zapisiLog("INFO", `Ponovni pokušaj ESIR refundacije (storno ${sifraStorna})`);
     try {
       const { brFiskalnog, upozorenje, invoiceResponse } = await fiskalizujIUpisi(
         sifraStorna,
         zahtjev,
         true,
       );
+      zapisiLog("INFO", `Ponovni pokušaj uspio (fiskalni broj ${brFiskalnog})`);
       setEsirNedovrsen(null);
       void otvoriStampuStorna(original, sifraStorna, brojStorna, invoiceResponse);
       setStorniranjeUspjeh(
@@ -663,6 +795,7 @@ export function KnjiznaVirmanski() {
         );
       }
     } catch (error) {
+      zapisiLog("GRESKA", `Ponovni pokušaj ESIR refundacije: ${porukaGreske(error)}`);
       setStorniranjeGreska(
         `ESIR refundacija i dalje nije završena: ${
           error instanceof Error ? error.message : String(error)
@@ -1140,6 +1273,15 @@ export function KnjiznaVirmanski() {
               </div>
 
               <div className="px-6 py-4 flex items-center justify-end gap-2 border-t border-gray-100 dark:border-[#2d2648] flex-shrink-0">
+                {brojLogStavki > 0 && (
+                  <button
+                    onClick={preuzmiLog}
+                    title="Preuzmi log ovog storna (.txt) za praćenje grešaka"
+                    className="mr-auto px-3 py-2 text-xs font-semibold rounded-xl border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#a89fc2] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                  >
+                    Preuzmi log
+                  </button>
+                )}
                 {storniranjeUspjeh ? (
                   <button
                     onClick={zatvoriModal}

@@ -19,5 +19,6 @@ router.get(
   KalkulacijeController.getZadnjaCijenaProizvoda,
 );
 router.post("/unos", KalkulacijeController.unosKalkulacije);
+router.post("/storno", KalkulacijeController.stornoKalkulacije);
 
 export default router;

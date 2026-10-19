@@ -84,6 +84,26 @@ export const unosKalkulacije = async (jsonTekst) => {
   });
 };
 
+// Storno cijele KALK kalkulacije (sa pripadajućim ZT-ovima). Procedura sama
+// čita original iz baze, upisuje storno sa okrenutim predznacima (veza =
+// šifra originala), skida robu sa lagera, vraća cijena_bez i postavlja
+// kalkulacija_stornirana = 1 na originalu i njegovim ZT-ovima. Vraća red sa
+// originalna_kalkulacija, storno_kalkulacija, broj_storniranih_stavki,
+// broj_storniranih_zt, poruka.
+const PROCEDURA_STORNO_KALKULACIJE = "erp.kalkulacija_unos_storno";
+
+export const stornoKalkulacije = async (sifraKalkulacije) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      `CALL ${PROCEDURA_STORNO_KALKULACIJE}(?)`,
+      [sifraKalkulacije],
+    );
+    const rezultat =
+      Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    return rezultat[0] ?? null;
+  });
+};
+
 // Redni broj u KUF-u koji operater upisuje na fakturu dobavljača. Procedura
 // broji q_kalkulacija_gl + q_kuf, pa se poziva tek nakon uspješnog upisa
 // kalkulacije (nova kalkulacija je tada već uračunata). Vraća broj ili null.

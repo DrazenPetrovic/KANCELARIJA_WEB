@@ -140,6 +140,26 @@ export const unosKalkulacije = async (req, res) => {
   }
 };
 
+// Body: { sifra_kalkulacije } — storno cijele KALK kalkulacije.
+export const stornoKalkulacije = async (req, res) => {
+  try {
+    const sifra = Number(req.body?.sifra_kalkulacije);
+    if (!Number.isInteger(sifra) || sifra <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Neispravna šifra kalkulacije" });
+    }
+    const data = await KalkulacijeService.stornoKalkulacije(sifra);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Storno kalkulacije error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.sqlMessage || "Greška pri storniranju kalkulacije",
+    });
+  }
+};
+
 export const getKalkulacijeStavke = async (req, res) => {
   try {
     const data = await KalkulacijeService.getKalkulacijeStavke();
