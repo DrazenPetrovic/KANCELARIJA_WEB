@@ -3,10 +3,18 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  CreditCard,
+  FileSpreadsheet,
   Loader2,
+  Printer,
   RefreshCcw,
   Search,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import {
+  LagerListaTemplate,
+  type LagerListaKolona,
+} from "../print/templates/LagerListaTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -156,6 +164,20 @@ const formatBroj = (v: number | string | undefined, decimale = 2) => {
   });
 };
 
+// Za CSV: bez razdvajača hiljada, decimalni zarez — Excel sa lokalnim
+// (bs/sr) podešavanjima to čita kao broj.
+const csvBroj = (v: number, decimale: number) =>
+  v.toFixed(decimale).replace(".", ",");
+
+const csvPolje = (v: string) =>
+  /[;"\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+
+const danasDMY = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}.`;
+};
+
 type SortPolje = "grupa" | "sifra" | "naziv" | "kolicina";
 
 // sort = trenutni smjer ako je ova kolona aktivna, null ako nije; bez onSort
@@ -221,6 +243,7 @@ export function LagerListe() {
   const [sortSmjer, setSortSmjer] = useState<"asc" | "desc">("asc");
 
   const lager = LAGERI.find((l) => l.id === aktivniLager)!;
+  const { openPrint } = usePrint();
 
   // Prvi klik na kolonu sortira rastuće, drugi opadajuće, treći vraća
   // podrazumijevano (grupa pa naziv).
@@ -335,7 +358,106 @@ export function LagerListe() {
     [filtrirani, lager],
   );
 
-  const brojKolona = 4 + lager.kolone.length + (lager.imaGrupu ? 1 : 0);
+  // +1 za kolonu sa dugmetom za karticu artikla.
+  const brojKolona = 5 + lager.kolone.length + (lager.imaGrupu ? 1 : 0);
+
+  // Otvara Karticu artikla u novom tabu, sa unaprijed odabranim proizvodom
+  // (isto kao u ArtikliPregled — Dashboard čita section/sifra iz query stringa).
+  const otvoriKarticuNovomTabu = (a: Artikal) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL}?section=artikli-kartica&sifra=${encodeURIComponent(String(a.sifra_proizvoda))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // Kolone za štampu/CSV — iste kao u tabeli, za filtrirane i sortirane stavke.
+  const izvozKolone: LagerListaKolona[] = [
+    { naslov: "Šifra" },
+    { naslov: "Naziv" },
+    { naslov: "JM" },
+    { naslov: "Količina", right: true },
+    ...lager.kolone.map((k) => ({
+      naslov: k.naslov,
+      right: true,
+      bold: k.bold,
+    })),
+    ...(lager.imaGrupu ? [{ naslov: "Grupa" }] : []),
+  ];
+
+  const opisFiltera = [
+    grupa !== "sve" ? `Grupa: ${grupa || "(bez grupe)"}` : "",
+    pretraga.trim() ? `Pretraga: "${pretraga.trim()}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const stampaj = () => {
+    const datum = danasDMY();
+    openPrint({
+      title: `${lager.naziv} ${datum}`,
+      orientation: "portrait",
+      format: "A4",
+      component: (
+        <LagerListaTemplate
+          naziv={lager.naziv}
+          datum={datum}
+          filter={opisFiltera}
+          kolone={izvozKolone}
+          redovi={filtrirani.map((a) => [
+            String(a.sifra_proizvoda ?? ""),
+            String(a.naziv_proizvoda ?? ""),
+            String(a.jm ?? ""),
+            formatBroj(br(a.kolicina_proizvoda), 3),
+            ...lager.kolone.map((k) => formatBroj(k.vrijednost(a), k.decimale)),
+            ...(lager.imaGrupu ? [String(a.naziv_grupe ?? "")] : []),
+          ])}
+          ukupno={[
+            "Ukupno",
+            "",
+            "",
+            "",
+            ...zbirovi.map((z) => (z === null ? "" : formatBroj(z))),
+            ...(lager.imaGrupu ? [""] : []),
+          ]}
+        />
+      ),
+    });
+  };
+
+  const izveziCsv = () => {
+    const redovi = [
+      izvozKolone.map((k) => k.naslov),
+      ...filtrirani.map((a) => [
+        String(a.sifra_proizvoda ?? ""),
+        String(a.naziv_proizvoda ?? ""),
+        String(a.jm ?? ""),
+        csvBroj(br(a.kolicina_proizvoda), 3),
+        ...lager.kolone.map((k) => csvBroj(k.vrijednost(a), k.decimale)),
+        ...(lager.imaGrupu ? [String(a.naziv_grupe ?? "")] : []),
+      ]),
+      [
+        "Ukupno",
+        "",
+        "",
+        "",
+        ...zbirovi.map((z) => (z === null ? "" : csvBroj(z, 2))),
+        ...(lager.imaGrupu ? [""] : []),
+      ],
+    ];
+    const csv = redovi
+      .map((red) => red.map(csvPolje).join(";"))
+      .join("\r\n");
+    // BOM da Excel prepozna UTF-8 (š, č, ć, ž, đ).
+    const blob = new Blob(["﻿" + csv], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${lager.naziv.replace(/[^\p{L}\p{N}]+/gu, "_")}_${danasDMY().replace(/\.$/, "")}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-4">
@@ -414,6 +536,24 @@ export function LagerListe() {
               <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
               Osvježi
             </button>
+            <button
+              onClick={stampaj}
+              disabled={loading || filtrirani.length === 0}
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              style={{ background: PRIMARY }}
+            >
+              <Printer size={14} />
+              Štampa
+            </button>
+            <button
+              onClick={izveziCsv}
+              disabled={loading || filtrirani.length === 0}
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              style={{ background: PRIMARY }}
+            >
+              <FileSpreadsheet size={14} />
+              CSV
+            </button>
             <span className="ml-auto text-sm text-gray-500 dark:text-[#9e96b8]">
               Stavki: <b>{filtrirani.length}</b>
               {lager.kolone.map((k, i) =>
@@ -465,6 +605,7 @@ export function LagerListe() {
                     </TH>
                   ))}
                   {lager.imaGrupu && <TH>Grupa</TH>}
+                  <TH>{""}</TH>
                 </tr>
               </thead>
               <tbody>
@@ -527,6 +668,17 @@ export function LagerListe() {
                           </TD>
                         ))}
                         {lager.imaGrupu && <TD>{a.naziv_grupe || "–"}</TD>}
+                        <td className="px-1 py-0 text-center">
+                          <button
+                            type="button"
+                            onClick={() => otvoriKarticuNovomTabu(a)}
+                            title="Otvori karticu artikla u novom tabu"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                            style={{ color: PRIMARY }}
+                          >
+                            <CreditCard size={14} />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
@@ -545,6 +697,7 @@ export function LagerListe() {
                       </TD>
                     ))}
                     {lager.imaGrupu && <TD bold>{""}</TD>}
+                    <TD bold>{""}</TD>
                   </tr>
                 </tfoot>
               )}
