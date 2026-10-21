@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Loader2,
+  Printer,
   Receipt,
   RefreshCcw,
   Search,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { TrgovackaKnjigaTemplate } from "../print/templates/TrgovackaKnjigaTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -85,6 +88,7 @@ function StatTile({
 }
 
 export function TrgovackaKnjigaVeleprodaja() {
+  const { openPrint } = usePrint();
   const [datumOd, setDatumOd] = useState(prviDanMjeseca());
   const [datumDo, setDatumDo] = useState(danas());
   const [redovi, setRedovi] = useState<TrgovackaKnjigaRed[]>([]);
@@ -150,21 +154,6 @@ export function TrgovackaKnjigaVeleprodaja() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <BookOpen size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Trgovačka knjiga — Veleprodaja
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Zaduženja, razduženja i rabat za izabrani period
-          </p>
-        </div>
-      </div>
-
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -234,164 +223,200 @@ export function TrgovackaKnjigaVeleprodaja() {
               className="pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-full focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              openPrint({
+                title: `Trgovačka knjiga — Veleprodaja ${formatDatumDMY(datumOd) ?? ""} - ${formatDatumDMY(datumDo) ?? ""}`,
+                orientation: "portrait",
+                format: "A4",
+                component: (
+                  <TrgovackaKnjigaTemplate
+                    naslov="Trgovačka knjiga — Veleprodaja"
+                    datumOd={datumOd}
+                    datumDo={datumDo}
+                    redovi={filtrirani}
+                  />
+                ),
+              })
+            }
+            disabled={loading || filtrirani.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+            style={{ background: PRIMARY }}
+          >
+            <Printer size={14} />
+            Štampaj
+          </button>
         </div>
       </div>
 
-      {/* Statistika */}
-      {!loading && !greska && (
-        <div className="flex flex-wrap gap-3">
-          <StatTile
-            icon={<TrendingUp size={16} />}
-            vrijednost={formatIznos(ukupnoZaduzenje)}
-            naziv="Ukupno zaduženje"
-            boja={ACCENT}
+      {/* Učitavanje / greška / prazno stanje */}
+      {loading && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex items-center justify-center py-20 gap-3">
+          <Loader2
+            size={22}
+            className="animate-spin"
+            style={{ color: PRIMARY }}
           />
-          <StatTile
-            icon={<TrendingDown size={16} />}
-            vrijednost={formatIznos(ukupnoRazduzenje)}
-            naziv="Ukupno razduženje"
-            boja="#ef4444"
-          />
-          <StatTile
-            icon={<Receipt size={16} />}
-            vrijednost={formatIznos(ukupnoRabat)}
-            naziv="Ukupno rabat"
-            boja={PRIMARY}
-          />
+          <span className="text-sm text-gray-500 dark:text-[#7d7498]">
+            Učitavanje...
+          </span>
         </div>
       )}
 
-      {/* Tabela */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
-        {loading && (
-          <div className="flex items-center justify-center py-20 gap-3">
-            <Loader2
-              size={22}
-              className="animate-spin"
-              style={{ color: PRIMARY }}
-            />
-            <span className="text-sm text-gray-500 dark:text-[#7d7498]">
-              Učitavanje...
-            </span>
-          </div>
-        )}
+      {!loading && greska && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex flex-col items-center justify-center gap-2 py-20">
+          <p className="text-sm text-red-500 dark:text-red-400">{greska}</p>
+          <button
+            type="button"
+            onClick={ucitaj}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: `${PRIMARY}1f`, color: PRIMARY }}
+          >
+            Pokušaj ponovo
+          </button>
+        </div>
+      )}
 
-        {greska && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20">
-            <p className="text-sm text-red-500 dark:text-red-400">{greska}</p>
-            <button
-              type="button"
-              onClick={ucitaj}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: `${PRIMARY}1f`, color: PRIMARY }}
-            >
-              Pokušaj ponovo
-            </button>
-          </div>
-        )}
-
-        {!loading && !greska && filtrirani.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
-            <BookOpen size={28} />
-            <p className="text-sm text-gray-400 dark:text-[#5f5878]">
-              {pretraga.trim()
-                ? "Nema rezultata za tu pretragu."
-                : "Nema podataka za izabrani period."}
-            </p>
-          </div>
-        )}
-
-        {!loading && !greska && filtrirani.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: `${PRIMARY}1f` }}>
-                  <th
-                    className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: PRIMARY }}
-                  >
-                    Rb
-                  </th>
-                  <th
-                    className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: PRIMARY }}
-                  >
-                    Datum
-                  </th>
-                  <th
-                    className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: PRIMARY }}
-                  >
-                    Broj računa
-                  </th>
-                  <th
-                    className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: PRIMARY }}
-                  >
-                    Partner
-                  </th>
-                  <th
-                    className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: ACCENT }}
-                  >
-                    Zaduženje
-                  </th>
-                  <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-500">
-                    Razduženje
-                  </th>
-                  <th
-                    className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
-                    style={{ color: PRIMARY }}
-                  >
-                    Rabat
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrirani.map((r, idx) => (
-                  <tr
-                    key={r.rb}
-                    className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
-                      idx % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#221c34]" : ""
-                    }`}
-                  >
-                    <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
-                      {r.rb}
-                    </td>
-                    <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
-                      {formatDatumDMY(r.datum) ?? "–"}
-                    </td>
-                    <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
-                      {r.broj_racuna}
-                    </td>
-                    <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                      {r.podaci_o_partneru ?? "–"}
-                    </td>
-                    <td
-                      className="px-3 py-2 text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
-                      style={{ color: ACCENT }}
-                    >
-                      {Number(r.zaduzenje) ? formatIznos(r.zaduzenje) : ""}
-                    </td>
-                    <td className="px-3 py-2 text-right font-semibold text-red-500 border-t border-gray-50 dark:border-[#2d2648]">
-                      {Number(r.razduzenje) ? formatIznos(r.razduzenje) : ""}
-                    </td>
-                    <td className="px-3 py-2 text-right text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                      {Number(r.rabat) ? formatIznos(r.rabat) : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {!loading && !greska && filtrirani.length > 0 && (
-          <p className="px-4 py-2.5 text-xs text-gray-400 dark:text-[#5f5878] border-t border-gray-100 dark:border-[#2d2648]">
-            Prikazano {filtrirani.length} / {redovi.length} stavki
+      {!loading && !greska && filtrirani.length === 0 && (
+        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
+          <BookOpen size={28} />
+          <p className="text-sm text-gray-400 dark:text-[#5f5878]">
+            {pretraga.trim()
+              ? "Nema rezultata za tu pretragu."
+              : "Nema podataka za izabrani period."}
           </p>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Rekapitulacija (5px od lijeve ivice) + tabela (centrira se u preostalom
+          prostoru; ako ne stane, naslanja se uz rekapitulaciju sa 5px razmaka) */}
+      {!loading && !greska && filtrirani.length > 0 && (
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+          {/* Rekapitulacija */}
+          <div className="flex flex-col gap-3 w-full xl:w-64 flex-shrink-0 xl:ml-[5px]">
+            <div
+              className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
+              style={{ background: PRIMARY }}
+            >
+              Rekapitulacija
+            </div>
+            <StatTile
+              icon={<TrendingUp size={16} />}
+              vrijednost={formatIznos(ukupnoZaduzenje)}
+              naziv="Ukupno zaduženje"
+              boja={ACCENT}
+            />
+            <StatTile
+              icon={<TrendingDown size={16} />}
+              vrijednost={formatIznos(ukupnoRazduzenje)}
+              naziv="Ukupno razduženje"
+              boja="#ef4444"
+            />
+            <StatTile
+              icon={<Receipt size={16} />}
+              vrijednost={formatIznos(ukupnoRabat)}
+              naziv="Ukupno rabat"
+              boja={PRIMARY}
+            />
+          </div>
+
+          {/* Tabela */}
+          <div className="flex-1 min-w-0 flex xl:justify-center xl:pl-[5px]">
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full origin-top scale-110">
+              <div className="overflow-x-auto">
+                <table className="table-auto text-sm">
+                  <thead>
+                    <tr style={{ background: `${PRIMARY}1f` }}>
+                      <th
+                        className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: PRIMARY }}
+                      >
+                        Rb
+                      </th>
+                      <th
+                        className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: PRIMARY }}
+                      >
+                        Datum
+                      </th>
+                      <th
+                        className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: PRIMARY }}
+                      >
+                        Broj računa
+                      </th>
+                      <th
+                        className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: PRIMARY }}
+                      >
+                        Partner
+                      </th>
+                      <th
+                        className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: ACCENT }}
+                      >
+                        Zaduženje
+                      </th>
+                      <th className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap text-red-500">
+                        Razduženje
+                      </th>
+                      <th
+                        className="text-right px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap"
+                        style={{ color: PRIMARY }}
+                      >
+                        Rabat
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtrirani.map((r, idx) => (
+                      <tr
+                        key={r.rb}
+                        className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
+                          idx % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#221c34]" : ""
+                        }`}
+                      >
+                        <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
+                          {r.rb}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
+                          {formatDatumDMY(r.datum) ?? "–"}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
+                          {r.broj_racuna}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                          {r.podaci_o_partneru ?? "–"}
+                        </td>
+                        <td
+                          className="px-3 py-2 text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
+                          style={{ color: ACCENT }}
+                        >
+                          {Number(r.zaduzenje) ? formatIznos(r.zaduzenje) : ""}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-red-500 border-t border-gray-50 dark:border-[#2d2648]">
+                          {Number(r.razduzenje)
+                            ? formatIznos(r.razduzenje)
+                            : ""}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                          {Number(r.rabat) ? formatIznos(r.rabat) : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="px-4 py-2.5 text-xs text-gray-400 dark:text-[#5f5878] border-t border-gray-100 dark:border-[#2d2648]">
+                Prikazano {filtrirani.length} / {redovi.length} stavki
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -31,6 +31,7 @@ import { KarticaProizvoda } from "./KarticaProizvoda";
 import { TrgovackaKnjigaVeleprodaja } from "./TrgovackaKnjigaVeleprodaja";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
+import { PoslovanjeDnevno } from "./PoslovanjeDnevno";
 import { Kuf } from "./Kuf";
 import { KalkulacijePregled } from "./KalkulacijePregled";
 import { KalkulacijaUnos } from "./KalkulacijaUnos";
@@ -203,6 +204,8 @@ type MenuSection =
   | "analitika-mjesecni-prihodi"
   | "analitika-kif"
   | "analitika-kuf"
+  | "analitika-poslovanje-dnevno"
+  | "analitika-poslovanje-mjesecno"
   | null;
 
 const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
@@ -251,6 +254,8 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "analitika-mjesecni-prihodi": "Mjesečni prihodi",
   "analitika-kif": "Knjiga izlaznih faktura",
   "analitika-kuf": "Knjiga ulaznih faktura",
+  "analitika-poslovanje-dnevno": "Poslovanje – dnevno",
+  "analitika-poslovanje-mjesecno": "Poslovanje – mjesečno",
 };
 
 export function Dashboard({
@@ -338,6 +343,7 @@ export function Dashboard({
   const [izvodiExpanded, setIzvodiExpanded] = useState(false);
   const [nivelacijaExpanded, setNivelacijaExpanded] = useState(false);
   const [blagajnaExpanded, setBlagajnaExpanded] = useState(false);
+  const [poslovanjeExpanded, setPoslovanjeExpanded] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const [hoveredBtn, setHoveredBtn] = useState<
     | "file"
@@ -673,6 +679,7 @@ export function Dashboard({
       setBlagajnaExpanded(false);
       setTrgovackeKnjigeExpanded(false);
     }
+    if (menu !== "analitika") setPoslovanjeExpanded(false);
   };
 
   const handleSectionChange = (section: MenuSection) => {
@@ -684,6 +691,7 @@ export function Dashboard({
     setIzvodiExpanded(false);
     setBlagajnaExpanded(false);
     setTrgovackeKnjigeExpanded(false);
+    setPoslovanjeExpanded(false);
   };
 
   const navBtnStyle = (
@@ -3116,6 +3124,64 @@ export function Dashboard({
                           </span>
                           Knjiga ulaznih faktura
                         </button>
+
+                        {/* Poslovanje toggle */}
+                        <button
+                          onClick={() => setPoslovanjeExpanded((p) => !p)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648] transition-all"
+                        >
+                          <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                              <TrendingUp size={13} style={{ color: PRIMARY }} />
+                            </span>
+                            Poslovanje
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={`transition-transform duration-200 text-gray-400 dark:text-[#5f5878] ${poslovanjeExpanded ? "rotate-90" : ""}`}
+                          />
+                        </button>
+
+                        {poslovanjeExpanded && (
+                          <div
+                            className="ml-4 pl-3 space-y-0.5 border-l-2"
+                            style={{ borderColor: PRIMARY }}
+                          >
+                            {(
+                              [
+                                ["analitika-poslovanje-dnevno", "Dnevno"],
+                                ["analitika-poslovanje-mjesecno", "Mjesečno"],
+                              ] as const
+                            ).map(([sekcija, naziv]) => (
+                              <button
+                                key={sekcija}
+                                onClick={() => handleSectionChange(sekcija)}
+                                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+                                  activeSection === sekcija
+                                    ? "font-bold"
+                                    : "text-gray-600 dark:text-[#9e96b8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                                }`}
+                                style={
+                                  activeSection === sekcija
+                                    ? { color: PRIMARY }
+                                    : {}
+                                }
+                              >
+                                <Calendar
+                                  size={12}
+                                  className="flex-shrink-0"
+                                  style={{
+                                    color:
+                                      activeSection === sekcija
+                                        ? PRIMARY
+                                        : "#9ca3af",
+                                  }}
+                                />
+                                {naziv}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>,
                     document.body,
@@ -3141,7 +3207,9 @@ export function Dashboard({
                       activeSection === "racuni-knjizna-virmanski" ||
                       activeSection === "ulazi-kalkulacija-storno"
                     ? "pt-[10px] pb-8"
-                    : "py-8"
+                    : activeSection === "trgovacke-knjige-veleprodaja"
+                      ? "pt-[22px] pb-8"
+                      : "py-8"
           }`}
         >
           {activeSection === null && (
@@ -3403,6 +3471,17 @@ export function Dashboard({
           {activeSection === "analitika-kif" && <Kif />}
 
           {activeSection === "analitika-kuf" && <Kuf />}
+
+          {activeSection === "analitika-poslovanje-dnevno" && (
+            <PoslovanjeDnevno />
+          )}
+
+          {/* TODO: Poslovanje – mjesečno, čeka podatke sa backenda */}
+          {activeSection === "analitika-poslovanje-mjesecno" && (
+            <div className="p-6 text-sm text-gray-500 dark:text-[#9e96b8]">
+              {SECTION_LABELS[activeSection]} – u izradi
+            </div>
+          )}
         </main>
       </BazaContext.Provider>
 
