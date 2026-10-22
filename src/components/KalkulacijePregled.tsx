@@ -8,8 +8,11 @@ import {
   RefreshCcw,
   Search,
   TrendingUp,
+  Printer,
   Truck,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import { KalkulacijaA4Template } from "../print/templates/KalkulacijaA4Template";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -106,6 +109,14 @@ const BRZI_FILTERI: { kod: BrziFilter; naziv: string; boja: string }[] = [
   { kod: "ko", naziv: "KO", boja: KO_BOJA },
 ];
 
+// Država iz /api/partneri/drzave — za prepoznavanje inostranog dobavljača.
+interface Drzava {
+  sifra_drzave: number;
+  naziv_drzave: string;
+}
+
+const SIFRA_DRZAVE_BIH = 1;
+
 // Artikal iz erp.artikli_pregled_sve — treba samo oznaka sirovine (1 = sirovina).
 interface ArtikalSirovina {
   sifra_proizvoda: number;
@@ -117,6 +128,12 @@ const ztOdozgo = (g: KalkulacijaGrupa) =>
   [...g.zt].sort(
     (a, b) => Number(b.sifra_kalkulacije) - Number(a.sifra_kalkulacije),
   );
+
+// Dobavljač UIO (Uprava za indirektno oporezivanje) — njegov ZT je uvijek
+// samo PDV (ukupno_pdv).
+const UIO_SIFRA = 2020;
+
+const jeUio = (k: KalkulacijaGlavni) => Number(k.sifra_dobavljaca) === UIO_SIFRA;
 
 const jeZt = (k: KalkulacijaGlavni) =>
   (k.vrsta_kalkulacije ?? "").trim().toUpperCase() === "ZT";
@@ -259,8 +276,10 @@ export function KalkulacijePregled() {
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
   const [odabrana, setOdabrana] = useState<KalkulacijaGlavni | null>(null);
+  const { openPrint } = usePrint();
   const [zavisniTroskovi, setZavisniTroskovi] = useState<ZavisniTrosak[]>([]);
   const [artikli, setArtikli] = useState<ArtikalSirovina[]>([]);
+  const [drzave, setDrzave] = useState<Drzava[]>([]);
   const datumOdRef = useRef<HTMLInputElement>(null);
   const datumDoRef = useRef<HTMLInputElement>(null);
 
@@ -304,8 +323,11 @@ export function KalkulacijePregled() {
         "/api/artikli/pregled-sve",
         "Greška pri učitavanju artikala",
       ),
+      // Lista država — samo za PDV na štampi; ako ne stigne, svi su domaći.
+      dohvati<Drzava>("/api/partneri/drzave", "").catch(() => []),
     ])
-      .then(([gl, po, zt, art]) => {
+      .then(([gl, po, zt, art, drz]) => {
+        setDrzave(drz);
         setKalkulacije(gl);
         setStavke(po);
         setZavisniTroskovi(zt);
@@ -385,6 +407,24 @@ export function KalkulacijePregled() {
     }
     return m;
   }, [zavisniTroskovi]);
+
+  // PDV i vrste PDV-a troškova jednog ZT reda (iz kalkulacija_zavisni_trosak_pregled).
+  const troskoviZt = (k: KalkulacijaGlavni) =>
+    troskoviPoZt.get(Number(k.sifra_kalkulacije)) ?? [];
+  const pdvZt = (k: KalkulacijaGlavni) =>
+    troskoviZt(k).reduce((s, t) => s + Number(t.ukupno_pdv || 0), 0);
+  // Iznos bez PDV-a (ukupno_km). Kad dobavljač nema iskazan PDV, ovdje je cijeli
+  // iznos, a ukupno_pdv je 0; UIO (šifra 2020) uvijek ide samo u ukupno_pdv.
+  const osnovicaZt = (k: KalkulacijaGlavni) =>
+    troskoviZt(k).reduce((s, t) => s + Number(t.ukupno_km || 0), 0);
+  // vrsta_pdv: 0 = domaći PDV, 1 = INO PDV.
+  const vrstePdvZt = (k: KalkulacijaGlavni) => [
+    ...new Set(
+      troskoviZt(k)
+        .filter((t) => t.vrsta_pdv !== null && t.vrsta_pdv !== "")
+        .map((t) => (Number(t.vrsta_pdv) === 1 ? "INO PDV" : "DOMAĆI PDV")),
+    ),
+  ];
 
   // Grupisanje KALK + ZT: ZT ide uz KALK naveden u
   // kalkulacija_zavisni_trosak_pregled. Ako ZT tamo nema vezu (ili KALK nije
@@ -480,17 +520,58 @@ export function KalkulacijePregled() {
     () => grupeFiltrirano.filter((g) => !jeZt(g.glavna)).length,
     [grupeFiltrirano],
   );
+  // Ulazni PDV se obračunava samo za domaćeg dobavljača u sistemu PDV-a — isto
+  // pravilo kao u KalkulacijaUnos. Država dobavljača stiže kao naziv, pa se
+  // prevodi u šifru preko liste država; neupisana/neprepoznata = domaći.
+  const obracunPdv = (k: KalkulacijaGlavni) => {
+    const d = k.drzava_dobavljaca
+      ? drzave.find((x) => x.naziv_drzave === k.drzava_dobavljaca)
+      : undefined;
+    const jeIno = !!d && Number(d.sifra_drzave) !== SIFRA_DRZAVE_BIH;
+    return !jeIno && jeDa(k.u_sistemu_pdv);
+  };
+
+  // Štampa A4 cijele grupe: noseći KALK sa stavkama + njegovi ZT-ovi (rastuće
+  // po šifri) sa troškovima.
+  const stampajKalkulaciju = (g: KalkulacijaGrupa) => {
+    const k = g.glavna;
+    openPrint({
+      title: `Kalkulacija ${k.sifra_kalkulacije}`,
+      orientation: "portrait",
+      format: "A4",
+      component: (
+        <KalkulacijaA4Template
+          kalkulacija={k}
+          obracunPdv={obracunPdv(k)}
+          stavke={stavkePoKalkulaciji.get(Number(k.sifra_kalkulacije)) ?? []}
+          zt={[...g.zt]
+            .sort(
+              (a, b) =>
+                Number(a.sifra_kalkulacije) - Number(b.sifra_kalkulacije),
+            )
+            .map((z) => ({ zaglavlje: z, troskovi: troskoviZt(z) }))}
+        />
+      ),
+    });
+  };
+
+  // Iznos reda za zbirove: ZT ulazi samo sa ukupno_km svojih troškova (bez
+  // ukupno_pdv); ako za ZT nema troškova, uzima se ukupno_km iz zaglavlja.
+  const iznosBezPdv = (k: KalkulacijaGlavni) =>
+    jeZt(k) && troskoviZt(k).length > 0
+      ? osnovicaZt(k)
+      : Number(k.ukupno_km || 0);
+
   const ukupnoZt = useMemo(
-    () =>
-      filtrirano
-        .filter(jeZt)
-        .reduce((s, k) => s + Number(k.ukupno_km || 0), 0),
-    [filtrirano],
+    () => filtrirano.filter(jeZt).reduce((s, k) => s + iznosBezPdv(k), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtrirano, troskoviPoZt],
   );
 
   const ukupnoKm = useMemo(
-    () => filtrirano.reduce((s, k) => s + Number(k.ukupno_km || 0), 0),
-    [filtrirano],
+    () => filtrirano.reduce((s, k) => s + iznosBezPdv(k), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtrirano, troskoviPoZt],
   );
   const ukupnoRab = useMemo(
     () => filtrirano.reduce((s, k) => s + Number(k.ukupno_rab || 0), 0),
@@ -502,6 +583,14 @@ export function KalkulacijePregled() {
   );
 
   const odabranaJeZt = odabrana ? jeZt(odabrana) : false;
+  // Grupa (KALK + ZT) otvorenog reda — za dugme štampe u zaglavlju.
+  const grupaOdabrane = odabrana
+    ? grupe.find(
+        (g) =>
+          g.glavna.sifra_kalkulacije === odabrana.sifra_kalkulacije ||
+          g.zt.some((z) => z.sifra_kalkulacije === odabrana.sifra_kalkulacije),
+      )
+    : undefined;
   const odabraneStavke = odabrana
     ? (stavkePoKalkulaciji.get(Number(odabrana.sifra_kalkulacije)) ?? [])
     : [];
@@ -519,6 +608,7 @@ export function KalkulacijePregled() {
                       <TH>#</TH>
                       <TH>Naziv troška</TH>
                       <TH>Vrsta PDV</TH>
+                      <TH right>Bez PDV</TH>
                       <TH right>PDV</TH>
                       <TH right>Ukupno</TH>
                     </tr>
@@ -527,7 +617,7 @@ export function KalkulacijePregled() {
                     {odabraniTroskovi.length === 0 && (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
                         >
                           Nema podataka o zavisnom trošku.
@@ -545,10 +635,19 @@ export function KalkulacijePregled() {
                             {t.naziv_troska || "—"}
                           </span>
                         </TD>
-                        <TD>{t.vrsta_pdv ?? "—"}</TD>
+                        <TD>
+                          {t.vrsta_pdv === null || t.vrsta_pdv === ""
+                            ? "—"
+                            : Number(t.vrsta_pdv) === 1
+                              ? "INO PDV"
+                              : "Domaći PDV"}
+                        </TD>
+                        <TD right>{formatIznos(t.ukupno_km)}</TD>
                         <TD right>{formatIznos(t.ukupno_pdv)}</TD>
                         <TD right bold>
-                          {formatIznos(t.ukupno_km)}
+                          {formatIznos(
+                            Number(t.ukupno_km || 0) + Number(t.ukupno_pdv || 0),
+                          )}
                         </TD>
                       </tr>
                     ))}
@@ -562,6 +661,14 @@ export function KalkulacijePregled() {
                         <TD right>
                           {formatIznos(
                             odabraniTroskovi.reduce(
+                              (s, t) => s + Number(t.ukupno_km || 0),
+                              0,
+                            ),
+                          )}
+                        </TD>
+                        <TD right>
+                          {formatIznos(
+                            odabraniTroskovi.reduce(
                               (s, t) => s + Number(t.ukupno_pdv || 0),
                               0,
                             ),
@@ -570,7 +677,10 @@ export function KalkulacijePregled() {
                         <TD right bold>
                           {formatIznos(
                             odabraniTroskovi.reduce(
-                              (s, t) => s + Number(t.ukupno_km || 0),
+                              (s, t) =>
+                                s +
+                                Number(t.ukupno_km || 0) +
+                                Number(t.ukupno_pdv || 0),
                               0,
                             ),
                           )}
@@ -782,6 +892,28 @@ export function KalkulacijePregled() {
               })}
             </div>
           </div>
+          {/* Štampa A4 otvorene kalkulacije (sa njenim ZT-ovima). */}
+          <button
+            type="button"
+            onClick={() => grupaOdabrane && stampajKalkulaciju(grupaOdabrane)}
+            disabled={!grupaOdabrane}
+            title={
+              grupaOdabrane
+                ? `Štampa kalkulacije ${grupaOdabrane.glavna.sifra_kalkulacije}`
+                : "Otvorite kalkulaciju klikom na red"
+            }
+            className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+            style={{ background: PRIMARY }}
+          >
+            <Printer size={15} />
+            Štampaj A4
+            {grupaOdabrane && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-xs font-bold">
+                {grupaOdabrane.glavna.sifra_kalkulacije}
+                {grupaOdabrane.zt.length > 0 ? " + ZT" : ""}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -867,7 +999,7 @@ export function KalkulacijePregled() {
                   <TH>JIB / PIB</TH>
                   <TH>Vrsta</TH>
                   <TH right>Stavki</TH>
-                  <TH right>Rabat</TH>
+                  <TH right>Rabat / ZT bez PDV · PDV</TH>
                   <TH right>VP vrijednost</TH>
                   <TH right>Ukupno</TH>
                   <TH>Status</TH>
@@ -875,8 +1007,9 @@ export function KalkulacijePregled() {
               </thead>
               <tbody>
                 {grupeFiltrirano.flatMap((g) => {
+                  // "+ ZT" uz KALK: samo ukupno_km troškova, bez ukupno_pdv.
                   const ztUkupno = g.zt.reduce(
-                    (s, z) => s + Number(z.ukupno_km || 0),
+                    (s, z) => s + iznosBezPdv(z),
                     0,
                   );
                   // ZT redovi idu iznad, opadajuće po šifri, tako da je najmanji
@@ -894,7 +1027,9 @@ export function KalkulacijePregled() {
                   <Fragment key={k.sifra_kalkulacije}>
                   <tr
                     onClick={() => setOdabrana(otvorena ? null : k)}
-                    className={`${prviUGrupi ? "border-t-2 border-gray-200 dark:border-[#3a3158]" : "border-t border-dashed border-gray-100 dark:border-[#2d2648]"} transition-colors cursor-pointer ${zt || kalkSaZt ? "hover:brightness-95" : "hover:bg-[#faf9fc] dark:hover:bg-[#1e1a2d]"}`}
+                    // Grupa KALK + ZT je uokvirena debljom, tamnijom linijom
+                    // iznad prvog reda i ispod posljednjeg reda grupe.
+                    className={`${g.zt.length > 0 && k === g.glavna ? "border-b-4 border-dashed border-b-gray-400 dark:border-b-[#5f5878] " : ""}${prviUGrupi ? (g.zt.length > 0 ? "border-t-4 border-dashed border-gray-400 dark:border-[#5f5878]" : "border-t-2 border-gray-200 dark:border-[#3a3158]") : "border-t border-dashed border-gray-100 dark:border-[#2d2648]"} transition-colors cursor-pointer ${zt || kalkSaZt ? "hover:brightness-95" : "hover:bg-[#faf9fc] dark:hover:bg-[#1e1a2d]"}`}
                     style={
                       otvorena
                         ? { background: `${ACCENT}8c` }
@@ -956,14 +1091,24 @@ export function KalkulacijePregled() {
                       </div>
                     </TD>
                     <TD>
-                      {k.vrsta_kalkulacije ? (
-                        <Znacka
-                          tekst={k.vrsta_kalkulacije.trim().toUpperCase()}
-                          boja={zt ? ZT_BOJA : jeKo(k) ? KO_BOJA : PRIMARY}
-                        />
-                      ) : (
-                        "—"
-                      )}
+                      <div className="flex items-center gap-1">
+                        {k.vrsta_kalkulacije ? (
+                          <Znacka
+                            tekst={k.vrsta_kalkulacije.trim().toUpperCase()}
+                            boja={zt ? ZT_BOJA : jeKo(k) ? KO_BOJA : PRIMARY}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                        {/* Vrsta PDV-a troškova ZT-a + oznaka UIO (crveno). */}
+                        {zt &&
+                          vrstePdvZt(k).map((v) => (
+                            <Znacka key={v} tekst={v} boja={PRIMARY} />
+                          ))}
+                        {zt && jeUio(k) && (
+                          <Znacka tekst="UIO" boja="#e0564f" />
+                        )}
+                      </div>
                     </TD>
                     <TD right naglaseno={kalkSaZt}>
                       {(zt
@@ -972,13 +1117,36 @@ export function KalkulacijePregled() {
                       ).get(Number(k.sifra_kalkulacije))?.length ?? 0}
                     </TD>
                     <TD right naglaseno={kalkSaZt}>
-                      {formatIznos(k.ukupno_rab)}
+                      {/* ZT nema rabat — umjesto njega iznos bez PDV i PDV. */}
+                      {zt ? (
+                        <>
+                          <div>
+                            <span className="text-[10px] text-gray-400 dark:text-[#5f5878] mr-1">
+                              bez PDV
+                            </span>
+                            {formatIznos(osnovicaZt(k))}
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-400 dark:text-[#5f5878] mr-1">
+                              PDV
+                            </span>
+                            {formatIznos(pdvZt(k))}
+                          </div>
+                        </>
+                      ) : (
+                        formatIznos(k.ukupno_rab)
+                      )}
                     </TD>
                     <TD right naglaseno={kalkSaZt}>
-                      {formatIznos(k.vp_vrednost)}
+                      {zt ? "—" : formatIznos(k.vp_vrednost)}
                     </TD>
                     <TD right bold naglaseno={kalkSaZt}>
-                      <div>{formatIznos(k.ukupno_km)}</div>
+                      {/* ZT: zbir bez PDV + PDV. */}
+                      <div>
+                        {formatIznos(
+                          zt ? osnovicaZt(k) + pdvZt(k) : k.ukupno_km,
+                        )}
+                      </div>
                       {k === g.glavna && g.zt.length > 0 && (
                         <div
                           className="text-[10px] font-semibold"

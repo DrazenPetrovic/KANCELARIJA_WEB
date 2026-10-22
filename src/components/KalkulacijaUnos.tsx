@@ -439,16 +439,6 @@ const dugTroska = (
     ? round2(t.pdvIznos ?? 0)
     : round2(t.iznos + (t.pdv === "domaci" ? pdvTroska(t) : 0));
 
-// Vrijednosti za upis u bazu: kod UIO (samo PDV) uplaćeni PDV ide u iznos
-// (ukupno_km), a PDV je 0 jer se na PDV ne obračunava PDV.
-const iznosZaUpis = (
-  t: Pick<VezaniTrosak, "iznos" | "pdv" | "samoPdv" | "pdvIznos">,
-) => (t.samoPdv ? round2(t.pdvIznos ?? 0) : t.iznos);
-
-const pdvZaUpis = (
-  t: Pick<VezaniTrosak, "iznos" | "pdv" | "samoPdv" | "pdvIznos">,
-) => (t.samoPdv ? 0 : pdvTroska(t));
-
 const PDV_TROSKA_NAZIV: Record<PdvTroska, string> = {
   bez: "Bez PDV",
   domaci: "Domaći PDV",
@@ -1750,10 +1740,10 @@ export function KalkulacijaUnos() {
       datum: r.datum,
       // Sve stavke računa imaju isti tip (provjerava se u modalu).
       tip_dokumenta_el_kuf: r.stavke[0]?.tipDokumenta ?? "01",
-      // UIO (samo PDV): uplaćeni PDV se upisuje kao iznos (ukupno_km), a
-      // ukupno_pdv je 0 — na PDV se ne obračunava PDV.
-      ukupno_km: round2(r.stavke.reduce((z, s) => z + iznosZaUpis(s), 0)),
-      ukupno_pdv: round2(r.stavke.reduce((z, s) => z + pdvZaUpis(s), 0)),
+      // Iznos bez PDV-a ide u ukupno_km, PDV u ukupno_pdv. UIO (samo PDV):
+      // ukupno_km je 0, a cijela uplata je PDV.
+      ukupno_km: round2(r.stavke.reduce((z, s) => z + s.iznos, 0)),
+      ukupno_pdv: round2(r.stavke.reduce((z, s) => z + pdvTroska(s), 0)),
       duzi_se_za_iznos: round2(
         r.stavke.reduce((z, s) => z + dugTroska(s), 0),
       ),
@@ -1761,11 +1751,13 @@ export function KalkulacijaUnos() {
         sifra_vrste_troska: s.sifraVrste,
         naziv_troska: s.nazivVrste,
         napomena: s.napomena,
-        iznos: iznosZaUpis(s),
+        // -> zavisan_trosak.ukupno_km (UIO: 0)
+        iznos: s.iznos,
         obracun_pdv: s.pdv === "bez" ? 0 : 1,
         ino_pdv: s.pdv === "ino" ? 1 : 0,
-        iznos_pdv: pdvZaUpis(s),
-        // 1 = UIO: iznos je uplaćeni PDV, iznos_pdv je 0.
+        // -> zavisan_trosak.ukupno_pdv (UIO: cijela uplata)
+        iznos_pdv: pdvTroska(s),
+        // 1 = UIO: iznos je 0, a uplaćeni PDV je u iznos_pdv.
         samo_pdv: s.samoPdv ? 1 : 0,
         duzi_se_za_iznos: dugTroska(s),
       })),

@@ -15,8 +15,8 @@
 --                 obracun_pdv, ino_pdv, iznos_pdv, samo_pdv,
 --                 duzi_se_za_iznos } ] }
 --
--- UIO (samo_pdv = 1): uplaćeni PDV ide u iznos / ukupno_km i duzi_se_za_iznos,
---   a iznos_pdv / ukupno_pdv je 0 (na PDV se ne obračunava PDV).
+-- UIO (samo_pdv = 1): iznos / ukupno_km je 0, a uplaćeni PDV ide u
+--   iznos_pdv -> zavisan_trosak.ukupno_pdv i u duzi_se_za_iznos.
 -- Zbir stavki (iznos) mora odgovarati ukupno_km računa (tolerancija 0.02).
 
 DROP PROCEDURE IF EXISTS erp.kalkulacija_unos_podataka;

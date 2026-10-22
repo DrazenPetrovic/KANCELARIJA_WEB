@@ -32,6 +32,7 @@ import { TrgovackaKnjigaVeleprodaja } from "./TrgovackaKnjigaVeleprodaja";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
 import { Kif } from "./Kif";
 import { PoslovanjeDnevno } from "./PoslovanjeDnevno";
+import { PoslovanjeMjesecno } from "./PoslovanjeMjesecno";
 import { Kuf } from "./Kuf";
 import { KalkulacijePregled } from "./KalkulacijePregled";
 import { KalkulacijaUnos } from "./KalkulacijaUnos";
@@ -3476,11 +3477,8 @@ export function Dashboard({
             <PoslovanjeDnevno />
           )}
 
-          {/* TODO: Poslovanje – mjesečno, čeka podatke sa backenda */}
           {activeSection === "analitika-poslovanje-mjesecno" && (
-            <div className="p-6 text-sm text-gray-500 dark:text-[#9e96b8]">
-              {SECTION_LABELS[activeSection]} – u izradi
-            </div>
+            <PoslovanjeMjesecno />
           )}
         </main>
       </BazaContext.Provider>
