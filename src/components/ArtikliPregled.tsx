@@ -9,6 +9,7 @@ import {
   ChevronUp,
   CreditCard,
   FlaskConical,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -52,8 +53,45 @@ interface Artikal {
   // erp.artikli_pregled_sve — 1 ako je artikal sirovina (artikli_bez_sirovine_pregled
   // ih ne vraća, zato se ovdje koristi "sve" varijanta).
   sirovina?: number | string | null;
+  // 0=Sirovina, 1=Proizvod, 2=Roba, 3=Usluga — vidi VRSTA_OPCIJE.
+  vrsta_proizvoda?: number | string | null;
   [key: string]: unknown;
 }
+
+// Oznaka pored naziva artikla za vrstu (osim sirovine — ona već ima svoju
+// oznaku preko polja "sirovina").
+const VRSTA_BADGE: Record<string, { label: string; className: string }> = {
+  "1": {
+    label: "Proizvod",
+    className:
+      "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400",
+  },
+  "2": {
+    label: "Roba",
+    className:
+      "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-400",
+  },
+  "3": {
+    label: "Usluga",
+    className:
+      "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
+  },
+};
+
+const VRSTA_FILTER_OPCIJE = [
+  { value: "sve", label: "Sve vrste" },
+  { value: "sirovina", label: "Sirovina" },
+  { value: "1", label: "Proizvod" },
+  { value: "2", label: "Roba" },
+  { value: "3", label: "Usluga" },
+];
+
+// Kategorija vrste za filter/oznaku — "sirovina" ima prioritet nad
+// vrsta_proizvoda (isti princip kao oznaka pored naziva).
+const vrstaKategorija = (a: Artikal) => {
+  if (Number(a.sirovina) === 1) return "sirovina";
+  return String(a.vrsta_proizvoda ?? "");
+};
 
 interface ArtikalGrupa {
   sifra_grupe: string | number;
@@ -66,6 +104,8 @@ interface ArtikalGrupa {
 interface NormativStavka {
   sifra_tabele: number;
   sifra_proizvoda: string | number;
+  naziv_proizvoda: string;
+  jm_proizvoda: string;
   sifra_sirovine: string | number;
   naziv_sirovine: string;
   jm_sirovine: string;
@@ -216,6 +256,7 @@ export function ArtikliPregled() {
   const [error, setError] = useState<string | null>(null);
   const [pretraga, setPretraga] = useState("");
   const [grupaFilter, setGrupaFilter] = useState("sve");
+  const [vrstaFilter, setVrstaFilter] = useState("sve");
   const [sakrijBezStanja, setSakrijBezStanja] = useState(true);
   const [samoSaNormativom, setSamoSaNormativom] = useState(false);
   const [sortPolje, setSortPolje] = useState<"sifra" | "naziv" | "grupa">(
@@ -607,6 +648,19 @@ export function ArtikliPregled() {
     return mapa;
   }, [normativi]);
 
+  // Isti normativi, grupisani po sifra_sirovine — za sirovine, da se vidi u
+  // kojim svim proizvodima učestvuju.
+  const upotrebaSirovineMap = useMemo(() => {
+    const mapa = new Map<string, NormativStavka[]>();
+    normativi.forEach((n) => {
+      const kljuc = String(n.sifra_sirovine);
+      const lista = mapa.get(kljuc);
+      if (lista) lista.push(n);
+      else mapa.set(kljuc, [n]);
+    });
+    return mapa;
+  }, [normativi]);
+
   // Artikli koji su sirovina — za izbor u modalu "Dodaj sirovinu u normativ".
   const sirovineOpcije = useMemo(
     () => data.filter((p) => Number(p.sirovina) === 1),
@@ -624,6 +678,11 @@ export function ArtikliPregled() {
           grupaFilter === "sve" || String(a.grupa_proizvoda) === grupaFilter;
 
         if (!matchGrupa) return false;
+
+        const matchVrsta =
+          vrstaFilter === "sve" || vrstaKategorija(a) === vrstaFilter;
+
+        if (!matchVrsta) return false;
         if (!pretraga.trim()) return true;
 
         const q = pretraga.toLowerCase();
@@ -651,6 +710,7 @@ export function ArtikliPregled() {
     data,
     pretraga,
     grupaFilter,
+    vrstaFilter,
     sakrijBezStanja,
     samoSaNormativom,
     normativiMap,
@@ -738,6 +798,18 @@ export function ArtikliPregled() {
               {grupe.map((g) => (
                 <option key={g.sifra_grupe} value={String(g.sifra_grupe)}>
                   {g.naziv_grupe}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={vrstaFilter}
+              onChange={(e) => setVrstaFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
+            >
+              {VRSTA_FILTER_OPCIJE.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
                 </option>
               ))}
             </select>
@@ -857,16 +929,25 @@ export function ArtikliPregled() {
                   const sastavNormativa = normativiMap.get(sifra);
                   const imaNormativ = !!sastavNormativa;
                   const prosiren = prosirenaSifra === sifra;
+                  // Normativ se može dodavati samo proizvodima (vrsta = 1).
+                  const mozeImatiNormativ = vrstaKategorija(a) === "1";
+                  // Sirovina — u kojim se svim normativima (proizvodima) koristi.
+                  const jeSirovina = Number(a.sirovina) === 1;
+                  const upotrebaUNormativima = jeSirovina
+                    ? upotrebaSirovineMap.get(sifra)
+                    : undefined;
+                  const imaUpotrebu = !!upotrebaUNormativima;
+                  const mozeSeProsiriti = imaNormativ || imaUpotrebu;
                   return (
                   <>
                   <tr
                     key={sifra}
                     onClick={
-                      imaNormativ
+                      mozeSeProsiriti
                         ? () => setProsirenaSifra(prosiren ? null : sifra)
                         : undefined
                     }
-                    className={`transition-colors ${imaNormativ ? "cursor-pointer hover:brightness-95" : ""}`}
+                    className={`transition-colors ${mozeSeProsiriti ? "cursor-pointer hover:brightness-95" : ""}`}
                     style={{
                       backgroundColor: prosiren
                         ? bojaProsirenogReda
@@ -883,7 +964,7 @@ export function ArtikliPregled() {
                     </TD>
                     <TD padLeft={0}>
                       <div className="flex items-center gap-1.5 max-w-[421px]">
-                        {imaNormativ && (
+                        {imaNormativ ? (
                           <span
                             title="Proizvod ima normativ — klikni za sastav"
                             className="shrink-0 inline-flex items-center"
@@ -891,6 +972,29 @@ export function ArtikliPregled() {
                           >
                             <FlaskConical size={13} />
                           </span>
+                        ) : imaUpotrebu ? (
+                          <span
+                            title="Sirovina učestvuje u normativima — klikni za pregled"
+                            className="shrink-0 inline-flex items-center"
+                            style={{ color: "#2563eb" }}
+                          >
+                            <Link2 size={13} />
+                          </span>
+                        ) : (
+                          mozeImatiNormativ && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                otvoriDodavanjeSirovine(a);
+                              }}
+                              title="Dodaj normativ za ovaj proizvod"
+                              className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-md transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                              style={{ color: ACCENT }}
+                            >
+                              <Plus size={14} strokeWidth={3} />
+                            </button>
+                          )
                         )}
                         <span
                           className="min-w-0 truncate font-medium"
@@ -903,7 +1007,15 @@ export function ArtikliPregled() {
                             Sirovina
                           </span>
                         )}
-                        {imaNormativ &&
+                        {Number(a.sirovina) !== 1 &&
+                          VRSTA_BADGE[String(a.vrsta_proizvoda)] && (
+                            <span
+                              className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide ${VRSTA_BADGE[String(a.vrsta_proizvoda)].className}`}
+                            >
+                              {VRSTA_BADGE[String(a.vrsta_proizvoda)].label}
+                            </span>
+                          )}
+                        {mozeSeProsiriti &&
                           (prosiren ? (
                             <ChevronUp size={13} className="shrink-0 text-gray-400" />
                           ) : (
@@ -1095,6 +1207,74 @@ export function ArtikliPregled() {
                                         <Trash2 size={13} />
                                       </button>
                                     </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })()}
+
+                  {prosiren && !sastavNormativa && upotrebaUNormativima && (() => {
+                    const upotrebaSortirana = [...upotrebaUNormativima].sort(
+                      (x, y) =>
+                        String(x.naziv_proizvoda ?? "").localeCompare(
+                          String(y.naziv_proizvoda ?? ""),
+                          "bs",
+                        ),
+                    );
+                    return (
+                    <tr>
+                      <td
+                        colSpan={13}
+                        style={{
+                          padding: 0,
+                          border: "none",
+                          borderLeft: `3px solid ${ACCENT}`,
+                        }}
+                      >
+                        <div
+                          className="flex items-start justify-center gap-4 px-6 py-3 border-b border-gray-300 dark:border-[#453a68]"
+                          style={{ backgroundColor: bojaProsirenogReda }}
+                        >
+                          <div className="flex items-center gap-1.5 shrink-0 pt-3">
+                            <Link2 size={13} style={{ color: "#2563eb" }} />
+                            <span
+                              className="text-sm font-bold uppercase tracking-wider"
+                              style={{ color: PRIMARY }}
+                            >
+                              Učestvuje u normativima
+                            </span>
+                          </div>
+                          <table className="table-auto border-collapse">
+                            <thead>
+                              <tr>
+                                <TH>Šif</TH>
+                                <TH>Naziv proizvoda</TH>
+                                <TH center>JM</TH>
+                                <TH center>Količina</TH>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {upotrebaSortirana.map((n) => (
+                                <tr key={n.sifra_tabele}>
+                                  <td
+                                    className="px-3 py-1.5 text-sm font-mono border-t-2 border-gray-400 dark:border-[#5a4f80]"
+                                    style={{ color: PRIMARY }}
+                                  >
+                                    {n.sifra_proizvoda}
+                                  </td>
+                                  <td className="min-w-[260px] px-3 py-1.5 text-sm text-gray-700 dark:text-[#c5bfd8] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {n.naziv_proizvoda}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-sm text-center text-gray-500 dark:text-[#a99fc2] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {n.jm_sirovine}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-sm text-right font-semibold text-gray-700 dark:text-[#c5bfd8] border-t-2 border-gray-400 dark:border-[#5a4f80]">
+                                    {formatBroj(n.kolicina_sirovine, 3)}
                                   </td>
                                 </tr>
                               ))}

@@ -81,6 +81,7 @@ import {
   FolderArchive,
   Landmark,
   Layers,
+  ClipboardList,
   Lock,
   LogOut,
   MapPin,
@@ -197,6 +198,7 @@ type MenuSection =
   | "klise-naplata"
   | "klise-dobavljac"
   | "klise-pregled"
+  | "proizvodnja-radni-nalog"
   | "racuni-gotovinski"
   | "racuni-virmanski"
   | "racuni-izvjestaj-teren"
@@ -247,6 +249,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "klise-naplata": "Unos naplate klišea",
   "klise-dobavljac": "Unos podataka od dobavljača",
   "klise-pregled": "Kliše – pregled",
+  "proizvodnja-radni-nalog": "Radni nalog",
   "racuni-gotovinski": "Gotovinski račun",
   "racuni-virmanski": "Virmanski račun",
   "racuni-izvjestaj-teren": "Izvještaj teren",
@@ -2863,7 +2866,8 @@ export function Dashboard({
                     "proizvodnja",
                     !!(
                       openMenu === "proizvodnja" ||
-                      activeSection?.startsWith("klise-")
+                      activeSection?.startsWith("klise-") ||
+                      activeSection === "proizvodnja-radni-nalog"
                     ),
                   )}
                   onMouseEnter={() => setHoveredBtn("proizvodnja")}
@@ -2972,6 +2976,28 @@ export function Dashboard({
                             })}
                           </div>
                         )}
+
+                        {/* Radni nalog */}
+                        <button
+                          onClick={() =>
+                            handleSectionChange("proizvodnja-radni-nalog")
+                          }
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
+                            activeSection === "proizvodnja-radni-nalog"
+                              ? "font-bold"
+                              : "font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                          }`}
+                          style={
+                            activeSection === "proizvodnja-radni-nalog"
+                              ? { color: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                            <ClipboardList size={13} style={{ color: PRIMARY }} />
+                          </span>
+                          Radni nalog
+                        </button>
                       </div>
                     </div>,
                     document.body,
