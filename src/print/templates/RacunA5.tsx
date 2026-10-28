@@ -389,7 +389,7 @@ export function RacunA5({ racun, stavke }: Props) {
 
 const cell: React.CSSProperties = {
   padding: "4px 6px",
-  fontSize: 9,
+  fontSize: 11,
   borderBottom: "1px solid #ccc",
   verticalAlign: "middle",
 };

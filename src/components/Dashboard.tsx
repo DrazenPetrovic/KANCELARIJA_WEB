@@ -3206,7 +3206,8 @@ export function Dashboard({
                   : activeSection === "artikli-pregled" ||
                       activeSection === "artikli-lager-liste" ||
                       activeSection === "racuni-knjizna-virmanski" ||
-                      activeSection === "ulazi-kalkulacija-storno"
+                      activeSection === "ulazi-kalkulacija-storno" ||
+                      activeSection === "analitika-kuf"
                     ? "pt-[10px] pb-8"
                     : activeSection === "trgovacke-knjige-veleprodaja"
                       ? "pt-[22px] pb-8"

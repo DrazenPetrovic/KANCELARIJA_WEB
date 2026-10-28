@@ -6,8 +6,10 @@ import {
   Printer,
   Receipt,
   RefreshCcw,
+  Search,
   Tags,
   TrendingUp,
+  X,
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
 import { KufPregledTemplate } from "../print/templates/KufPregledTemplate";
@@ -141,7 +143,8 @@ const TH = ({
   right?: boolean;
 }) => (
   <th
-    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap bg-[#faf9fc] dark:bg-[#1e1a2d] text-gray-400 dark:text-[#5f5878] ${right ? "text-right" : "text-left"}`}
+    className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${right ? "text-right" : "text-left"}`}
+    style={{ background: PRIMARY }}
   >
     {children}
   </th>
@@ -167,7 +170,7 @@ const TD = ({
   boja?: string;
 }) => (
   <td
-    className={`px-3 py-2.5 whitespace-nowrap ${right ? "text-right" : "text-left"} ${bold ? "font-bold" : "text-gray-600 dark:text-[#c5bfd8]"}`}
+    className={`px-2 py-2.5 whitespace-nowrap ${right ? "text-right" : "text-left"} ${bold ? "font-bold" : "text-gray-600 dark:text-[#c5bfd8]"}`}
     style={boja ? { color: boja } : undefined}
   >
     {children}
@@ -185,6 +188,7 @@ export function Kuf() {
   const [redovi, setRedovi] = useState<KufRed[]>([]);
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
+  const [pretragaPartnera, setPretragaPartnera] = useState("");
   const datumOdRef = useRef<HTMLInputElement>(null);
   const datumDoRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -228,12 +232,21 @@ export function Kuf() {
   const redoviFiltrirano = useMemo(() => {
     const od = primenjeniOd ? new Date(`${primenjeniOd}T00:00:00`) : null;
     const doo = primenjeniDo ? new Date(`${primenjeniDo}T23:59:59`) : null;
+    // Pretraga partnera filtrira odmah (bez "Prikaži") — po nazivu, JIB-u ili PIB-u.
+    const q = pretragaPartnera.trim().toLowerCase();
     return redovi
       .filter((r) => {
         const d = new Date(r.datum_ulaza_dokumenta);
         if (isNaN(d.getTime())) return false;
         if (od && d < od) return false;
         if (doo && d > doo) return false;
+        if (
+          q &&
+          ![r.naziv_partnera, r.JIB, r.PIB].some((v) =>
+            String(v ?? "").toLowerCase().includes(q),
+          )
+        )
+          return false;
         return true;
       })
       .sort(
@@ -241,7 +254,7 @@ export function Kuf() {
           new Date(b.datum_ulaza_dokumenta).getTime() -
           new Date(a.datum_ulaza_dokumenta).getTime(),
       );
-  }, [redovi, primenjeniOd, primenjeniDo]);
+  }, [redovi, primenjeniOd, primenjeniDo, pretragaPartnera]);
 
   const jeVirtualizovano = redoviFiltrirano.length > PRAG_VIRTUALIZACIJE;
 
@@ -305,44 +318,6 @@ export function Kuf() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <BookMarked size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            KUF
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Knjiga ulaznih faktura za izabrani period
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() =>
-            openPrint({
-              title: `KUF ${formatDatumDMY(primenjeniOd) ?? ""} - ${formatDatumDMY(primenjeniDo) ?? ""}`,
-              orientation: "portrait",
-              format: "A4",
-              component: (
-                <KufPregledTemplate
-                  redovi={redoviFiltrirano}
-                  datumOd={primenjeniOd}
-                  datumDo={primenjeniDo}
-                />
-              ),
-            })
-          }
-          disabled={loading || redoviFiltrirano.length === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
-          style={{ background: PRIMARY }}
-        >
-          <Printer size={15} />
-          Štampaj
-        </button>
-      </div>
-
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -403,45 +378,54 @@ export function Kuf() {
               </span>
             )}
           </button>
+          <div className="w-full sm:w-72">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
+              Partner
+            </span>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <input
+                value={pretragaPartnera}
+                onChange={(e) => setPretragaPartnera(e.target.value)}
+                placeholder="Naziv, JIB ili PIB..."
+                className="pl-8 pr-7 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-full focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6] placeholder:text-gray-400 dark:placeholder:text-[#5f5878]"
+              />
+              {pretragaPartnera && (
+                <button
+                  type="button"
+                  onClick={() => setPretragaPartnera("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#c5bfd8]"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              openPrint({
+                title: `KUF ${formatDatumDMY(primenjeniOd) ?? ""} - ${formatDatumDMY(primenjeniDo) ?? ""}`,
+                orientation: "portrait",
+                format: "A4",
+                component: (
+                  <KufPregledTemplate
+                    redovi={redoviFiltrirano}
+                    datumOd={primenjeniOd}
+                    datumDo={primenjeniDo}
+                  />
+                ),
+              })
+            }
+            disabled={loading || redoviFiltrirano.length === 0}
+            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+            style={{ background: PRIMARY }}
+          >
+            <Printer size={15} />
+            Štampaj
+          </button>
         </div>
       </div>
-
-      {/* Statistika */}
-      {!loading && !greska && (
-        <div className="flex flex-wrap gap-3">
-          <StatTile
-            icon={<TrendingUp size={16} />}
-            vrijednost={formatIznos(ukupnoUkupno)}
-            naziv="Ukupno"
-            boja={ACCENT}
-            izracunato
-          />
-          <StatTile
-            icon={<Landmark size={16} />}
-            vrijednost={formatIznos(ukupnoVrednostBezPdv)}
-            naziv="Vrijednost bez PDV"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Receipt size={16} />}
-            vrijednost={formatIznos(ukupnoIskazaniPdv)}
-            naziv="Iskazani PDV"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Tags size={16} />}
-            vrijednost={formatIznos(ukupnoUlazniPdv)}
-            naziv="Ulazni PDV"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Tags size={16} />}
-            vrijednost={formatIznos(ukupnoUlazniPdvUvoz)}
-            naziv="Ulazni PDV (uvoz)"
-            boja={PRIMARY}
-          />
-        </div>
-      )}
 
       {loading && (
         <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex items-center justify-center py-20 gap-3">
@@ -470,13 +454,19 @@ export function Kuf() {
         <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
           <BookMarked size={28} />
           <p className="text-sm text-gray-400 dark:text-[#5f5878]">
-            Nema podataka za izabrani period.
+            {pretragaPartnera.trim()
+              ? `Nema podataka za partnera „${pretragaPartnera}" u izabranom periodu.`
+              : "Nema podataka za izabrani period."}
           </p>
         </div>
       )}
 
       {!loading && !greska && redoviFiltrirano.length > 0 && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        // Isti raspored kao Kartica proizvoda: tabela centrirana prema cijelom
+        // ekranu, rekapitulacija apsolutno gore lijevo (xl+); na užim
+        // ekranima rekapitulacija pada ispod tabele.
+        <div className="relative flex flex-col gap-4 xl:block">
+        <div className="w-fit max-w-full xl:max-w-[calc(100%-36rem)] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             ref={jeVirtualizovano ? scrollRef : undefined}
             className="overflow-x-auto"
@@ -486,7 +476,7 @@ export function Kuf() {
                 : undefined
             }
           >
-            <table className="w-full text-sm">
+            <table className="table-auto text-sm">
               <thead>
                 <tr
                   className={`border-b border-gray-100 dark:border-[#2d2648] ${jeVirtualizovano ? "sticky top-0 z-10" : ""}`}
@@ -515,10 +505,16 @@ export function Kuf() {
                     />
                   </tr>
                 )}
-                {vidljiviRedovi.map((r) => (
+                {vidljiviRedovi.map((r, i) => (
                   <tr
                     key={r.sifra}
-                    className="border-b border-gray-50 dark:border-[#2d2648] hover:bg-[#faf9fc] dark:hover:bg-[#1e1a2d] transition-colors"
+                    // Parnost po apsolutnom indeksu (startIndex + i), da se kod
+                    // virtualizacije boja reda ne mijenja pri skrolovanju.
+                    className={`border-b border-gray-100 dark:border-[#2d2648] hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors ${
+                      (startIndex + i) % 2 === 1
+                        ? "bg-[#f6f3fa] dark:bg-[#1e1a2d]"
+                        : ""
+                    }`}
                   >
                     <TD>{r.sifra}</TD>
                     <TD>
@@ -571,7 +567,14 @@ export function Kuf() {
                       </div>
                     </TD>
                     <TD>{r.entitet_partnera || "—"}</TD>
-                    <TD>{r.opis || "—"}</TD>
+                    <TD>
+                      <span
+                        className="block truncate max-w-[240px]"
+                        title={r.opis || undefined}
+                      >
+                        {r.opis || "—"}
+                      </span>
+                    </TD>
                     <TD right>
                       <div>{formatIznos(r.vrednost_bez_pdv)}</div>
                       <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
@@ -620,6 +623,48 @@ export function Kuf() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </div>
+
+          {/* Rekapitulacija — vertikalno, gore lijevo (xl+) */}
+          <div className="flex flex-col gap-3 w-full xl:w-64 flex-shrink-0 mt-4 xl:mt-[5%] xl:absolute xl:top-0 xl:left-[3%] origin-top-left xl:scale-90">
+            <div
+              className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
+              style={{ background: PRIMARY }}
+            >
+              Rekapitulacija
+            </div>
+            <StatTile
+              icon={<TrendingUp size={16} />}
+              vrijednost={formatIznos(ukupnoUkupno)}
+              naziv="Ukupno"
+              boja={ACCENT}
+              izracunato
+            />
+            <StatTile
+              icon={<Landmark size={16} />}
+              vrijednost={formatIznos(ukupnoVrednostBezPdv)}
+              naziv="Vrijednost bez PDV"
+              boja={PRIMARY}
+            />
+            <StatTile
+              icon={<Receipt size={16} />}
+              vrijednost={formatIznos(ukupnoIskazaniPdv)}
+              naziv="Iskazani PDV"
+              boja={PRIMARY}
+            />
+            <StatTile
+              icon={<Tags size={16} />}
+              vrijednost={formatIznos(ukupnoUlazniPdv)}
+              naziv="Ulazni PDV"
+              boja={PRIMARY}
+            />
+            <StatTile
+              icon={<Tags size={16} />}
+              vrijednost={formatIznos(ukupnoUlazniPdvUvoz)}
+              naziv="Ulazni PDV (uvoz)"
+              boja={PRIMARY}
+            />
           </div>
         </div>
       )}
