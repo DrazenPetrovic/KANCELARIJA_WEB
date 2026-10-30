@@ -52,7 +52,7 @@ const TH = ({
   </th>
 );
 
-type SortPolje = "sifra" | "naziv";
+type SortPolje = "sifra" | "naziv" | "grad" | "radnik";
 type SmjerSortiranja = "asc" | "desc";
 
 const SortableTH = ({
@@ -148,6 +148,12 @@ export function PartneriRazniPregled() {
   const filtrirani = useMemo(() => {
     const q = pretraga.toLowerCase().trim();
     const smjer = sortSmjer === "asc" ? 1 : -1;
+    const tekstZaSort = (p: PartnerRazni) =>
+      (sortPolje === "grad"
+        ? p.naziv_grada
+        : sortPolje === "radnik"
+          ? p.naziv_radnika
+          : p.naziv_partnera) ?? "";
     return data
       .filter(
         (p) =>
@@ -161,8 +167,7 @@ export function PartneriRazniPregled() {
       .sort((a, b) =>
         sortPolje === "sifra"
           ? (a.sifra_partnera - b.sifra_partnera) * smjer
-          : (a.naziv_partnera ?? "").localeCompare(b.naziv_partnera ?? "", "sr") *
-            smjer,
+          : tekstZaSort(a).localeCompare(tekstZaSort(b), "sr") * smjer,
       );
   }, [data, pretraga, radnikFilter, sortPolje, sortSmjer]);
 
@@ -365,8 +370,20 @@ export function PartneriRazniPregled() {
                   >
                     Naziv
                   </SortableTH>
-                  <TH>Grad</TH>
-                  <TH>Radnik</TH>
+                  <SortableTH
+                    aktivno={sortPolje === "grad"}
+                    smjer={sortSmjer}
+                    onClick={() => promijeniSortiranje("grad")}
+                  >
+                    Grad
+                  </SortableTH>
+                  <SortableTH
+                    aktivno={sortPolje === "radnik"}
+                    smjer={sortSmjer}
+                    onClick={() => promijeniSortiranje("radnik")}
+                  >
+                    Radnik
+                  </SortableTH>
                   <TH>Akcije</TH>
                 </tr>
               </thead>
