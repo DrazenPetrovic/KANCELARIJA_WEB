@@ -45,6 +45,35 @@ export const createPartnerRazni = async (req, res) => {
   }
 };
 
+export const updatePartnerRazni = async (req, res) => {
+  try {
+    const sifraPartnera = Number(req.params.sifra);
+    const { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada } = req.body;
+    if (!sifraPartnera) {
+      return res.status(400).json({ success: false, error: "Šifra partnera nije ispravna" });
+    }
+    if (!nazivPartnera || !pripadaRadniku || !sifraGrada) {
+      return res.status(400).json({
+        success: false,
+        error: "Nedostaju obavezni podaci (nazivPartnera, pripadaRadniku, sifraGrada)",
+      });
+    }
+    const data = await PartneriService.azurirajPartneraRaznog(sifraPartnera, {
+      nazivPartnera,
+      pripadaRadniku,
+      sifraGrada,
+      nazivGrada,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Izmjena raznog kupca error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.sqlMessage || error.message || "Greška pri izmjeni kupca",
+    });
+  }
+};
+
 export const getPartneriDodatneLokacije = async (req, res) => {
   try {
     const data = await PartneriService.getPartneriDodatneLokacije();

@@ -6,6 +6,7 @@ const router = Router();
 router.get("/", PartneriController.getPartneri);
 router.get("/razni", PartneriController.getPartneriRazni);
 router.post("/razni", PartneriController.createPartnerRazni);
+router.put("/razni/:sifra", PartneriController.updatePartnerRazni);
 router.get("/dodatne-lokacije", PartneriController.getPartneriDodatneLokacije);
 router.get("/dodatne-lokacije-pregled", PartneriController.getPartneriDodatneLokacijePregled);
 router.get("/lokalna-dostava", PartneriController.getPartneriZaLokalnuDostavu);

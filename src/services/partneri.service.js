@@ -71,6 +71,33 @@ export const dodajPartneraRaznog = async ({
   });
 };
 
+// Izmjena raznog kupca. Vidi erp.partneri_razni_partneri_izmjena — greške
+// (neispravna šifra, nepostojeći kupac) stižu kao SQL izuzetak, a procedura
+// vraća ažurirani red.
+export const azurirajPartneraRaznog = async (
+  sifraPartnera,
+  { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada },
+) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({
+      sifra_partnera: sifraPartnera,
+      naziv_partnera: nazivPartnera,
+      pripada_radniku: pripadaRadniku,
+      sifra_grada: sifraGrada,
+      naziv_grada: nazivGrada ?? null,
+    });
+    const [rows] = await connection.query(
+      "CALL erp.partneri_razni_partneri_izmjena(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    if (!Array.isArray(rezultatSet) || rezultatSet.length === 0) {
+      throw new Error("Procedura nije vratila ažuriranog kupca");
+    }
+    return rezultatSet[0];
+  });
+};
+
 export const getPartneriDodatneLokacije = async () => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

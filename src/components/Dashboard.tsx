@@ -15,6 +15,7 @@ import { KnjiznaGotovinski } from "./racuniKnjiznaGotovinski.tsx";
 import { IzvjestajTeren } from "./IzvjestajTeren.tsx";
 import { PartneriUnos } from "./PartneriUnos";
 import { PartneriPregled } from "./PartneriPregled";
+import { PartneriRazniPregled } from "./PartneriRazniPregled";
 import { DrzaveGradoviUnos } from "./DrzaveGradoviUnos";
 import { RadniciUnos } from "./RadniciUnos";
 import { RadniciPregled } from "./RadniciPregled";
@@ -169,6 +170,7 @@ type MenuSection =
   | "radnici-prisutnost-pregled"
   | "partneri-unos"
   | "partneri-pregled"
+  | "partneri-razni"
   | "partneri-kartica"
   | "partneri-drzave-gradovi"
   | "artikli-unos"
@@ -220,6 +222,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "radnici-prisutnost-pregled": "Radnici – pregled prisutnosti",
   "partneri-unos": "Partneri – unos",
   "partneri-pregled": "Partneri – pregled",
+  "partneri-razni": "Partneri – razni",
   "artikli-unos": "Unos artikla",
   "artikli-pregled": "Artikli – pregled",
   "artikli-nivelacija-unos": "Unos nivelacije",
@@ -1400,6 +1403,42 @@ export function Dashboard({
                             />
                           </span>
                           Pregled
+                        </button>
+
+                        <button
+                          onClick={() => handleSectionChange("partneri-razni")}
+                          className={dropdownItemClass(
+                            activeSection === "partneri-razni",
+                          )}
+                          style={
+                            activeSection === "partneri-razni"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-razni"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-razni"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <Users
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-razni"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Razni
                         </button>
 
                         <button
@@ -3364,6 +3403,8 @@ export function Dashboard({
           )}
 
           {activeSection === "partneri-pregled" && <PartneriPregled />}
+
+          {activeSection === "partneri-razni" && <PartneriRazniPregled />}
 
           {activeSection === "partneri-kartica" && <KarticaPartnera />}
 
