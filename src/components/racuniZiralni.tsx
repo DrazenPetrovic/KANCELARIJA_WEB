@@ -332,6 +332,16 @@ interface DogovorenaCijena {
   dogovorena_cijena_vpc: number | null;
 }
 
+// Stavka iz uvoza sa terena čija cijena (dogovorena ili kataloški VPC) ide ispod
+// nabavne — čeka odluku operatera.
+interface UvozIspodNabavne {
+  sifra_proizvoda: string;
+  naziv_proizvoda: string;
+  cijena: number;
+  nabavna: number;
+  izvor: "dogovorena" | "VPC";
+}
+
 // Red pomoćne tabele (stavke) žiralnog računa — priprema za slanje kroz proceduru
 // erp.sp_racuni_unos. Za razliku od gotovinskog, ovdje se stvarno koriste rabatni
 // nivoi (rabat_proc/rabat_proc_2/rabat_proc_3) unešeni kroz VPC1/VPC2/VPC3.
@@ -411,7 +421,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [loadingArtikli, setLoadingArtikli] = useState(true);
   const [pretragaArtikala, setPretragaArtikala] = useState("");
   const [odabranaGrupa, setOdabranaGrupa] = useState<string | null>(null);
-  const [samoNaStanju, setSamoNaStanju] = useState(true);
+  const [filterArtikala, setFilterArtikala] = useState<
+    "svi" | "naStanju" | "dogovoreni"
+  >("naStanju");
   const [nivelacijeAktivne, setNivelacijeAktivne] = useState<
     NivelacijaAktivna[]
   >([]);
@@ -514,6 +526,16 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   // operater sam odlučuje da li će ručno promijeniti cijenu.
   const [trazeneCijenePoruka, setTrazeneCijenePoruka] = useState<string | null>(
     null,
+  );
+  // Poruke za potvrdu kad ručno unesena cijena ide ispod nabavne — operater bira
+  // da li je ipak unosi ili se vraća na unos.
+  const [potvrdaIspodNabavne, setPotvrdaIspodNabavne] = useState<
+    string[] | null
+  >(null);
+  // Stavke iz uvoza sa terena čija cijena ide ispod nabavne — operater za svaku
+  // bira da li je unosi takvu ili je ispravlja.
+  const [uvozIspodNabavne, setUvozIspodNabavne] = useState<UvozIspodNabavne[]>(
+    [],
   );
   // Koraci čuvanja računa — prikazuju se kao status-bar preko liste stavki dok
   // traje handleSacuvajRacun, da operater vidi u kojoj je fazi (0 = neaktivno).
@@ -867,6 +889,54 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     return Math.abs(s.vpc1 - Number(d.dogovorena_cijena_vpc)) < 0.005;
   };
 
+  // Šifre artikala sa dogovorenom cijenom za izabranog partnera — filter
+  // "Dogovoreni" u listi artikala.
+  const dogovoreniArtikliPartnera = useMemo(() => {
+    if (!odabraniPartner) return new Set<string>();
+    return new Set(
+      dogovoreneCijene
+        .filter(
+          (d) =>
+            String(d.partner_id) === String(odabraniPartner.sifra_partnera) &&
+            d.dogovorena_cijena_vpc != null,
+        )
+        .map((d) => String(d.proizvod_id)),
+    );
+  }, [dogovoreneCijene, odabraniPartner]);
+
+  const imaDogovorenihArtikala = useMemo(
+    () =>
+      artikli.some((a) =>
+        dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)),
+      ),
+    [artikli, dogovoreniArtikliPartnera],
+  );
+
+  const imaDogovorenihNaStanju = useMemo(
+    () =>
+      artikli.some(
+        (a) =>
+          dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)) &&
+          Number(a.kolicina_proizvoda) > 0,
+      ),
+    [artikli, dogovoreniArtikliPartnera],
+  );
+
+  // Pri izboru partnera lista automatski prelazi na "Dogovoreni" ako partner ima
+  // dogovorenih artikala na stanju; inače se sa tog filtera vraća na podrazumijevani.
+  // imaDogovorenihNaStanju je u zavisnostima jer dogovorene cijene i artikli mogu
+  // stići tek nakon izbora partnera. Operater poslije može ručno promijeniti filter.
+  const sifraOdabranogPartnera = odabraniPartner?.sifra_partnera ?? null;
+  useEffect(() => {
+    if (imaDogovorenihNaStanju) {
+      setFilterArtikala("dogovoreni");
+      setOdabranaGrupa(null);
+      setPretragaArtikala("");
+    } else {
+      setFilterArtikala((f) => (f === "dogovoreni" ? "naStanju" : f));
+    }
+  }, [sifraOdabranogPartnera, imaDogovorenihNaStanju]);
+
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
     return artikli.filter((a) => {
@@ -876,10 +946,20 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         !q ||
         a.naziv_proizvoda.toLowerCase().includes(q) ||
         String(a.sifra_proizvoda).includes(q);
-      const matchStanje = !samoNaStanju || Number(a.kolicina_proizvoda) > 0;
-      return matchGrupa && matchQ && matchStanje;
+      const matchFilter =
+        filterArtikala === "svi" ||
+        (filterArtikala === "naStanju"
+          ? Number(a.kolicina_proizvoda) > 0
+          : dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)));
+      return matchGrupa && matchQ && matchFilter;
     });
-  }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju]);
+  }, [
+    artikli,
+    pretragaArtikala,
+    odabranaGrupa,
+    filterArtikala,
+    dogovoreniArtikliPartnera,
+  ]);
 
   // Poslovnice (poslovne jedinice) jednog partnera — erp.partneri_lista_poslovnice
   // prima partner_id kao parametar, pa se zove tek kad je partner izabran (ne za
@@ -1106,6 +1186,80 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     setVpc3("");
     setRab3("");
     setUrejivanjeSifra(null);
+  };
+
+  // Poruke za VPC nivoe trenutno unesene u modalu koji idu ispod nabavne cijene.
+  const porukeIspodNabavne = (): string[] => {
+    if (!artikalZaUnos) return [];
+    const nabavna = parseFloat(String(artikalZaUnos.nabavna_cijena)) || 0;
+    if (nabavna <= 0) return [];
+    return [
+      { naziv: "VPC 1", vrijednost: vpc1 },
+      { naziv: "VPC 2", vrijednost: vpc2 },
+      { naziv: "VPC 3", vrijednost: vpc3 },
+    ]
+      .filter(
+        (n) => n.vrijednost !== "" && (parseFloat(n.vrijednost) || 0) < nabavna,
+      )
+      .map(
+        (n) =>
+          `${n.naziv} (${(parseFloat(n.vrijednost) || 0).toFixed(2)} KM) je ispod nabavne cijene (${nabavna.toFixed(3)} KM)`,
+      );
+  };
+
+  // Dugme "Dodaj" i Enter u polju količine — cijena ispod nabavne prvo traži
+  // potvrdu operatera.
+  const pokusajPotvrdiStavku = () => {
+    const kol = parseFloat(kolicina.replace(",", "."));
+    if (!kol || kol <= 0) return;
+    const poruke = porukeIspodNabavne();
+    if (poruke.length > 0) {
+      setPotvrdaIspodNabavne(poruke);
+      return;
+    }
+    handlePotvrdiStavku();
+  };
+
+  // Operater prihvata cijenu ispod nabavne iz uvoza — ista se upisuje na stavku.
+  const handleUnesiUvozIspodNabavne = (r: UvozIspodNabavne) => {
+    setStavke((prev) =>
+      prev.map((s) => {
+        if (s.sifra_proizvoda !== r.sifra_proizvoda) return s;
+        const vrednost = Math.round(s.kolicina * r.cijena * 100) / 100;
+        const pdv = s.obracunava_se_pdv
+          ? Math.round(vrednost * STOPA_PDV * 100) / 100
+          : 0;
+        return {
+          ...s,
+          vpc1: r.cijena,
+          rab1:
+            s.vpc > 0
+              ? Math.round(((s.vpc - r.cijena) / s.vpc) * 100 * 100) / 100
+              : 0,
+          vpc2: r.cijena,
+          rab2: 0,
+          vpc3: r.cijena,
+          rab3: 0,
+          osnova: r.cijena,
+          vrednost,
+          pdv,
+          ukupno: Math.round((vrednost + pdv) * 100) / 100,
+        };
+      }),
+    );
+    setUvozIspodNabavne((prev) =>
+      prev.filter((x) => x.sifra_proizvoda !== r.sifra_proizvoda),
+    );
+  };
+
+  // Operater ispravlja cijenu iz uvoza — otvara se modal za izmjenu te stavke,
+  // a lista preostalih se vraća kad se modal zatvori.
+  const handleIspraviUvozIspodNabavne = (r: UvozIspodNabavne) => {
+    const stavka = stavke.find((s) => s.sifra_proizvoda === r.sifra_proizvoda);
+    setUvozIspodNabavne((prev) =>
+      prev.filter((x) => x.sifra_proizvoda !== r.sifra_proizvoda),
+    );
+    if (stavka) handleIzmijeniStavku(stavka);
   };
 
   const handleUkloniStavku = (sifra: string) => {
@@ -2088,6 +2242,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     const preskoceniProizvodi: string[] = [];
     const ogranicenaKolicina: string[] = [];
     const upozorenjaTrazenaCijena: string[] = [];
+    const ispodNabavne: UvozIspodNabavne[] = [];
     const noveStavke: StavkaRacuna[] = [];
     k.proizvodi.forEach((p) => {
       // Spremljena količina 0 — ništa nije stvarno spremljeno sa terena za ovaj
@@ -2150,6 +2305,32 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           ) / 100
         : 0;
 
+      // Dogovorena ispod nabavne se ne stavlja sama na račun (stavka ide po VPC-u),
+      // a kataloški VPC ispod nabavne ostaje — o oba slučaja odlučuje operater.
+      if (nabavnaCijena > 0) {
+        if (
+          dogovorenaVpcRaw != null &&
+          dogovorenaVpcRaw < nabavnaCijena &&
+          dogovorenaVpcRaw < vpcKatalog
+        ) {
+          ispodNabavne.push({
+            sifra_proizvoda: artikal.sifra_proizvoda,
+            naziv_proizvoda: artikal.naziv_proizvoda,
+            cijena: dogovorenaVpcRaw,
+            nabavna: nabavnaCijena,
+            izvor: "dogovorena",
+          });
+        } else if (vpcKatalog < nabavnaCijena) {
+          ispodNabavne.push({
+            sifra_proizvoda: artikal.sifra_proizvoda,
+            naziv_proizvoda: artikal.naziv_proizvoda,
+            cijena: vpcKatalog,
+            nabavna: nabavnaCijena,
+            izvor: "VPC",
+          });
+        }
+      }
+
       const obracunavaSePdv = odabranaPodgrupa?.obracunava_se_pdv !== 1;
 
       // Tražena cijena sa terena — prijedlog komercijaliste (erp.sp_dostava_tereni_proizvodi,
@@ -2201,6 +2382,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     });
 
     setStavke(noveStavke);
+    setUvozIspodNabavne(ispodNabavne);
     setPendingUvozNarudzbe(null);
     if (preskoceniProizvodi.length > 0) {
       alert(
@@ -2534,7 +2716,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         {/* Glavni sadržaj: lijevo artikli, desno sadržaj računa */}
         <div className="flex gap-3 mt-3 flex-1 min-h-0">
           {/* Lijevi panel — artikli */}
-          <div className="relative w-[22%] flex-shrink-0 flex flex-col bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+          <div className="relative w-[37%] flex-shrink-0 flex flex-col bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
             {/* Header */}
             <div className="px-3 py-2 border-b border-gray-100 dark:border-[#2d2648] flex items-center gap-1.5 flex-shrink-0">
               <Package size={13} style={{ color: PRIMARY }} />
@@ -2543,26 +2725,50 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               </span>
               <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-full bg-gray-100 dark:bg-[#2a2340] flex-shrink-0">
                 <button
-                  onClick={() => setSamoNaStanju(false)}
+                  onClick={() => setFilterArtikala("svi")}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all ${
-                    !samoNaStanju
+                    filterArtikala === "svi"
                       ? "text-white"
                       : "text-gray-500 dark:text-[#7d7498] hover:text-gray-700 dark:hover:text-[#c5bfd8]"
                   }`}
-                  style={!samoNaStanju ? { background: PRIMARY } : {}}
+                  style={filterArtikala === "svi" ? { background: PRIMARY } : {}}
                 >
                   Svi
                 </button>
                 <button
-                  onClick={() => setSamoNaStanju(true)}
+                  onClick={() => setFilterArtikala("naStanju")}
                   className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all ${
-                    samoNaStanju
+                    filterArtikala === "naStanju"
                       ? "text-white"
                       : "text-gray-500 dark:text-[#7d7498] hover:text-gray-700 dark:hover:text-[#c5bfd8]"
                   }`}
-                  style={samoNaStanju ? { background: PRIMARY } : {}}
+                  style={
+                    filterArtikala === "naStanju" ? { background: PRIMARY } : {}
+                  }
                 >
                   Na stanju
+                </button>
+                <button
+                  onClick={() => {
+                    // Prikazuje cijelu listu dogovorenih — bez ranije izabrane
+                    // grupe i teksta pretrage.
+                    setFilterArtikala("dogovoreni");
+                    setOdabranaGrupa(null);
+                    setPretragaArtikala("");
+                  }}
+                  disabled={!imaDogovorenihArtikala}
+                  className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    filterArtikala === "dogovoreni"
+                      ? "text-white"
+                      : "text-gray-500 dark:text-[#7d7498] enabled:hover:text-gray-700 dark:enabled:hover:text-[#c5bfd8]"
+                  }`}
+                  style={
+                    filterArtikala === "dogovoreni"
+                      ? { background: PRIMARY }
+                      : {}
+                  }
+                >
+                  Dogovoreni
                 </button>
               </div>
             </div>
@@ -2571,7 +2777,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             <div className="px-2 py-1.5 border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0">
               <div className="relative">
                 <Search
-                  size={11}
+                  size={14}
                   className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"
                 />
                 <input
@@ -2579,7 +2785,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   placeholder="Pretraži artikle..."
                   value={pretragaArtikala}
                   onChange={(e) => setPretragaArtikala(e.target.value)}
-                  className="w-full pl-6 pr-2 py-1 text-[11px] border border-gray-200 dark:border-[#3a3158] rounded-lg bg-[#faf9fc] dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] focus:outline-none focus:border-purple-400"
+                  className="w-full pl-7 pr-2 py-1 text-sm border border-gray-200 dark:border-[#3a3158] rounded-lg bg-[#faf9fc] dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] focus:outline-none focus:border-purple-400"
                 />
               </div>
             </div>
@@ -2625,18 +2831,27 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               </div>
             )}
 
-            {/* Header kolona */}
-            <div className="flex items-center justify-between px-2.5 py-1 bg-[#f4f1f9] dark:bg-[#1e1a2d] border-b border-gray-100 dark:border-[#2d2648] flex-shrink-0">
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
-                Naziv artikla
-              </span>
-              <span className="text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
-                VPC
-              </span>
-            </div>
-
-            {/* Lista artikala */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Lista artikala — filter "Dogovoreni" ima posebnu pozadinu */}
+            <div
+              className={`flex-1 overflow-y-auto ${
+                filterArtikala === "dogovoreni"
+                  ? "bg-amber-50 dark:bg-amber-950/20"
+                  : ""
+              }`}
+            >
+              {/* Header kolona — unutar skrola, da se poravna sa kolonama i kad
+                  se pojavi scrollbar */}
+              <div className="sticky top-0 z-10 flex items-center gap-2 px-2.5 py-1 bg-[#f4f1f9] dark:bg-[#1e1a2d] border-b border-gray-100 dark:border-[#2d2648]">
+                <span className="min-w-0 flex-1 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                  Naziv artikla
+                </span>
+                <span className="w-20 mr-12 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                  Količina
+                </span>
+                <span className="w-16 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                  VPC
+                </span>
+              </div>
               {loadingArtikli ? (
                 <div className="flex items-center justify-center py-8 gap-1.5 text-gray-400">
                   <Loader2 size={14} className="animate-spin" />
@@ -2678,11 +2893,11 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                             : "hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648] cursor-pointer"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-1">
+                      <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1 min-w-0">
                             <span
-                              className="text-xs font-semibold leading-tight truncate"
+                              className="text-sm font-semibold leading-tight truncate"
                               style={{ color: PRIMARY }}
                             >
                               {a.naziv_proizvoda}
@@ -2694,24 +2909,24 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                               />
                             )}
                           </div>
-                          <div
-                            className="text-[11px] font-bold mt-0.5"
-                            style={{ color: nemaStanje ? undefined : ACCENT }}
-                          >
-                            {Number(a.kolicina_proizvoda).toFixed(3)}
+                          <div className="text-xs text-gray-400 dark:text-[#5f5878] mt-0.5 truncate">
+                            ({a.sifra_proizvoda}) · {a.jm}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div
+                          className="w-20 mr-12 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap"
+                          style={{ color: nemaStanje ? undefined : ACCENT }}
+                        >
+                          {Number(a.kolicina_proizvoda).toFixed(3)}
+                        </div>
+                        <div className="w-16 flex-shrink-0 flex flex-col items-end gap-1">
                           <div
-                            className="text-xs font-bold"
+                            className="text-sm font-bold whitespace-nowrap"
                             style={{ color: PRIMARY }}
                           >
                             {typeof a.vpc === "number"
                               ? a.vpc.toFixed(2)
                               : a.vpc}
-                          </div>
-                          <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
-                            ({a.sifra_proizvoda}) · {a.jm}
                           </div>
                           {nivelacija && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-sky-500 text-white text-[9px] font-bold uppercase tracking-wide shadow-sm animate-pulse">
@@ -3470,6 +3685,122 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           document.body,
         )}
 
+      {/* Uvoz sa terena — cijene ispod nabavne, operater odlučuje za svaku stavku.
+          Skriveno dok je otvoren modal za izmjenu stavke. */}
+      {uvozIspodNabavne.length > 0 &&
+        !artikalZaUnos &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[620px] max-h-[80vh] flex flex-col overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
+                style={{ background: "#f59e0b" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  Cijena ispod nabavne
+                </span>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto">
+                <p className="text-xs text-gray-500 dark:text-[#7d7498] mb-3">
+                  Za sljedeće proizvode iz uvoza cijena je ispod nabavne. Odaberi
+                  da li je unosiš takvu ili je ispravljaš.
+                </p>
+                <div className="space-y-2">
+                  {uvozIspodNabavne.map((r) => (
+                    <div
+                      key={r.sifra_proizvoda}
+                      className="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-[#2d2648]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
+                          {r.naziv_proizvoda}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-[#7d7498]">
+                          {r.izvor === "dogovorena" ? "Dogovorena" : "VPC"}:{" "}
+                          <b className="text-red-500">
+                            {r.cijena.toFixed(2)} KM
+                          </b>{" "}
+                          · Nabavna: {r.nabavna.toFixed(3)} KM
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleIspraviUvozIspodNabavne(r)}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-700 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
+                      >
+                        Ispravi
+                      </button>
+                      <button
+                        onClick={() => handleUnesiUvozIspodNabavne(r)}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:brightness-110"
+                        style={{ background: "#f59e0b" }}
+                      >
+                        Unesi ipak
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Ručni unos — potvrda cijene ispod nabavne, iznad modala za unos stavke */}
+      {potvrdaIspodNabavne &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3"
+                style={{ background: "#f59e0b" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  Cijena ispod nabavne
+                </span>
+              </div>
+              <div className="px-6 py-5 space-y-1">
+                {potvrdaIspodNabavne.map((p) => (
+                  <p
+                    key={p}
+                    className="text-sm text-gray-700 dark:text-[#c5bfd8]"
+                  >
+                    {p}
+                  </p>
+                ))}
+              </div>
+              <div className="px-6 pb-5 flex gap-3">
+                <button
+                  autoFocus
+                  onClick={() => setPotvrdaIspodNabavne(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Vrati se na unos
+                </button>
+                <button
+                  onClick={() => {
+                    setPotvrdaIspodNabavne(null);
+                    handlePotvrdiStavku();
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: "#f59e0b" }}
+                >
+                  Unesi ipak
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Modal unos cijena — nivelisanje */}
       {artikalZaCijenu &&
         ReactDOM.createPortal(
@@ -3812,14 +4143,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             greske.push("VPC 2 ne može biti veći od VPC 1");
           if (vpc3 !== "" && brojVpc3 > brojVpc2)
             greske.push("VPC 3 ne može biti veći od VPC 2");
-          if (nabavna > 0) {
-            if (vpc1 !== "" && brojVpc1 < nabavna)
-              greske.push("VPC 1 ne može biti ispod nabavne cijene");
-            if (vpc2 !== "" && brojVpc2 < nabavna)
-              greske.push("VPC 2 ne može biti ispod nabavne cijene");
-            if (vpc3 !== "" && brojVpc3 < nabavna)
-              greske.push("VPC 3 ne može biti ispod nabavne cijene");
-          }
+          // Ispod nabavne ne blokira unos — "Dodaj" traži potvrdu operatera.
+          const upozorenjaNabavna = porukeIspodNabavne();
 
           return ReactDOM.createPortal(
             <div
@@ -4021,6 +4346,18 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         ))}
                       </div>
                     )}
+                    {upozorenjaNabavna.length > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        {upozorenjaNabavna.map((u) => (
+                          <div
+                            key={u}
+                            className="text-xs font-medium text-amber-600 dark:text-amber-400"
+                          >
+                            {u}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div
@@ -4050,7 +4387,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         );
                       }}
                       onKeyDown={(e) =>
-                        e.key === "Enter" && handlePotvrdiStavku()
+                        e.key === "Enter" &&
+                        greske.length === 0 &&
+                        pokusajPotvrdiStavku()
                       }
                       autoFocus
                       className={`${inputClass} ${bezStrelicaClass}`}
@@ -4097,7 +4436,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                     Odustani
                   </button>
                   <button
-                    onClick={handlePotvrdiStavku}
+                    onClick={pokusajPotvrdiStavku}
                     disabled={
                       !kolicina ||
                       parseFloat(kolicina.replace(",", ".")) <= 0 ||
