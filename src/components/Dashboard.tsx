@@ -28,6 +28,7 @@ import { LagerListe } from "./LagerListe";
 import { NivelacijePregled } from "./NivelacijePregled";
 import { UgovoreneCijenePregled } from "./UgovoreneCijenePregled";
 import { KarticaPartnera } from "./KarticaPartnera";
+import { SintetikaPartnera } from "./SintetikaPartnera";
 import { KarticaProizvoda } from "./KarticaProizvoda";
 import { TrgovackaKnjigaVeleprodaja } from "./TrgovackaKnjigaVeleprodaja";
 import { MjesecniPrihodi } from "./MjesecniPrihodi";
@@ -173,6 +174,7 @@ type MenuSection =
   | "partneri-pregled"
   | "partneri-razni"
   | "partneri-kartica"
+  | "partneri-sintetika"
   | "partneri-drzave-gradovi"
   | "artikli-unos"
   | "artikli-pregled"
@@ -235,6 +237,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "pregled-kalkulacija": "Pregled kalkulacija",
   "ugovorene-cijene": "Ugovorene cijene",
   "partneri-kartica": "Kartica partnera",
+  "partneri-sintetika": "Sintetika partnera",
   "partneri-drzave-gradovi": "Unos država - gradova",
   "artikli-kartica": "Kartica artikla",
   "artikli-lager-liste": "Lager liste",
@@ -1480,6 +1483,44 @@ export function Dashboard({
                             />
                           </span>
                           Kartica partnera
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSectionChange("partneri-sintetika")
+                          }
+                          className={dropdownItemClass(
+                            activeSection === "partneri-sintetika",
+                          )}
+                          style={
+                            activeSection === "partneri-sintetika"
+                              ? { background: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span
+                            className={`flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 ${
+                              activeSection === "partneri-sintetika"
+                                ? ""
+                                : "bg-[#ede8f5] dark:bg-[#312a50]"
+                            }`}
+                            style={
+                              activeSection === "partneri-sintetika"
+                                ? { background: "rgba(255,255,255,0.2)" }
+                                : {}
+                            }
+                          >
+                            <CreditCard
+                              size={13}
+                              style={{
+                                color:
+                                  activeSection === "partneri-sintetika"
+                                    ? "#fff"
+                                    : PRIMARY,
+                              }}
+                            />
+                          </span>
+                          Sintetika partnera
                         </button>
 
                         <button
@@ -3432,6 +3473,8 @@ export function Dashboard({
           {activeSection === "partneri-razni" && <PartneriRazniPregled />}
 
           {activeSection === "partneri-kartica" && <KarticaPartnera />}
+
+          {activeSection === "partneri-sintetika" && <SintetikaPartnera />}
 
           {activeSection === "partneri-drzave-gradovi" && (
             <DrzaveGradoviUnos />

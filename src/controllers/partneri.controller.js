@@ -20,6 +20,23 @@ export const getPartneriRazni = async (req, res) => {
   }
 };
 
+const danasnjiDatum = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+export const getPartneriSintetika = async (req, res) => {
+  try {
+    const datum = req.query.datum || danasnjiDatum();
+    const data = await PartneriService.getPartneriSintetika(datum);
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Sintetika partnera error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju sintetike partnera" });
+  }
+};
+
 export const createPartnerRazni = async (req, res) => {
   try {
     const { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada } = req.body;

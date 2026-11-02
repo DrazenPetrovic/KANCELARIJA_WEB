@@ -25,6 +25,19 @@ export const getPartneriRazni = async () => {
   });
 };
 
+// erp.partneri_sintetika_pregled(p_datum) vraća stanje zaduženosti partnera na
+// zadati datum, po jedan red za svaku kombinaciju partnera i konta (ukupno_rac,
+// ukupno_uplata, saldo), sortirano po šifri partnera pa po kontu.
+export const getPartneriSintetika = async (datum) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.partneri_sintetika_pregled(?)",
+      [datum],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const dodajPartneraRaznog = async ({
   nazivPartnera,
   pripadaRadniku,
