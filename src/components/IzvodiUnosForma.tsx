@@ -80,7 +80,7 @@ const NEPOZNAT_PARTNER: Partner = {
 };
 
 // Red iz erp.racuni_gl_istorija_pojedinacni_pregled (GET /api/racuni/istorija).
-interface RacunKupca {
+export interface RacunKupca {
   sifra_tabele: number;
   broj_racuna: number | string;
   vrsta_racuna: string | null;
@@ -100,7 +100,7 @@ const racunNeplacen = (r: RacunKupca) => {
 
 // Oznaka računa kao u unosu računa (racuniZiralni/racuniGotovinski):
 // MP/VP/Drugo-podvrsta-broj / GG (godina iz datuma računa).
-const oznakaRacuna = (r: RacunKupca) => {
+export const oznakaRacuna = (r: RacunKupca) => {
   const vrsta = Number(r.vrsta_racuna_novi);
   const prefiks = vrsta === 1 ? "MP" : vrsta === 2 ? "VP" : "Drugo";
   const godina = String(r.datum_racuna ?? "").slice(2, 4);
@@ -111,6 +111,36 @@ const oznakaRacuna = (r: RacunKupca) => {
 const prikazDatumaRacuna = (v: string | null) => {
   const m = String(v ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}.${m[2]}.${m[1]}` : (v ?? "–");
+};
+
+// Red iz erp.kalkulacija_gl_pregled (GET /api/kalkulacije/glavni).
+export interface KalkulacijaDobavljaca {
+  sifra_kalkulacije: number;
+  datum_kalkulacije: string | null;
+  sifra_dobavljaca: number | string | null;
+  naziv_dobavljaca?: string | null;
+  broj_racuna: string | number | null;
+  duzi_se_za_iznos: number | string | null;
+  racun_placen: number | string | null;
+  vrsta_kalkulacije: string | null;
+  kalkulacija_stornirana: number | string | null;
+}
+
+// Za uplatu se nude neplaćene kalkulacije. Stornirana kalkulacija se smatra
+// plaćenom (ne duži se za iznos), a KO je sam storno dokument.
+export const kalkulacijaZaUplatu = (k: KalkulacijaDobavljaca) =>
+  Number(k.racun_placen) === 0 &&
+  Number(k.kalkulacija_stornirana) === 0 &&
+  (k.vrsta_kalkulacije ?? "").trim().toUpperCase() !== "KO";
+
+export const oznakaKalkulacije = (k: KalkulacijaDobavljaca) =>
+  `${(k.vrsta_kalkulacije ?? "").trim().toUpperCase()} ${k.sifra_kalkulacije}`.trim();
+
+// Iznos izabranog dokumenta za polje "Iznos" — djelimična uplata nije
+// dozvoljena, pa se uplaćuje uvijek cijeli iznos.
+const iznosDokumenta = (v: number | string | null | undefined) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "";
 };
 
 // Stavka pripremljena za slanje — polja kao u JSON-u za
@@ -124,13 +154,104 @@ interface NovaStavka {
   datum_uplate: string;
   uplaceno: number;
   sifra_veze: number;
-  // Samo za prikaz — broj izabranog računa (ne šalje se).
+  // Samo za prikaz — izabrani račun ili kalkulacija (ne šalje se).
   veza_prikaz: string | null;
   opis: string;
   napomena: string;
   sifra_blagajne: number;
   dozvoli_storniranje: number;
   konto_knjizenja: number;
+}
+
+// Dokument koji se nakon unosa uplate označava plaćenim
+// (erp.izvodi_uplate_azuriranje_placenosti).
+interface DokumentPlacenost {
+  tip_dokumenta: "RACUN" | "KALKULACIJA";
+  sifra_dokumenta: number;
+  // Samo za prikaz u modalu (ne šalje se).
+  oznaka: string;
+}
+
+const TIP_DOKUMENTA_PO_VEZI: Partial<
+  Record<NonNullable<VrstaUplate["veza"]>, DokumentPlacenost["tip_dokumenta"]>
+> = {
+  racun: "RACUN",
+  kalkulacija: "KALKULACIJA",
+};
+
+const dokumentiZaPlacenost = (stavke: NovaStavka[]): DokumentPlacenost[] =>
+  stavke.flatMap((s) => {
+    const veza = vrstaPoKodu(s.vrsta_uplate).veza;
+    const tip = veza ? TIP_DOKUMENTA_PO_VEZI[veza] : undefined;
+    if (!tip || s.sifra_veze <= 0) return [];
+    return [
+      {
+        tip_dokumenta: tip,
+        sifra_dokumenta: s.sifra_veze,
+        oznaka: s.veza_prikaz ?? `${tip} ${s.sifra_veze}`,
+      },
+    ];
+  });
+
+// Modal čuvanja: 1. unos uplata, 2. ažuriranje plaćenosti dokumenata.
+type StatusKoraka = "ceka" | "radi" | "ok" | "greska" | "nema";
+
+interface ObradaCuvanja {
+  unos: StatusKoraka;
+  unosPoruka: string | null;
+  placenost: StatusKoraka;
+  placenostPoruka: string | null;
+  dokumenti: DokumentPlacenost[];
+}
+
+function KorakObrade({
+  status,
+  naslov,
+  poruka,
+}: {
+  status: StatusKoraka;
+  naslov: string;
+  poruka: string | null;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+        {status === "radi" ? (
+          <Loader2 size={17} className="animate-spin" style={{ color: PRIMARY }} />
+        ) : status === "ok" ? (
+          <CheckCircle2 size={17} style={{ color: ACCENT }} />
+        ) : status === "greska" ? (
+          <AlertCircle size={17} className="text-red-500" />
+        ) : status === "nema" ? (
+          <CheckCircle2 size={17} className="text-gray-300 dark:text-[#5f5878]" />
+        ) : (
+          <span className="w-3 h-3 rounded-full border-2 border-gray-300 dark:border-[#5f5878]" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p
+          className={`text-sm font-semibold ${
+            status === "ceka" || status === "nema"
+              ? "text-gray-400 dark:text-[#5f5878]"
+              : "text-gray-800 dark:text-[#ede9f6]"
+          }`}
+        >
+          {naslov}
+        </p>
+        {poruka && (
+          <p
+            className={`text-xs mt-0.5 ${
+              status === "greska"
+                ? "text-red-600 dark:text-red-400"
+                : "text-gray-500 dark:text-[#7d7498]"
+            }`}
+          >
+            {poruka}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Datum izvoda iz baze ("yyyy-MM-dd" ili "yyyy-MM-dd HH:mm:ss") ->
@@ -181,21 +302,28 @@ export function IzvodiUnosForma({
   // Stavke spremne za slanje
   const [stavke, setStavke] = useState<NovaStavka[]>([]);
   const [slanje, setSlanje] = useState(false);
-  const [greskaSlanja, setGreskaSlanja] = useState<string | null>(null);
-  const [uspjeh, setUspjeh] = useState<string | null>(null);
+  const [obrada, setObrada] = useState<ObradaCuvanja | null>(null);
 
   // Izbor računa kupca (vrsta 1) — sifra_tabele računa ide u sifra_veze.
+  // Isti modal (otvoren, loading, greška, pretraga) služi i za kalkulacije
+  // dobavljača (vrsta 2) — tada sifra_kalkulacije ide u sifra_veze.
   const [izborRacunaOtvoren, setIzborRacunaOtvoren] = useState(false);
   const [racuni, setRacuni] = useState<RacunKupca[]>([]);
   const [racuniLoading, setRacuniLoading] = useState(false);
   const [racuniGreska, setRacuniGreska] = useState<string | null>(null);
   const [pretragaRacuna, setPretragaRacuna] = useState("");
   const [izabraniRacun, setIzabraniRacun] = useState<RacunKupca | null>(null);
+  const [kalkulacije, setKalkulacije] = useState<KalkulacijaDobavljaca[]>([]);
+  const [izabranaKalkulacija, setIzabranaKalkulacija] =
+    useState<KalkulacijaDobavljaca | null>(null);
 
   const pretragaRef = useRef<HTMLDivElement>(null);
   const kljucRef = useRef(1);
 
   const izabranaVrsta = vrstaPoKodu(vrsta);
+  const izborKalkulacije = izabranaVrsta.veza === "kalkulacija";
+  // Šifra veze > 0: iznos dolazi iz dokumenta i ne može se ručno mijenjati.
+  const iznosZakljucan = parseInt(sifraVeze, 10) > 0;
 
   const otvoriIzborRacuna = async () => {
     if (!partner) return;
@@ -228,13 +356,73 @@ export function IzvodiUnosForma({
   const izaberiRacun = (r: RacunKupca) => {
     setIzabraniRacun(r);
     setSifraVeze(String(r.sifra_tabele));
-    if (!opis.trim()) setOpis(`Uplata po računu ${oznakaRacuna(r)}`);
-    const ukupno = Number(r.ukupno);
-    if (!iznos.trim() && Number.isFinite(ukupno) && ukupno > 0) {
-      setIznos(ukupno.toFixed(2));
+    setIzabranaKalkulacija(null);
+    if (!opis.trim() || opis.startsWith("Uplata po ")) {
+      setOpis(`Uplata po računu ${oznakaRacuna(r)}`);
     }
+    setIznos(iznosDokumenta(r.ukupno));
     setIzborRacunaOtvoren(false);
   };
+
+  const otvoriIzborKalkulacije = async () => {
+    if (!partner) return;
+    setIzborRacunaOtvoren(true);
+    setPretragaRacuna("");
+    setRacuniLoading(true);
+    setRacuniGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/kalkulacije/glavni`, {
+        credentials: "include",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.success === false) {
+        throw new Error(
+          d.error || d.message || "Greška pri učitavanju kalkulacija",
+        );
+      }
+      setKalkulacije(
+        ((d.data ?? []) as KalkulacijaDobavljaca[])
+          .filter(
+            (k) =>
+              String(k.sifra_dobavljaca) === String(partner.partner_id) &&
+              kalkulacijaZaUplatu(k),
+          )
+          .sort((a, b) =>
+            String(a.datum_kalkulacije ?? "").localeCompare(
+              String(b.datum_kalkulacije ?? ""),
+            ),
+          ),
+      );
+    } catch (e: unknown) {
+      setKalkulacije([]);
+      setRacuniGreska(
+        e instanceof Error ? e.message : "Greška pri učitavanju kalkulacija",
+      );
+    } finally {
+      setRacuniLoading(false);
+    }
+  };
+
+  const izaberiKalkulaciju = (k: KalkulacijaDobavljaca) => {
+    setIzabranaKalkulacija(k);
+    setSifraVeze(String(k.sifra_kalkulacije));
+    setIzabraniRacun(null);
+    if (!opis.trim() || opis.startsWith("Uplata po ")) {
+      setOpis(`Uplata po kalkulaciji ${oznakaKalkulacije(k)}`);
+    }
+    setIznos(iznosDokumenta(k.duzi_se_za_iznos));
+    setIzborRacunaOtvoren(false);
+  };
+
+  const filtriraneKalkulacije = useMemo(() => {
+    const q = pretragaRacuna.trim().toLowerCase();
+    if (!q) return kalkulacije;
+    return kalkulacije.filter(
+      (k) =>
+        oznakaKalkulacije(k).toLowerCase().includes(q) ||
+        String(k.broj_racuna ?? "").toLowerCase().includes(q),
+    );
+  }, [kalkulacije, pretragaRacuna]);
 
   const filtriraniRacuni = useMemo(() => {
     const q = pretragaRacuna.trim().toLowerCase();
@@ -284,12 +472,32 @@ export function IzvodiUnosForma({
     setPokaziListu(false);
   };
 
+  // Promjena partnera poništava vezu — dokument pripada prethodnom partneru.
+  const ponistiVezu = () => {
+    if (iznosZakljucan) setIznos("");
+    setSifraVeze("");
+    setIzabraniRacun(null);
+    setIzabranaKalkulacija(null);
+  };
+
+  // Ručna izmjena šifre veze odvaja izabrani dokument. Na 0 iznos ostaje i
+  // može se mijenjati; druga šifra briše iznos jer on pripada starom dokumentu.
+  const promijeniSifruVeze = (vrijednost: string) => {
+    setSifraVeze(vrijednost);
+    if (izabraniRacun || izabranaKalkulacija) {
+      setIzabraniRacun(null);
+      setIzabranaKalkulacija(null);
+      if (parseInt(vrijednost, 10) > 0) setIznos("");
+    }
+  };
+
   const ocistiFormu = () => {
     setPartner(null);
     setPretraga("");
     setIznos("");
     setSifraVeze("");
     setIzabraniRacun(null);
+    setIzabranaKalkulacija(null);
     setOpis("");
     setNapomena("");
     setDozvoliStorniranje(true);
@@ -297,7 +505,6 @@ export function IzvodiUnosForma({
   };
 
   const dodajStavku = () => {
-    setUspjeh(null);
     const iznosBroj = parseFloat(iznos.replace(",", "."));
     if (!partner) {
       setGreskaForme(
@@ -305,17 +512,36 @@ export function IzvodiUnosForma({
       );
       return;
     }
+    const veza = sifraVeze.trim() === "" ? 0 : parseInt(sifraVeze, 10);
+    if (!Number.isInteger(veza) || veza < 0) {
+      setGreskaForme("Šifra veze mora biti cijeli broj");
+      return;
+    }
+    if (veza > 0) {
+      const dokumentIzabran =
+        String(izabraniRacun?.sifra_tabele) === String(veza) ||
+        String(izabranaKalkulacija?.sifra_kalkulacije) === String(veza);
+      if (!dokumentIzabran) {
+        setGreskaForme(
+          "Izaberite dokument iz liste ili stavite šifru veze na 0",
+        );
+        return;
+      }
+      if (stavke.some((s) => s.vrsta_uplate === vrsta && s.sifra_veze === veza)) {
+        setGreskaForme("Ovaj dokument je već dodat u stavke");
+        return;
+      }
+    }
     if (!Number.isFinite(iznosBroj) || iznosBroj <= 0) {
-      setGreskaForme("Unesite iznos veći od 0");
+      setGreskaForme(
+        veza > 0
+          ? "Izabrani dokument nema iznos za uplatu"
+          : "Unesite iznos veći od 0",
+      );
       return;
     }
     if (!datumUplate) {
       setGreskaForme("Izvod nema upisan datum — provjerite izvod");
-      return;
-    }
-    const veza = sifraVeze.trim() === "" ? 0 : parseInt(sifraVeze, 10);
-    if (!Number.isInteger(veza) || veza < 0) {
-      setGreskaForme("Šifra veze mora biti cijeli broj");
       return;
     }
     setStavke((prev) => [
@@ -331,7 +557,10 @@ export function IzvodiUnosForma({
         veza_prikaz:
           izabraniRacun && String(izabraniRacun.sifra_tabele) === String(veza)
             ? `Račun ${oznakaRacuna(izabraniRacun)}`
-            : null,
+            : izabranaKalkulacija &&
+                String(izabranaKalkulacija.sifra_kalkulacije) === String(veza)
+              ? `Kalkulacija ${oznakaKalkulacije(izabranaKalkulacija)}`
+              : null,
         opis: opis.trim(),
         napomena: napomena.trim(),
         sifra_blagajne: izvod.redni_broj,
@@ -360,9 +589,16 @@ export function IzvodiUnosForma({
     if (stavke.length === 0 || slanje) return;
     const zaSlanje = stavke;
     const poslaniKljucevi = new Set(zaSlanje.map((s) => s.kljuc));
+    const dokumenti = dokumentiZaPlacenost(zaSlanje);
     setSlanje(true);
-    setGreskaSlanja(null);
-    setUspjeh(null);
+    setObrada({
+      unos: "radi",
+      unosPoruka: null,
+      placenost: "ceka",
+      placenostPoruka: null,
+      dokumenti,
+    });
+    let unosUspio = false;
     try {
       const res = await fetch(`${API_URL}/api/izvodi/uplate-unos`, {
         method: "POST",
@@ -388,22 +624,93 @@ export function IzvodiUnosForma({
         throw new Error(d.message || d.error || "Greška pri unosu stavki");
       }
       const broj = Number(d.broj ?? zaSlanje.length);
-      setUspjeh(
-        d.prvaSifra != null
-          ? broj === 1
-            ? `Sačuvana 1 stavka (šifra uplate ${d.prvaSifra})`
-            : `Sačuvano stavki: ${broj} (šifre uplata ${d.prvaSifra}–${d.posljednjaSifra})`
-          : `Sačuvano stavki: ${broj}`,
+      setObrada((o) =>
+        o && {
+          ...o,
+          unos: "ok",
+          unosPoruka:
+            d.prvaSifra != null
+              ? broj === 1
+                ? `Sačuvana 1 stavka (šifra uplate ${d.prvaSifra})`
+                : `Sačuvano stavki: ${broj} (šifre uplata ${d.prvaSifra}–${d.posljednjaSifra})`
+              : `Sačuvano stavki: ${broj}`,
+        },
       );
       setStavke((prev) => prev.filter((s) => !poslaniKljucevi.has(s.kljuc)));
       onSpremljeno();
+      unosUspio = true;
     } catch (e: unknown) {
-      setGreskaSlanja(
-        e instanceof Error ? e.message : "Greška pri unosu stavki",
+      setObrada((o) =>
+        o && {
+          ...o,
+          unos: "greska",
+          unosPoruka:
+            e instanceof Error ? e.message : "Greška pri unosu stavki",
+        },
       );
-    } finally {
-      setSlanje(false);
     }
+    if (unosUspio) await azurirajPlacenost(dokumenti);
+    setSlanje(false);
+  };
+
+  // Drugi korak. Uplate su tada već sačuvane, pa ponovni pokušaj nakon greške
+  // pokreće samo ovaj korak — nikad ponovo unos uplata.
+  const azurirajPlacenost = async (dokumenti: DokumentPlacenost[]) => {
+    if (dokumenti.length === 0) {
+      setObrada((o) =>
+        o && {
+          ...o,
+          placenost: "nema",
+          placenostPoruka: "Nema računa ni kalkulacija za označavanje.",
+        },
+      );
+      return;
+    }
+    setObrada((o) => o && { ...o, placenost: "radi", placenostPoruka: null });
+    try {
+      const res = await fetch(`${API_URL}/api/izvodi/azuriranje-placenosti`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dokumenti: dokumenti.map((x) => ({
+            tip_dokumenta: x.tip_dokumenta,
+            sifra_dokumenta: x.sifra_dokumenta,
+          })),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) {
+        throw new Error(
+          d.message || d.error || "Greška pri ažuriranju plaćenosti",
+        );
+      }
+      setObrada((o) =>
+        o && {
+          ...o,
+          placenost: "ok",
+          placenostPoruka: `Označeno plaćenim — računa: ${d.brojRacuna ?? 0}, kalkulacija: ${d.brojKalkulacija ?? 0}`,
+        },
+      );
+    } catch (e: unknown) {
+      setObrada((o) =>
+        o && {
+          ...o,
+          placenost: "greska",
+          placenostPoruka:
+            e instanceof Error
+              ? e.message
+              : "Greška pri ažuriranju plaćenosti",
+        },
+      );
+    }
+  };
+
+  const ponoviPlacenost = async () => {
+    if (!obrada || slanje) return;
+    setSlanje(true);
+    await azurirajPlacenost(obrada.dokumenti);
+    setSlanje(false);
   };
 
   return (
@@ -462,8 +769,7 @@ export function IzvodiUnosForma({
                   type="button"
                   onClick={() => {
                     izaberiPartnera(NEPOZNAT_PARTNER);
-                    setSifraVeze("");
-                    setIzabraniRacun(null);
+                    ponistiVezu();
                   }}
                   className="mb-1 text-[11px] font-semibold hover:underline"
                   style={{ color: PRIMARY }}
@@ -484,8 +790,7 @@ export function IzvodiUnosForma({
                   type="button"
                   onClick={() => {
                     setPartner(null);
-                    setSifraVeze("");
-                    setIzabraniRacun(null);
+                    ponistiVezu();
                   }}
                   title="Promijeni partnera"
                   className="text-gray-400 hover:text-red-500"
@@ -560,14 +865,27 @@ export function IzvodiUnosForma({
               {izabranaVrsta.veza && ` (${NAZIV_VEZE[izabranaVrsta.veza]})`}
             </label>
             <div className="flex gap-2">
-              <input
-                type="number"
-                min={0}
-                value={sifraVeze}
-                onChange={(e) => setSifraVeze(e.target.value)}
-                placeholder="0"
-                className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
-              />
+              <div className="flex-1 min-w-0">
+                <input
+                  type="number"
+                  min={0}
+                  value={sifraVeze}
+                  onChange={(e) => promijeniSifruVeze(e.target.value)}
+                  placeholder="0"
+                  className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                />
+              </div>
+              {iznosZakljucan && (
+                <button
+                  type="button"
+                  onClick={() => promijeniSifruVeze("0")}
+                  title="Vrati šifru veze na 0 i otključaj ručni unos iznosa"
+                  className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold border border-red-200 dark:border-red-900 text-red-500 whitespace-nowrap transition-all hover:bg-red-50 dark:hover:bg-red-950/30"
+                >
+                  <X size={13} />
+                  Na 0
+                </button>
+              )}
               {izabranaVrsta.veza === "racun" && (
                 // Računi izabranog kupca — sifra_tabele računa ide u sifra_veze.
                 <button
@@ -592,9 +910,32 @@ export function IzvodiUnosForma({
                   Izaberi {NAZIV_VEZE.racun}
                 </button>
               )}
-              {(izabranaVrsta.veza === "kalkulacija" ||
-                izabranaVrsta.veza === "kuf") && (
-                // Izbor kalkulacije / KUF-a — dolazi kad stigne procedura.
+              {izborKalkulacije && (
+                // Kalkulacije izabranog dobavljača — sifra_kalkulacije ide u sifra_veze.
+                <button
+                  type="button"
+                  onClick={() => void otvoriIzborKalkulacije()}
+                  disabled={!partner || partner.partner_id < 0}
+                  title={
+                    !partner
+                      ? "Prvo izaberite dobavljača"
+                      : partner.partner_id < 0
+                        ? "Nepoznat partner nema kalkulacije"
+                        : "Pregled neplaćenih kalkulacija dobavljača"
+                  }
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap transition-all disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:disabled:border-[#3a3158] dark:disabled:text-[#5f5878] enabled:hover:bg-purple-50 dark:enabled:hover:bg-[#2d2648]"
+                  style={
+                    partner && partner.partner_id > 0
+                      ? { borderColor: PRIMARY, color: PRIMARY }
+                      : undefined
+                  }
+                >
+                  <FileSearch size={13} />
+                  Izaberi {NAZIV_VEZE.kalkulacija}
+                </button>
+              )}
+              {izabranaVrsta.veza === "kuf" && (
+                // Izbor KUF-a — dolazi kad stigne procedura.
                 <button
                   type="button"
                   disabled
@@ -611,6 +952,13 @@ export function IzvodiUnosForma({
                 <div className="mt-1 text-[11px]" style={{ color: PRIMARY }}>
                   Račun {oznakaRacuna(izabraniRacun)} od{" "}
                   {prikazDatumaRacuna(izabraniRacun.datum_racuna)}
+                </div>
+              )}
+            {izabranaKalkulacija &&
+              String(izabranaKalkulacija.sifra_kalkulacije) === sifraVeze && (
+                <div className="mt-1 text-[11px]" style={{ color: PRIMARY }}>
+                  Kalkulacija {oznakaKalkulacije(izabranaKalkulacija)} od{" "}
+                  {prikazDatumaRacuna(izabranaKalkulacija.datum_kalkulacije)}
                 </div>
               )}
           </div>
@@ -642,8 +990,18 @@ export function IzvodiUnosForma({
               inputMode="decimal"
               value={iznos}
               onChange={(e) => setIznos(e.target.value)}
+              readOnly={iznosZakljucan}
+              title={
+                iznosZakljucan
+                  ? "Iznos je preuzet iz dokumenta. Za ručni unos vratite šifru veze na 0."
+                  : undefined
+              }
               placeholder="0,00"
-              className={`${inputCls} text-right font-bold`}
+              className={`${inputCls} text-right font-bold ${
+                iznosZakljucan
+                  ? "!bg-gray-100 dark:!bg-[#1a1626] cursor-not-allowed"
+                  : ""
+              }`}
             />
           </div>
 
@@ -703,7 +1061,64 @@ export function IzvodiUnosForma({
         </div>
       </div>
 
-      {/* Izbor računa kupca */}
+      {/* Tok čuvanja: unos uplata, pa ažuriranje plaćenosti dokumenata */}
+      {obrada && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] shadow-2xl p-5">
+            <p className="text-sm font-bold text-gray-800 dark:text-[#ede9f6] mb-4">
+              Čuvanje unosa
+            </p>
+            <div className="space-y-4">
+              <KorakObrade
+                status={obrada.unos}
+                naslov="Unos uplata"
+                poruka={obrada.unosPoruka}
+              />
+              <KorakObrade
+                status={obrada.placenost}
+                naslov="Ažuriranje plaćenosti (računi i kalkulacije)"
+                poruka={obrada.placenostPoruka}
+              />
+            </div>
+
+            {obrada.unos === "greska" && (
+              <p className="mt-4 text-xs text-gray-500 dark:text-[#7d7498]">
+                Ništa nije sačuvano. Stavke su ostale u listi.
+              </p>
+            )}
+            {obrada.placenost === "greska" && (
+              <div className="mt-4 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400">
+                Uplate JESU sačuvane, ali ovi dokumenti NISU označeni plaćenim:{" "}
+                {obrada.dokumenti.map((x) => x.oznaka).join(", ")}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              {obrada.placenost === "greska" && (
+                <button
+                  type="button"
+                  onClick={() => void ponoviPlacenost()}
+                  disabled={slanje}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white transition-all hover:brightness-110 disabled:opacity-50"
+                  style={{ background: PRIMARY }}
+                >
+                  Pokušaj ponovo
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setObrada(null)}
+                disabled={slanje}
+                className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
+              >
+                Zatvori
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Izbor računa kupca / kalkulacije dobavljača */}
       {izborRacunaOtvoren && partner && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 px-4"
@@ -721,7 +1136,9 @@ export function IzvodiUnosForma({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Neplaćeni računi kupca
+                  {izborKalkulacije
+                    ? "Neplaćene kalkulacije dobavljača"
+                    : "Neplaćeni računi kupca"}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-[#7d7498] truncate">
                   {partner.naziv} · #{partner.partner_id}
@@ -746,7 +1163,11 @@ export function IzvodiUnosForma({
                   type="text"
                   value={pretragaRacuna}
                   onChange={(e) => setPretragaRacuna(e.target.value)}
-                  placeholder="Pretraga po broju računa..."
+                  placeholder={
+                    izborKalkulacije
+                      ? "Pretraga po kalkulaciji ili broju računa..."
+                      : "Pretraga po broju računa..."
+                  }
                   autoFocus
                   className={`${inputCls} pl-8`}
                 />
@@ -761,13 +1182,69 @@ export function IzvodiUnosForma({
                     className="animate-spin"
                     style={{ color: PRIMARY }}
                   />
-                  Učitavanje računa...
+                  {izborKalkulacije
+                    ? "Učitavanje kalkulacija..."
+                    : "Učitavanje računa..."}
                 </div>
               ) : racuniGreska ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-red-500">
                   <AlertCircle size={15} />
                   {racuniGreska}
                 </div>
+              ) : izborKalkulacije ? (
+                filtriraneKalkulacije.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-400 dark:text-[#5f5878]">
+                    {kalkulacije.length === 0
+                      ? "Dobavljač nema neplaćenih kalkulacija."
+                      : "Nema kalkulacija za tu pretragu."}
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-white dark:bg-[#261f38]">
+                      <tr className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-[#5f5878]">
+                        <th className="text-left px-5 py-2">Kalkulacija</th>
+                        <th className="text-left px-3 py-2">Broj računa</th>
+                        <th className="text-left px-3 py-2">Datum</th>
+                        <th className="text-right px-5 py-2">Duži se za</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtriraneKalkulacije.map((k) => {
+                        const izabrana =
+                          String(k.sifra_kalkulacije) === sifraVeze;
+                        return (
+                          <tr
+                            key={k.sifra_kalkulacije}
+                            onClick={() => izaberiKalkulaciju(k)}
+                            className={`border-t border-gray-50 dark:border-[#2d2648] text-sm cursor-pointer transition-colors ${
+                              izabrana
+                                ? "bg-[#e3d9f7] dark:bg-[#3d3163]"
+                                : "hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                            }`}
+                          >
+                            <td className="px-5 py-2 font-semibold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
+                              {oznakaKalkulacije(k)}
+                            </td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] whitespace-nowrap">
+                              {k.broj_racuna ?? "–"}
+                            </td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-[#a99fc2] whitespace-nowrap">
+                              {prikazDatumaRacuna(k.datum_kalkulacije)}
+                            </td>
+                            <td
+                              className="px-5 py-2 text-right font-bold whitespace-nowrap"
+                              style={{ color: PRIMARY }}
+                            >
+                              {k.duzi_se_za_iznos == null
+                                ? "–"
+                                : formatKM(k.duzi_se_za_iznos)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )
               ) : filtriraniRacuni.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400 dark:text-[#5f5878]">
                   {racuni.length === 0
@@ -820,8 +1297,9 @@ export function IzvodiUnosForma({
             </div>
 
             <div className="px-5 py-2.5 text-[11px] text-gray-400 dark:text-[#5f5878] border-t border-gray-100 dark:border-[#2d2648]">
-              Klik na račun ga veže za uplatu (šifra veze) i popunjava iznos
-              ako je prazan.
+              Klik na {izborKalkulacije ? "kalkulaciju" : "račun"} veže dokument
+              za uplatu i upisuje njegov iznos. Za ručni unos iznosa stavite
+              šifru veze na 0.
             </div>
           </div>
         </div>
@@ -876,25 +1354,6 @@ export function IzvodiUnosForma({
               ? "Nema nesačuvanih stavki."
               : `Nesačuvanih stavki: ${stavke.length}`}
           </span>
-
-          {greskaSlanja && (
-            <div className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400">
-              <AlertCircle size={13} className="flex-shrink-0" />
-              <span className="flex-1">{greskaSlanja}</span>
-              <button type="button" onClick={() => setGreskaSlanja(null)}>
-                <X size={12} />
-              </button>
-            </div>
-          )}
-          {uspjeh && (
-            <div className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400">
-              <CheckCircle2 size={13} className="flex-shrink-0" />
-              <span className="flex-1">{uspjeh}</span>
-              <button type="button" onClick={() => setUspjeh(null)}>
-                <X size={12} />
-              </button>
-            </div>
-          )}
         </div>
 
         {stavke.length === 0 && sacuvaneStavke.length === 0 ? (

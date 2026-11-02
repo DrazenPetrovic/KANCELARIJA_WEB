@@ -358,6 +358,47 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
   });
 };
 
+// Označavanje dokumenata plaćenim nakon unosa uplata —
+// erp.izvodi_uplate_azuriranje_placenosti(p_json). JSON niz:
+// [{ tip_dokumenta: "RACUN" | "KALKULACIJA", sifra_dokumenta }].
+// Sve ili ništa: ako jedan dokument ne postoji, ne mijenja se nijedan.
+const TIPOVI_DOKUMENTA_PLACENOST = ["RACUN", "KALKULACIJA"];
+
+export const azuriranjePlacenosti = async ({ dokumenti }) => {
+  const json = dokumenti.map((d, idx) => {
+    const tip = String(d.tip_dokumenta ?? "").trim().toUpperCase();
+    const sifra = Number(d.sifra_dokumenta);
+    if (!TIPOVI_DOKUMENTA_PLACENOST.includes(tip)) {
+      throw new Error(`Dokument ${idx + 1}: neispravan tip dokumenta`);
+    }
+    if (!Number.isInteger(sifra) || sifra <= 0) {
+      throw new Error(`Dokument ${idx + 1}: neispravna šifra dokumenta`);
+    }
+    return { tip_dokumenta: tip, sifra_dokumenta: sifra };
+  });
+
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute(
+        "CALL erp.izvodi_uplate_azuriranje_placenosti(?)",
+        [JSON.stringify(json)],
+      );
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage ||
+          error.message ||
+          "Greška pri ažuriranju plaćenosti",
+      );
+    }
+    const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
+    return {
+      brojRacuna: Number(rezultat?.broj_racuna ?? 0),
+      brojKalkulacija: Number(rezultat?.broj_kalkulacija ?? 0),
+    };
+  });
+};
+
 // Zatvaranje izvoda — erp.izvodi_zatvaranje_izvoda(p_json).
 // JSON: { redni_broj, ukupno_uplata, ukupno_isplata, krajnje_stanje }.
 // Procedura te iznose samo upisuje (UPDATE po redni_broj), pa ih server

@@ -12,6 +12,11 @@ router.get("/status", IzvodiController.getIzvodiStatus);
 router.post("/otvori", IzvodiController.otvoriIzvod);
 router.post("/zatvori", IzvodiController.zatvoriIzvod);
 router.post("/uplate-unos", verifyToken, IzvodiController.unosUplataIzvoda);
+router.post(
+  "/azuriranje-placenosti",
+  verifyToken,
+  IzvodiController.azuriranjePlacenosti,
+);
 router.get("/uplata-pojedinacna", IzvodiController.getUplataPojedinacna);
 router.get("/kuf-pojedinacni", IzvodiController.getKufPojedinacni);
 

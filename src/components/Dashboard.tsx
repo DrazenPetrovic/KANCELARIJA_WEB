@@ -41,6 +41,7 @@ import { KalkulacijaStorno } from "./KalkulacijaStorno";
 import { IzvodiPregled } from "./IzvodiPregled";
 import { IzvodiStatus } from "./IzvodiStatus";
 import { IzvodiUnos } from "./IzvodiUnos";
+import { PlacenostRacuna } from "./PlacenostRacuna";
 import { BlagajnaPregled } from "./BlagajnaPregled";
 import { BlagajnaStatus } from "./BlagajnaStatus";
 import { BackupStatus } from "./BackupStatus";
@@ -196,6 +197,7 @@ type MenuSection =
   | "finansije-blagajna-pregled"
   | "finansije-blagajna-status"
   | "finansije-blagajna-unos"
+  | "finansije-placenost"
   | "klise-unos"
   | "klise-naplata"
   | "klise-dobavljac"
@@ -248,6 +250,7 @@ const SECTION_LABELS: Partial<Record<Exclude<MenuSection, null>, string>> = {
   "finansije-blagajna-pregled": "Pregled blagajne",
   "finansije-blagajna-status": "Status blagajne",
   "finansije-blagajna-unos": "Unos uplata/isplata",
+  "finansije-placenost": "Plaćenost računa",
   "klise-unos": "Unos kliše",
   "klise-naplata": "Unos naplate klišea",
   "klise-dobavljac": "Unos podataka od dobavljača",
@@ -2575,6 +2578,28 @@ export function Dashboard({
                           </div>
                         )}
 
+                        {/* Plaćenost računa */}
+                        <button
+                          onClick={() =>
+                            handleSectionChange("finansije-placenost")
+                          }
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
+                            activeSection === "finansije-placenost"
+                              ? "font-bold"
+                              : "font-medium text-gray-700 dark:text-[#c5bfd8] hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                          }`}
+                          style={
+                            activeSection === "finansije-placenost"
+                              ? { color: PRIMARY }
+                              : {}
+                          }
+                        >
+                          <span className="flex items-center justify-center w-6 h-6 rounded-lg flex-shrink-0 bg-[#ede8f5] dark:bg-[#312a50]">
+                            <Receipt size={13} style={{ color: PRIMARY }} />
+                          </span>
+                          Plaćenost računa
+                        </button>
+
                         {/* Trgovačke knjige toggle */}
                         <button
                           onClick={() => setTrgovackeKnjigeExpanded((p) => !p)}
@@ -3466,6 +3491,7 @@ export function Dashboard({
           {activeSection === "finansije-izvodi-pregled" && <IzvodiPregled />}
           {activeSection === "finansije-izvodi-status" && <IzvodiStatus />}
           {activeSection === "finansije-izvodi-unos" && <IzvodiUnos />}
+          {activeSection === "finansije-placenost" && <PlacenostRacuna />}
 
           {activeSection === "finansije-blagajna-pregled" && (
             <BlagajnaPregled />

@@ -10,6 +10,16 @@ export const getIstorijaRacuna = async (sifraPartnera) => {
   });
 };
 
+// Svi neplaćeni računi, bez storniranih i bez storno dokumenata.
+export const getRacuniNeplaceni = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.racuni_gl_neplaceni_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 export const getRacunPoIstorija = async (sifraTabele) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

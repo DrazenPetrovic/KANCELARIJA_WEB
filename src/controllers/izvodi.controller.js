@@ -129,6 +129,25 @@ export const unosUplataIzvoda = async (req, res) => {
   }
 };
 
+export const azuriranjePlacenosti = async (req, res) => {
+  const dokumenti = req.body?.dokumenti;
+  if (!Array.isArray(dokumenti) || dokumenti.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Nema dokumenata za ažuriranje" });
+  }
+  try {
+    const rezultat = await IzvodiService.azuriranjePlacenosti({ dokumenti });
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("azuriranjePlacenosti error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Greška pri ažuriranju plaćenosti",
+    });
+  }
+};
+
 export const getIzvodiPreglediSaUplatama = async (req, res) => {
   try {
     const { izvodi, uplate } =

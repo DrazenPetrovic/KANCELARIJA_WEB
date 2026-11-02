@@ -104,6 +104,18 @@ export const getRacunPojedinacni = async (req, res) => {
   }
 };
 
+export const getRacuniNeplaceni = async (req, res) => {
+  try {
+    const data = await RacuniService.getRacuniNeplaceni();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Neplaćeni računi error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju neplaćenih računa" });
+  }
+};
+
 export const getRacuniPodgrupe = async (req, res) => {
   try {
     const data = await RacuniService.getRacuniPodgrupe();
