@@ -6,6 +6,10 @@ const router = Router();
 router.get("/", PartneriController.getPartneri);
 router.get("/razni", PartneriController.getPartneriRazni);
 router.get("/sintetika", PartneriController.getPartneriSintetika);
+router.get(
+  "/sintetika/:id/placeni",
+  PartneriController.getSintetikaPlaceniDokumenti,
+);
 router.post("/razni", PartneriController.createPartnerRazni);
 router.put("/razni/:sifra", PartneriController.updatePartnerRazni);
 router.get("/dodatne-lokacije", PartneriController.getPartneriDodatneLokacije);

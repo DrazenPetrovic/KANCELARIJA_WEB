@@ -37,6 +37,19 @@ export const getPartneriSintetika = async (req, res) => {
   }
 };
 
+export const getSintetikaPlaceniDokumenti = async (req, res) => {
+  try {
+    const data = await PartneriService.getSintetikaPlaceniDokumenti(
+      req.params.id,
+      req.query.konto,
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Plaćeni dokumenti partnera error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju plaćenih dokumenata" });
+  }
+};
+
 export const createPartnerRazni = async (req, res) => {
   try {
     const { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada } = req.body;

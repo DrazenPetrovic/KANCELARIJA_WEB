@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Loader2,
+  Minus,
+  Plus,
   Search,
   ShoppingCart,
   Truck,
@@ -139,6 +141,233 @@ const TD = ({
   </td>
 );
 
+// Jedna stavka prometa — vidi erp.kartica_partnera_pregled.
+interface KarticaStavka {
+  rb: number;
+  datum: string | null;
+  opis: string | null;
+  duguje: number;
+  potrazuje: number;
+  saldo: number;
+  izvor_id: number | null;
+  vrsta_prometa: number;
+  vrsta_prometa_opis: string;
+  vrsta_uplate_opis: string | null;
+}
+
+// vrsta_prometa: 1 račun, 2 kalkulacija, 3 KUF, 4 početno stanje, 5 uplata.
+const VRSTA_PROMETA_UPLATA = 5;
+
+function TabelaStavki({
+  naslov,
+  stavke,
+  iznos,
+  placen,
+  siriOpis,
+}: {
+  naslov: string;
+  stavke: KarticaStavka[];
+  iznos: (s: KarticaStavka) => number;
+  placen?: (s: KarticaStavka) => boolean;
+  siriOpis?: boolean;
+}) {
+  const ukupno = stavke.reduce((z, s) => z + iznos(s), 0);
+  // Najnoviji dokument prvi; stavke bez datuma (početno stanje) idu na kraj.
+  const vrijeme = (s: KarticaStavka) =>
+    s.datum ? new Date(s.datum.replace(" ", "T")).getTime() : -Infinity;
+  const sortirane = [...stavke].sort((a, b) => vrijeme(b) - vrijeme(a));
+  return (
+    <div className="flex-1 min-w-[360px]">
+      <div
+        className="mb-1.5 text-xs font-bold uppercase tracking-wide"
+        style={{ color: PRIMARY }}
+      >
+        {naslov}
+      </div>
+      <div className="rounded-xl border-2 border-red-500 overflow-hidden">
+        <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <TH>Datum</TH>
+                <TH>Vrsta</TH>
+                <TH>Opis</TH>
+                <TH right>Iznos</TH>
+              </tr>
+            </thead>
+            <tbody>
+              {stavke.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
+                  >
+                    Nema stavki
+                  </td>
+                </tr>
+              )}
+              {sortirane.map((s) => (
+                <tr
+                  key={s.rb}
+                  className={`border-b border-gray-200 dark:border-[#3a3158] [&>td]:py-1 ${placen?.(s) ? "bg-green-100/70 dark:bg-green-900/30" : ""}`}
+                >
+                  <TD>{formatDatum(s.datum)}</TD>
+                  <TD>{s.vrsta_uplate_opis || s.vrsta_prometa_opis}</TD>
+                  <TD>
+                    <span
+                      className={
+                        siriOpis
+                          ? "block min-w-[320px] max-w-[560px] whitespace-normal"
+                          : "block max-w-[240px] truncate"
+                      }
+                      title={s.opis ?? undefined}
+                    >
+                      {s.opis || "—"}
+                    </span>
+                  </TD>
+                  <TD right>{formatIznos(iznos(s))}</TD>
+                </tr>
+              ))}
+            </tbody>
+            {stavke.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 dark:border-[#3a3158] bg-[#faf9fc] dark:bg-[#1e1a2d] [&>td]:py-1">
+                  <TD bold>Ukupno</TD>
+                  <TD>{null}</TD>
+                  <TD>{null}</TD>
+                  <TD right bold>
+                    {formatIznos(ukupno)}
+                  </TD>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const formatDatum = (v: string | null) => {
+  if (!v) return "–";
+  const [godina, mjesec, dan] = v.slice(0, 10).split("-");
+  return `${dan}.${mjesec}.${godina}.`;
+};
+
+// Dokumenti partnera do izabranog datuma: kupac (konto 1) ima račune i uplate,
+// a dobavljač (konto 2) kalkulacije, KUF i uplate. Procedura nema parametar za
+// datum, pa se stavke filtriraju ovdje.
+function StavkePartnera({
+  sifraPartnera,
+  konto,
+  datum,
+}: {
+  sifraPartnera: number;
+  konto: number;
+  datum: string;
+}) {
+  const [stavke, setStavke] = useState<KarticaStavka[]>([]);
+  // Plaćeni dokumenti po vrsti prometa (1 račun, 2 kalkulacija, 3 KUF).
+  const [placeni, setPlaceni] = useState<Record<number, Set<number>>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ucitaj = (url: string) =>
+      fetch(url, { credentials: "include" }).then((r) =>
+        r.ok ? r.json() : Promise.reject(),
+      );
+    Promise.all([
+      ucitaj(`${API_URL}/api/kartice/partner/${sifraPartnera}`),
+      ucitaj(
+        `${API_URL}/api/partneri/sintetika/${sifraPartnera}/placeni?konto=${konto}`,
+      ),
+    ])
+      .then(([k, p]) => {
+        if (cancelled) return;
+        const kartica = konto === 1 ? k.data?.kupac : k.data?.dobavljac;
+        setStavke(kartica?.stavke ?? []);
+        setPlaceni({
+          1: new Set(p.data?.racuni ?? []),
+          2: new Set(p.data?.kalkulacije ?? []),
+          3: new Set(p.data?.kuf ?? []),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError("Greška pri učitavanju dokumenata");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sifraPartnera, konto]);
+
+  const prikazane = useMemo(
+    () => stavke.filter((s) => !s.datum || s.datum.slice(0, 10) <= datum),
+    [stavke, datum],
+  );
+  const dokumenti = prikazane.filter(
+    (s) => Number(s.vrsta_prometa) !== VRSTA_PROMETA_UPLATA,
+  );
+  const uplate = prikazane.filter(
+    (s) => Number(s.vrsta_prometa) === VRSTA_PROMETA_UPLATA,
+  );
+  // Kupcu dokumenti povećavaju dug (duguje), a uplate ga smanjuju (potražuje);
+  // kod dobavljača je obrnuto. Pozajmice i povrati pretplate idu sa minusom.
+  const iznosDokumenta = (s: KarticaStavka) =>
+    konto === 1 ? Number(s.duguje) : Number(s.potrazuje);
+  const iznosUplate = (s: KarticaStavka) =>
+    konto === 1
+      ? Number(s.potrazuje) - Number(s.duguje)
+      : Number(s.duguje) - Number(s.potrazuje);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 gap-2">
+        <Loader2
+          size={16}
+          className="animate-spin"
+          style={{ color: PRIMARY }}
+        />
+        <span className="text-sm text-gray-500 dark:text-[#7d7498]">
+          Učitavanje...
+        </span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="px-3 py-8 text-center text-sm text-red-500 dark:text-red-400">
+        {error}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-start gap-3">
+      <TabelaStavki
+        naslov={konto === 1 ? "Računi" : "Kalkulacije i KUF"}
+        stavke={dokumenti}
+        iznos={iznosDokumenta}
+        placen={(s) =>
+          s.izvor_id != null &&
+          !!placeni[Number(s.vrsta_prometa)]?.has(Number(s.izvor_id))
+        }
+      />
+      <TabelaStavki
+        naslov="Uplate"
+        stavke={uplate}
+        iznos={iznosUplate}
+        siriOpis
+      />
+    </div>
+  );
+}
+
 export function SintetikaPartnera() {
   const [data, setData] = useState<SintetikaRed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,8 +376,10 @@ export function SintetikaPartnera() {
   const [datum, setDatum] = useState(danasnjiDatum);
   const [prikaziBezPrometa, setPrikaziBezPrometa] = useState(false);
   const [sakrijSaldoNula, setSakrijSaldoNula] = useState(false);
+  const [kontoFilter, setKontoFilter] = useState("");
   const [sortPolje, setSortPolje] = useState<SortPolje>("sifra");
   const [sortSmjer, setSortSmjer] = useState<SmjerSortiranja>("asc");
+  const [otvoreniRed, setOtvoreniRed] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,6 +413,7 @@ export function SintetikaPartnera() {
             Number(r.ukupno_rac) !== 0 ||
             Number(r.ukupno_uplata) !== 0) &&
           (!sakrijSaldoNula || Number(r.saldo) !== 0) &&
+          (!kontoFilter || String(r.konto) === kontoFilter) &&
           (!q ||
             String(r.sifra_partnera).includes(q) ||
             r.naziv_partnera?.toLowerCase().includes(q) ||
@@ -196,7 +428,15 @@ export function SintetikaPartnera() {
               "sr",
             ) * smjer,
       );
-  }, [data, pretraga, prikaziBezPrometa, sakrijSaldoNula, sortPolje, sortSmjer]);
+  }, [
+    data,
+    pretraga,
+    prikaziBezPrometa,
+    sakrijSaldoNula,
+    kontoFilter,
+    sortPolje,
+    sortSmjer,
+  ]);
 
   const promijeniSortiranje = (polje: SortPolje) => {
     if (sortPolje === polje) {
@@ -227,6 +467,16 @@ export function SintetikaPartnera() {
           </div>
 
           <DatumPolje value={datum} onChange={setDatum} />
+
+          <select
+            value={kontoFilter}
+            onChange={(e) => setKontoFilter(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors text-gray-700 dark:text-[#c5bfd8] bg-white dark:bg-[#1e1a2d]"
+          >
+            <option value="">Kupci i dobavljači</option>
+            <option value="1">Kupci</option>
+            <option value="2">Dobavljači</option>
+          </select>
 
           <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#c5bfd8] cursor-pointer select-none">
             <input
@@ -290,6 +540,7 @@ export function SintetikaPartnera() {
             <table className="table-auto text-sm">
               <thead>
                 <tr>
+                  <TH>{null}</TH>
                   <SortableTH
                     aktivno={sortPolje === "sifra"}
                     smjer={sortSmjer}
@@ -313,44 +564,81 @@ export function SintetikaPartnera() {
                 </tr>
               </thead>
               <tbody>
-                {filtrirani.map((r) => (
-                  <tr
-                    key={`${r.sifra_partnera}-${r.konto}`}
-                    className={`border-b border-gray-200 dark:border-[#3a3158] ${Number(r.saldo) === 0 ? "bg-green-100/70 dark:bg-green-900/30" : ""} ${Number(r.konto) === 2 ? "[&_*]:!text-red-500" : ""}`}
-                  >
-                    <TD>
-                      <span
-                        className="font-mono font-semibold text-xs"
-                        style={{ color: PRIMARY }}
+                {filtrirani.map((r) => {
+                  const kljuc = `${r.sifra_partnera}-${r.konto}`;
+                  const otvoren = otvoreniRed === kljuc;
+                  return (
+                    <Fragment key={kljuc}>
+                      <tr
+                        className={`border-b border-gray-200 dark:border-[#3a3158] ${Number(r.saldo) === 0 ? "bg-green-100/70 dark:bg-green-900/30" : ""} ${Number(r.konto) === 2 ? "[&_*]:!text-red-500" : ""}`}
                       >
-                        {r.sifra_partnera}
-                      </span>
-                    </TD>
-                    <TD bold>{r.naziv_partnera || "—"}</TD>
-                    <TD>{r.adresa_partnera || "—"}</TD>
-                    <TD>{r.Naziv_grada || "—"}</TD>
-                    <TD right>{formatIznos(r.ukupno_rac)}</TD>
-                    <TD right>{formatIznos(r.ukupno_uplata)}</TD>
-                    <TD right bold>
-                      <span
-                        className={Number(r.saldo) < 0 ? "text-red-500" : ""}
-                      >
-                        {formatIznos(r.saldo)}
-                      </span>
-                    </TD>
-                    <TD>
-                      {Number(r.konto) === 1 ? (
-                        <span title="Kupac">
-                          <ShoppingCart size={15} style={{ color: PRIMARY }} />
-                        </span>
-                      ) : (
-                        <span title="Dobavljač">
-                          <Truck size={15} className="text-amber-600" />
-                        </span>
+                        <TD>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOtvoreniRed(otvoren ? null : kljuc)
+                            }
+                            title={otvoren ? "Zatvori" : "Prikaži dokumente"}
+                            className="p-1 rounded-lg hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
+                            style={{ color: PRIMARY }}
+                          >
+                            {otvoren ? <Minus size={14} /> : <Plus size={14} />}
+                          </button>
+                        </TD>
+                        <TD>
+                          <span
+                            className="font-mono font-semibold text-xs"
+                            style={{ color: PRIMARY }}
+                          >
+                            {r.sifra_partnera}
+                          </span>
+                        </TD>
+                        <TD bold>{r.naziv_partnera || "—"}</TD>
+                        <TD>{r.adresa_partnera || "—"}</TD>
+                        <TD>{r.Naziv_grada || "—"}</TD>
+                        <TD right>{formatIznos(r.ukupno_rac)}</TD>
+                        <TD right>{formatIznos(r.ukupno_uplata)}</TD>
+                        <TD right bold>
+                          <span
+                            className={
+                              Number(r.saldo) < 0 ? "text-red-500" : ""
+                            }
+                          >
+                            {formatIznos(r.saldo)}
+                          </span>
+                        </TD>
+                        <TD>
+                          {Number(r.konto) === 1 ? (
+                            <span title="Kupac">
+                              <ShoppingCart
+                                size={15}
+                                style={{ color: PRIMARY }}
+                              />
+                            </span>
+                          ) : (
+                            <span title="Dobavljač">
+                              <Truck size={15} className="text-amber-600" />
+                            </span>
+                          )}
+                        </TD>
+                      </tr>
+                      {otvoren && (
+                        <tr>
+                          <td
+                            colSpan={9}
+                            className="px-4 py-3 bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                          >
+                            <StavkePartnera
+                              sifraPartnera={r.sifra_partnera}
+                              konto={Number(r.konto)}
+                              datum={datum}
+                            />
+                          </td>
+                        </tr>
                       )}
-                    </TD>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

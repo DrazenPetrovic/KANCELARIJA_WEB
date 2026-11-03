@@ -38,6 +38,36 @@ export const getPartneriSintetika = async (datum) => {
   });
 };
 
+// Šifre plaćenih dokumenata partnera iz stare baze — za kupca (konto 1) računi,
+// za dobavljača (konto 2) kalkulacije i KUF. Šifre odgovaraju izvor_id stavki
+// iz erp.kartica_partnera_pregled.
+export const getSintetikaPlaceniDokumenti = async (partnerId, konto) => {
+  return withConnection(async (connection) => {
+    const sifre = async (sql) => {
+      const [rows] = await connection.execute(sql, [partnerId]);
+      return rows.map((r) => Number(r.sifra));
+    };
+    if (Number(konto) === 1) {
+      return {
+        racuni: await sifre(
+          "SELECT sifra_tabele AS sifra FROM ziralni.racun_gl WHERE sifra_kupca = ? AND racun_placen = 1",
+        ),
+        kalkulacije: [],
+        kuf: [],
+      };
+    }
+    return {
+      racuni: [],
+      kalkulacije: await sifre(
+        "SELECT sifra_kalkulacije AS sifra FROM ziralni.kalkulacija_gl WHERE sifra_dobavljaca = ? AND racun_placen = 1",
+      ),
+      kuf: await sifre(
+        "SELECT sifra_kuf AS sifra FROM ziralni.kuf WHERE sifra_dobavljaca = ? AND racun_placen = 1",
+      ),
+    };
+  });
+};
+
 export const dodajPartneraRaznog = async ({
   nazivPartnera,
   pripadaRadniku,
