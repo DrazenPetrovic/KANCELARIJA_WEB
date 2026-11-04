@@ -32,7 +32,7 @@ interface VrstaUplate {
   kod: number;
   naziv: string;
   tip: "uplata" | "isplata";
-  partner: "kupac" | "dobavljac" | "partner" | "banka";
+  partner: "kupac" | "dobavljac" | "partner";
   veza?: "racun" | "kalkulacija" | "kuf";
 }
 
@@ -49,8 +49,9 @@ const VRSTE_UPLATE_UNOS: VrstaUplate[] = [
   { kod: 10, naziv: "Prijem pretplate (kupac vraća pogrešnu uplatu)", tip: "uplata", partner: "kupac" },
   { kod: 11, naziv: "Prijem pretplate dobavljača", tip: "uplata", partner: "dobavljac" },
   { kod: 12, naziv: "Povrat pretplate kupcu (pogrešna uplata)", tip: "isplata", partner: "kupac" },
-  { kod: 13, naziv: "Transfer od banke", tip: "uplata", partner: "banka" },
-  { kod: 14, naziv: "Transfer ka banci", tip: "isplata", partner: "banka" },
+  // Transfer: banka je otvorena kao partner, pa se bira iz liste partnera.
+  { kod: 13, naziv: "Transfer od banke", tip: "uplata", partner: "partner" },
+  { kod: 14, naziv: "Transfer ka banci", tip: "isplata", partner: "partner" },
 ];
 
 const vrstaPoKodu = (kod: number) =>
@@ -66,23 +67,12 @@ const OZNAKA_PARTNERA: Record<VrstaUplate["partner"], string> = {
   kupac: "Kupac",
   dobavljac: "Dobavljač",
   partner: "Partner",
-  banka: "Banka",
 };
 
 interface Partner {
   partner_id: number;
   naziv: string;
   skraceni_naziv: string | null;
-}
-
-// Banka kao partner kod transfera (vrste 13 i 14): sifra_partnera =
-// -(100 + sifra_banke), npr. banka 1 -> -101. Ne miješa se sa -1.
-const sifraPartneraBanke = (sifraBanke: number | string) =>
-  -(100 + Number(sifraBanke));
-
-interface BankaRed {
-  sifra_banke: number | string;
-  naziv_banke: string;
 }
 
 // Uplata/isplata bez poznatog partnera — u bazu ide sifra_partnera = -1.
@@ -296,8 +286,6 @@ export function IzvodiUnosForma({
 }) {
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [partneriLoading, setPartneriLoading] = useState(true);
-  const [banke, setBanke] = useState<BankaRed[]>([]);
-  const [bankeLoading, setBankeLoading] = useState(true);
 
   // Polja forme
   const [vrsta, setVrsta] = useState(1);
@@ -453,29 +441,7 @@ export function IzvodiUnosForma({
       .then((json) => setPartneri(json.data ?? json ?? []))
       .catch(() => setPartneri([]))
       .finally(() => setPartneriLoading(false));
-    fetch(`${API_URL}/api/banke/pregled`, { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : { data: [] }))
-      .then((json) => setBanke(json.data ?? []))
-      .catch(() => setBanke([]))
-      .finally(() => setBankeLoading(false));
   }, []);
-
-  // Transfer: biraju se banke (bez banke ovog izvoda) umjesto partnera.
-  const jeBanka = izabranaVrsta.partner === "banka";
-  const ponudjeniPartneri: Partner[] = useMemo(
-    () =>
-      jeBanka
-        ? banke
-            .filter((b) => String(b.sifra_banke) !== String(izvod.sifra_banke))
-            .map((b) => ({
-              partner_id: sifraPartneraBanke(b.sifra_banke),
-              naziv: b.naziv_banke,
-              skraceni_naziv: null,
-            }))
-        : partneri,
-    [jeBanka, banke, partneri, izvod.sifra_banke],
-  );
-  const ponudaLoading = jeBanka ? bankeLoading : partneriLoading;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -492,8 +458,8 @@ export function IzvodiUnosForma({
 
   const filtriraniPartneri = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
-    if (!q) return ponudjeniPartneri.slice(0, 50);
-    return ponudjeniPartneri
+    if (!q) return partneri.slice(0, 50);
+    return partneri
       .filter(
         (p) =>
           p.naziv.toLowerCase().includes(q) ||
@@ -501,7 +467,7 @@ export function IzvodiUnosForma({
           String(p.partner_id) === q,
       )
       .slice(0, 50);
-  }, [ponudjeniPartneri, pretraga]);
+  }, [partneri, pretraga]);
 
   const izaberiPartnera = (p: Partner) => {
     setPartner(p);
@@ -545,12 +511,8 @@ export function IzvodiUnosForma({
     const iznosBroj = parseFloat(iznos.replace(",", "."));
     if (!partner) {
       setGreskaForme(
-        `Izaberite ${{ kupac: "kupca", dobavljac: "dobavljača", partner: "partnera", banka: "banku" }[izabranaVrsta.partner]}`,
+        `Izaberite ${{ kupac: "kupca", dobavljac: "dobavljača", partner: "partnera" }[izabranaVrsta.partner]}`,
       );
-      return;
-    }
-    if (jeBanka && partner.partner_id > -101) {
-      setGreskaForme("Za transfer izaberite banku");
       return;
     }
     const veza = sifraVeze.trim() === "" ? 0 : parseInt(sifraVeze, 10);
@@ -805,7 +767,7 @@ export function IzvodiUnosForma({
               <label className={labelCls}>
                 {OZNAKA_PARTNERA[izabranaVrsta.partner]}
               </label>
-              {!jeBanka && partner?.partner_id !== NEPOZNAT_PARTNER.partner_id && (
+              {partner?.partner_id !== NEPOZNAT_PARTNER.partner_id && (
                 <button
                   type="button"
                   onClick={() => {
@@ -854,18 +816,15 @@ export function IzvodiUnosForma({
                   }}
                   onFocus={() => setPokaziListu(true)}
                   placeholder={
-                    ponudaLoading
-                      ? jeBanka
-                        ? "Učitavanje banaka..."
-                        : "Učitavanje partnera..."
+                    partneriLoading
+                      ? "Učitavanje partnera..."
                       : "Pretraga po nazivu ili šifri..."
                   }
-                  disabled={ponudaLoading}
+                  disabled={partneriLoading}
                   className={`${inputCls} pl-8`}
                 />
-                {pokaziListu && !ponudaLoading && (
+                {pokaziListu && !partneriLoading && (
                   <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#1e1a2d] shadow-lg">
-                    {!jeBanka && (
                     <button
                       type="button"
                       onClick={() => izaberiPartnera(NEPOZNAT_PARTNER)}
@@ -875,7 +834,6 @@ export function IzvodiUnosForma({
                       <span className="flex-1">{NEPOZNAT_PARTNER.naziv}</span>
                       <span className="text-[11px] opacity-70">#-1</span>
                     </button>
-                    )}
                     {filtriraniPartneri.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-gray-400 dark:text-[#5f5878]">
                         Nema rezultata

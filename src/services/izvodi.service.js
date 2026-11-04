@@ -81,9 +81,6 @@ const TIP_UPLATE_IZVODA = {
   14: "isplata", // Transfer ka banci
 };
 
-// Transfer (vrste 13 i 14): partner je banka, sifra_partnera = -(100 + sifra_banke).
-const VRSTE_TRANSFERA = [13, 14];
-
 const tipStavkeIzvoda = (u) => {
   if (String(u.tip_stavke ?? "").toUpperCase() === "TRANSFER") {
     return String(u.smjer ?? "").toUpperCase() === "ULAZ" ? "uplata" : "isplata";
@@ -307,15 +304,8 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
     if (!Number.isInteger(vrsta) || vrsta < 1 || vrsta > 14) {
       throw new Error(`Stavka ${redBr}: neispravna vrsta uplate`);
     }
-    if (VRSTE_TRANSFERA.includes(vrsta)) {
-      if (!Number.isInteger(partner) || partner > -101) {
-        throw new Error(`Stavka ${redBr}: banka nije izabrana`);
-      }
-    } else if (
-      // -1 = nepoznat partner (dozvoljeno); inače mora biti stvarna šifra.
-      !Number.isInteger(partner) ||
-      (partner <= 0 && partner !== -1)
-    ) {
+    // -1 = nepoznat partner (dozvoljeno); inače mora biti stvarna šifra.
+    if (!Number.isInteger(partner) || (partner <= 0 && partner !== -1)) {
       throw new Error(`Stavka ${redBr}: partner nije izabran`);
     }
     if (!Number.isFinite(iznos) || iznos <= 0) {

@@ -1,8 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Banknote,
   Loader2,
   Minus,
   Plus,
@@ -158,19 +161,56 @@ interface KarticaStavka {
 // vrsta_prometa: 1 račun, 2 kalkulacija, 3 KUF, 4 početno stanje, 5 uplata.
 const VRSTA_PROMETA_UPLATA = 5;
 
+// Plaćenost se preko erp.izvodi_uplate_azuriranje_placenosti može označiti
+// samo za račune i kalkulacije — KUF nema tu mogućnost.
+const TIP_DOKUMENTA_PLACENOST: Record<number, "RACUN" | "KALKULACIJA"> = {
+  1: "RACUN",
+  2: "KALKULACIJA",
+};
+
 function TabelaStavki({
   naslov,
   stavke,
   iznos,
   placen,
   siriOpis,
+  oznaciPlaceno,
 }: {
   naslov: string;
   stavke: KarticaStavka[];
   iznos: (s: KarticaStavka) => number;
   placen?: (s: KarticaStavka) => boolean;
   siriOpis?: boolean;
+  oznaciPlaceno?: (s: KarticaStavka) => Promise<void>;
 }) {
+  const [oznacava, setOznacava] = useState<number | null>(null);
+  const [greska, setGreska] = useState<string | null>(null);
+  const brojKolona = oznaciPlaceno ? 5 : 4;
+
+  const [zaPotvrdu, setZaPotvrdu] = useState<KarticaStavka | null>(null);
+
+  const klikOznaci = (s: KarticaStavka) => {
+    if (!oznaciPlaceno || oznacava !== null) return;
+    setGreska(null);
+    setZaPotvrdu(s);
+  };
+
+  const potvrdiOznacavanje = async () => {
+    if (!oznaciPlaceno || !zaPotvrdu || oznacava !== null) return;
+    setOznacava(zaPotvrdu.rb);
+    setGreska(null);
+    try {
+      await oznaciPlaceno(zaPotvrdu);
+      setZaPotvrdu(null);
+    } catch (e) {
+      setGreska(
+        e instanceof Error ? e.message : "Greška pri ažuriranju plaćenosti",
+      );
+    } finally {
+      setOznacava(null);
+    }
+  };
+
   const ukupno = stavke.reduce((z, s) => z + iznos(s), 0);
   // Najnoviji dokument prvi; stavke bez datuma (početno stanje) idu na kraj.
   const vrijeme = (s: KarticaStavka) =>
@@ -193,13 +233,14 @@ function TabelaStavki({
                 <TH>Vrsta</TH>
                 <TH>Opis</TH>
                 <TH right>Iznos</TH>
+                {oznaciPlaceno && <TH>{null}</TH>}
               </tr>
             </thead>
             <tbody>
               {stavke.length === 0 && (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={brojKolona}
                     className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]"
                   >
                     Nema stavki
@@ -226,6 +267,27 @@ function TabelaStavki({
                     </span>
                   </TD>
                   <TD right>{formatIznos(iznos(s))}</TD>
+                  {oznaciPlaceno && (
+                    <TD>
+                      {!placen?.(s) &&
+                        s.izvor_id != null &&
+                        TIP_DOKUMENTA_PLACENOST[Number(s.vrsta_prometa)] && (
+                          <button
+                            type="button"
+                            onClick={() => void klikOznaci(s)}
+                            disabled={oznacava !== null}
+                            title="Označi kao plaćen"
+                            className="p-1 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-40"
+                          >
+                            {oznacava === s.rb ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Banknote size={14} />
+                            )}
+                          </button>
+                        )}
+                    </TD>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -238,12 +300,83 @@ function TabelaStavki({
                   <TD right bold>
                     {formatIznos(ukupno)}
                   </TD>
+                  {oznaciPlaceno && <TD>{null}</TD>}
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
       </div>
+
+      {zaPotvrdu &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.55)" }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] max-w-[95vw] flex flex-col overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3"
+                style={{ background: PRIMARY }}
+              >
+                <Banknote size={18} className="text-white flex-shrink-0" />
+                <div className="font-bold text-white text-base">
+                  Označavanje plaćenosti
+                </div>
+              </div>
+
+              <div className="px-5 py-4 space-y-3 text-sm text-gray-600 dark:text-[#c5bfd8]">
+                <p>
+                  Da li želite označiti{" "}
+                  {zaPotvrdu.vrsta_prometa_opis.toLowerCase()} plaćenim?
+                </p>
+                <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] bg-[#faf9fc] dark:bg-[#1e1a2d] px-4 py-3 space-y-1">
+                  <div className="font-bold text-gray-800 dark:text-[#ede9f6]">
+                    {zaPotvrdu.opis || "—"}
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span>{formatDatum(zaPotvrdu.datum)}</span>
+                    <span className="font-bold text-gray-800 dark:text-[#ede9f6]">
+                      {formatIznos(iznos(zaPotvrdu))}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  Ova izmjena se ne može poništiti sa ovog ekrana.
+                </div>
+                {greska && (
+                  <div className="text-xs font-medium text-red-500">
+                    {greska}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-[#2d2648]">
+                <button
+                  type="button"
+                  onClick={() => setZaPotvrdu(null)}
+                  disabled={oznacava !== null}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40"
+                >
+                  Odustani
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void potvrdiOznacavanje()}
+                  disabled={oznacava !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40"
+                >
+                  {oznacava !== null && (
+                    <Loader2 size={14} className="animate-spin" />
+                  )}
+                  Označi plaćenim
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -324,6 +457,32 @@ function StavkePartnera({
       ? Number(s.potrazuje) - Number(s.duguje)
       : Number(s.duguje) - Number(s.potrazuje);
 
+  // Isto kao kod unosa uplata iz izvoda — erp.izvodi_uplate_azuriranje_placenosti.
+  const oznaciPlaceno = async (s: KarticaStavka) => {
+    const vrsta = Number(s.vrsta_prometa);
+    const res = await fetch(`${API_URL}/api/izvodi/azuriranje-placenosti`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dokumenti: [
+          {
+            tip_dokumenta: TIP_DOKUMENTA_PLACENOST[vrsta],
+            sifra_dokumenta: s.izvor_id,
+          },
+        ],
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.success) {
+      throw new Error(d.message || d.error || "Greška pri ažuriranju plaćenosti");
+    }
+    setPlaceni((prev) => ({
+      ...prev,
+      [vrsta]: new Set(prev[vrsta]).add(Number(s.izvor_id)),
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 gap-2">
@@ -357,6 +516,7 @@ function StavkePartnera({
           s.izvor_id != null &&
           !!placeni[Number(s.vrsta_prometa)]?.has(Number(s.izvor_id))
         }
+        oznaciPlaceno={oznaciPlaceno}
       />
       <TabelaStavki
         naslov="Uplate"
