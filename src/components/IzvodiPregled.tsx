@@ -110,6 +110,8 @@ const VRSTA_UPLATE: Record<number, { naziv: string; tip: "uplata" | "isplata" }>
   10: { naziv: "Prijem pretplate (povrat od kupca)", tip: "uplata" },
   11: { naziv: "Prijem pretplate dobavljača", tip: "uplata" },
   12: { naziv: "Povrat pretplate kupcu", tip: "isplata" },
+  13: { naziv: "Transfer od banke", tip: "uplata" },
+  14: { naziv: "Transfer ka banci", tip: "isplata" },
 };
 
 function vrstaUplateInfo(v: string | number | null | undefined) {
