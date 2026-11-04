@@ -50,8 +50,8 @@ const VRSTE_UPLATE_UNOS: VrstaUplate[] = [
   { kod: 11, naziv: "Prijem pretplate dobavljača", tip: "uplata", partner: "dobavljac" },
   { kod: 12, naziv: "Povrat pretplate kupcu (pogrešna uplata)", tip: "isplata", partner: "kupac" },
   // Transfer: banka je otvorena kao partner, pa se bira iz liste partnera.
-  { kod: 13, naziv: "Transfer od banke", tip: "uplata", partner: "partner" },
-  { kod: 14, naziv: "Transfer ka banci", tip: "isplata", partner: "partner" },
+  { kod: 13, naziv: "Transfer ka banci", tip: "uplata", partner: "partner" },
+  { kod: 14, naziv: "Transfer od banke", tip: "isplata", partner: "partner" },
 ];
 
 const vrstaPoKodu = (kod: number) =>

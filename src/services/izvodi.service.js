@@ -77,8 +77,8 @@ const TIP_UPLATE_IZVODA = {
   10: "uplata", // Prijem pretplate (povrat od kupca)
   11: "uplata", // Prijem pretplate dobavljača
   12: "isplata", // Povrat pretplate kupcu
-  13: "uplata", // Transfer od banke
-  14: "isplata", // Transfer ka banci
+  13: "uplata", // Transfer ka banci
+  14: "isplata", // Transfer od banke
 };
 
 const tipStavkeIzvoda = (u) => {
