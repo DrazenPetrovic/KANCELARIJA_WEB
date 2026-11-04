@@ -679,6 +679,7 @@ export function IzvodiUnosForma({
           dokumenti: dokumenti.map((x) => ({
             tip_dokumenta: x.tip_dokumenta,
             sifra_dokumenta: x.sifra_dokumenta,
+            placen: 1,
           })),
         }),
       });

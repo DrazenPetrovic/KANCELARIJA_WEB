@@ -293,6 +293,7 @@ export function PlacenostRacuna() {
           dokumenti: zaSlanje.map((d) => ({
             tip_dokumenta: d.tip_dokumenta,
             sifra_dokumenta: d.sifra_dokumenta,
+            placen: 1,
           })),
         }),
       });

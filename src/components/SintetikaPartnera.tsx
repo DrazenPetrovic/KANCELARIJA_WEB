@@ -12,6 +12,7 @@ import {
   Search,
   ShoppingCart,
   Truck,
+  Undo2,
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
@@ -168,39 +169,47 @@ const TIP_DOKUMENTA_PLACENOST: Record<number, "RACUN" | "KALKULACIJA"> = {
   2: "KALKULACIJA",
 };
 
+// Knjižna odobrenja (opis "KO MP-...", "KO VP-...", "KO USLUGA-...") se ne
+// vraćaju u neplaćene.
+const jeKnjiznoOdobrenje = (s: KarticaStavka) =>
+  Number(s.vrsta_prometa) === 1 && !!s.opis?.startsWith("KO ");
+
 function TabelaStavki({
   naslov,
   stavke,
   iznos,
   placen,
   siriOpis,
-  oznaciPlaceno,
+  promijeniPlacenost,
 }: {
   naslov: string;
   stavke: KarticaStavka[];
   iznos: (s: KarticaStavka) => number;
   placen?: (s: KarticaStavka) => boolean;
   siriOpis?: boolean;
-  oznaciPlaceno?: (s: KarticaStavka) => Promise<void>;
+  promijeniPlacenost?: (s: KarticaStavka, placen: 0 | 1) => Promise<void>;
 }) {
   const [oznacava, setOznacava] = useState<number | null>(null);
   const [greska, setGreska] = useState<string | null>(null);
-  const brojKolona = oznaciPlaceno ? 5 : 4;
+  const brojKolona = promijeniPlacenost ? 5 : 4;
 
-  const [zaPotvrdu, setZaPotvrdu] = useState<KarticaStavka | null>(null);
+  const [zaPotvrdu, setZaPotvrdu] = useState<{
+    stavka: KarticaStavka;
+    placen: 0 | 1;
+  } | null>(null);
 
-  const klikOznaci = (s: KarticaStavka) => {
-    if (!oznaciPlaceno || oznacava !== null) return;
+  const klikOznaci = (s: KarticaStavka, novoPlacen: 0 | 1) => {
+    if (!promijeniPlacenost || oznacava !== null) return;
     setGreska(null);
-    setZaPotvrdu(s);
+    setZaPotvrdu({ stavka: s, placen: novoPlacen });
   };
 
   const potvrdiOznacavanje = async () => {
-    if (!oznaciPlaceno || !zaPotvrdu || oznacava !== null) return;
-    setOznacava(zaPotvrdu.rb);
+    if (!promijeniPlacenost || !zaPotvrdu || oznacava !== null) return;
+    setOznacava(zaPotvrdu.stavka.rb);
     setGreska(null);
     try {
-      await oznaciPlaceno(zaPotvrdu);
+      await promijeniPlacenost(zaPotvrdu.stavka, zaPotvrdu.placen);
       setZaPotvrdu(null);
     } catch (e) {
       setGreska(
@@ -233,7 +242,7 @@ function TabelaStavki({
                 <TH>Vrsta</TH>
                 <TH>Opis</TH>
                 <TH right>Iznos</TH>
-                {oznaciPlaceno && <TH>{null}</TH>}
+                {promijeniPlacenost && <TH>{null}</TH>}
               </tr>
             </thead>
             <tbody>
@@ -267,14 +276,14 @@ function TabelaStavki({
                     </span>
                   </TD>
                   <TD right>{formatIznos(iznos(s))}</TD>
-                  {oznaciPlaceno && (
+                  {promijeniPlacenost && (
                     <TD>
-                      {!placen?.(s) &&
-                        s.izvor_id != null &&
-                        TIP_DOKUMENTA_PLACENOST[Number(s.vrsta_prometa)] && (
+                      {s.izvor_id != null &&
+                        TIP_DOKUMENTA_PLACENOST[Number(s.vrsta_prometa)] &&
+                        (!placen?.(s) ? (
                           <button
                             type="button"
-                            onClick={() => void klikOznaci(s)}
+                            onClick={() => klikOznaci(s, 1)}
                             disabled={oznacava !== null}
                             title="Označi kao plaćen"
                             className="p-1 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-40"
@@ -285,7 +294,23 @@ function TabelaStavki({
                               <Banknote size={14} />
                             )}
                           </button>
-                        )}
+                        ) : (
+                          !jeKnjiznoOdobrenje(s) && (
+                            <button
+                              type="button"
+                              onClick={() => klikOznaci(s, 0)}
+                              disabled={oznacava !== null}
+                              title="Vrati u neplaćene"
+                              className="p-1 rounded-lg text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors disabled:opacity-40"
+                            >
+                              {oznacava === s.rb ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Undo2 size={14} />
+                              )}
+                            </button>
+                          )
+                        ))}
                     </TD>
                   )}
                 </tr>
@@ -300,7 +325,7 @@ function TabelaStavki({
                   <TD right bold>
                     {formatIznos(ukupno)}
                   </TD>
-                  {oznaciPlaceno && <TD>{null}</TD>}
+                  {promijeniPlacenost && <TD>{null}</TD>}
                 </tr>
               </tfoot>
             )}
@@ -319,31 +344,38 @@ function TabelaStavki({
                 className="px-6 py-4 flex items-center gap-3"
                 style={{ background: PRIMARY }}
               >
-                <Banknote size={18} className="text-white flex-shrink-0" />
+                {zaPotvrdu.placen === 1 ? (
+                  <Banknote size={18} className="text-white flex-shrink-0" />
+                ) : (
+                  <Undo2 size={18} className="text-white flex-shrink-0" />
+                )}
                 <div className="font-bold text-white text-base">
-                  Označavanje plaćenosti
+                  {zaPotvrdu.placen === 1
+                    ? "Označavanje plaćenosti"
+                    : "Vraćanje u neplaćene"}
                 </div>
               </div>
 
               <div className="px-5 py-4 space-y-3 text-sm text-gray-600 dark:text-[#c5bfd8]">
                 <p>
                   Da li želite označiti{" "}
-                  {zaPotvrdu.vrsta_prometa_opis.toLowerCase()} plaćenim?
+                  {zaPotvrdu.stavka.vrsta_prometa_opis.toLowerCase()}{" "}
+                  {zaPotvrdu.placen === 1 ? "plaćenim" : "neplaćenim"}?
                 </p>
                 <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] bg-[#faf9fc] dark:bg-[#1e1a2d] px-4 py-3 space-y-1">
                   <div className="font-bold text-gray-800 dark:text-[#ede9f6]">
-                    {zaPotvrdu.opis || "—"}
+                    {zaPotvrdu.stavka.opis || "—"}
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>{formatDatum(zaPotvrdu.datum)}</span>
+                    <span>{formatDatum(zaPotvrdu.stavka.datum)}</span>
                     <span className="font-bold text-gray-800 dark:text-[#ede9f6]">
-                      {formatIznos(iznos(zaPotvrdu))}
+                      {formatIznos(iznos(zaPotvrdu.stavka))}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                  Ova izmjena se ne može poništiti sa ovog ekrana.
+                  Izmjena se odmah upisuje u bazu.
                 </div>
                 {greska && (
                   <div className="text-xs font-medium text-red-500">
@@ -365,12 +397,14 @@ function TabelaStavki({
                   type="button"
                   onClick={() => void potvrdiOznacavanje()}
                   disabled={oznacava !== null}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-40"
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 ${zaPotvrdu.placen === 1 ? "bg-blue-600 hover:bg-blue-700" : "bg-orange-600 hover:bg-orange-700"}`}
                 >
                   {oznacava !== null && (
                     <Loader2 size={14} className="animate-spin" />
                   )}
-                  Označi plaćenim
+                  {zaPotvrdu.placen === 1
+                    ? "Označi plaćenim"
+                    : "Označi neplaćenim"}
                 </button>
               </div>
             </div>
@@ -458,7 +492,7 @@ function StavkePartnera({
       : Number(s.duguje) - Number(s.potrazuje);
 
   // Isto kao kod unosa uplata iz izvoda — erp.izvodi_uplate_azuriranje_placenosti.
-  const oznaciPlaceno = async (s: KarticaStavka) => {
+  const promijeniPlacenost = async (s: KarticaStavka, placen: 0 | 1) => {
     const vrsta = Number(s.vrsta_prometa);
     const res = await fetch(`${API_URL}/api/izvodi/azuriranje-placenosti`, {
       method: "POST",
@@ -469,6 +503,7 @@ function StavkePartnera({
           {
             tip_dokumenta: TIP_DOKUMENTA_PLACENOST[vrsta],
             sifra_dokumenta: s.izvor_id,
+            placen,
           },
         ],
       }),
@@ -477,10 +512,12 @@ function StavkePartnera({
     if (!res.ok || !d.success) {
       throw new Error(d.message || d.error || "Greška pri ažuriranju plaćenosti");
     }
-    setPlaceni((prev) => ({
-      ...prev,
-      [vrsta]: new Set(prev[vrsta]).add(Number(s.izvor_id)),
-    }));
+    setPlaceni((prev) => {
+      const skup = new Set(prev[vrsta]);
+      if (placen === 1) skup.add(Number(s.izvor_id));
+      else skup.delete(Number(s.izvor_id));
+      return { ...prev, [vrsta]: skup };
+    });
   };
 
   if (loading) {
@@ -516,7 +553,7 @@ function StavkePartnera({
           s.izvor_id != null &&
           !!placeni[Number(s.vrsta_prometa)]?.has(Number(s.izvor_id))
         }
-        oznaciPlaceno={oznaciPlaceno}
+        promijeniPlacenost={promijeniPlacenost}
       />
       <TabelaStavki
         naslov="Uplate"

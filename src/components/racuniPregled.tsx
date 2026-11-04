@@ -8,12 +8,14 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Banknote,
   CheckCircle2,
   Copy,
   Loader2,
   Printer,
   Receipt,
   Search,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
@@ -296,6 +298,31 @@ const TIJESAN_RAZMAK_DESNO = new Set([
   "vp1",
   "vp2",
 ]);
+// Fiksna širina (u karakterima) glavne liste računa — tabela koristi
+// table-layout: fixed (vidi render ispod), pa širina kolone NE zavisi od
+// sadržaja trenutno montiranih redova. Bez ovoga, kod virtualizacije (veliki
+// broj redova), kolone bi "skakale" u širini dok se skroluje, jer bi se
+// svaki put preračunavale samo na osnovu redova koji su u tom trenutku u DOM-u.
+// Napomena, Partner i Br. fiskalnog NISU ovdje — tabela je široka 98% kontejnera
+// (vidi <table> ispod), a ove tri kolone preuzimaju svu preostalu širinu (nakon
+// što se izuzmu kolone sa fiksnom širinom ispod); table-layout: fixed i dalje
+// garantuje da se ni one ne mijenjaju dok se virtualizovano skroluje.
+const PREGLED_SIRINA_KARAKTERA: Record<string, number> = {
+  vrsta_racuna_novo: 14,
+  vrednost: 11,
+  vp1: 11,
+  vp2: 11,
+  osnova_za_obracun_pdv: 11,
+  rabat_km: 10,
+  ukupno: 12,
+};
+// Minimalna širina (u pikselima) za Napomenu, Partner i Br. fiskalnog — spriječava
+// da se previše suze na užim ekranima dok dijele preostali prostor do 98%.
+const PREGLED_MIN_SIRINA_NAPOMENA_PX = 180;
+const PREGLED_MIN_SIRINA_PARTNER_PX = 220;
+const PREGLED_MIN_SIRINA_BR_FISKALNOG_PX = 170;
+// Štampa (akcije) kolona — fiksna širina u pikselima (nije tekstualna kolona).
+const PREGLED_SIRINA_STAMPA_PX = 48;
 // Stavke tabela: numeričke kolone od "Količina" do "MPV" — sveden razmak
 // (uže od podrazumijevanog px-3) i poravnate desno, da "Naziv artikla" dobije
 // više prostora a ovaj blok djeluje zbijeno, gurnut uz desnu ivicu tabele.
@@ -379,6 +406,18 @@ const nadjiSifruTabele = (red: RacunRed): string | number | null => {
   }
   return null;
 };
+
+// Polje "racun_placen" postoji samo na redovima koji ga nose iz procedure
+// (žiralni/VP računi) — MP (gotovinski) nemaju koncept naplaćenosti.
+const imaPlacenost = (red: RacunRed) =>
+  "racun_placen" in red &&
+  red.racun_placen !== null &&
+  red.racun_placen !== undefined &&
+  red.racun_placen !== "";
+
+// "Plaćeno 1 ili Da" — vidi erp.izvodi_uplate_azuriranje_placenosti.
+const jePlacenRacun = (red: RacunRed) =>
+  ["DA", "1"].includes(String(red.racun_placen ?? "").trim().toUpperCase());
 
 const lijepNazivKolone = (
   podesavanja: Record<string, PodesavanjeKolone>,
@@ -469,6 +508,8 @@ function GenericnaTabela({
   varijanta = "racuni",
   onStampaj,
   onDesniKlikFiskalni,
+  onOznaciPlaceno,
+  oznacavanjeUToku,
 }: {
   redovi: RacunRed[];
   podesavanja: Record<string, PodesavanjeKolone>;
@@ -484,6 +525,10 @@ function GenericnaTabela({
   onStampaj?: (red: RacunRed) => void;
   // Desni klik na ćeliju "Br. fiskalnog" — otvara kontekst meni za fiskalizaciju.
   onDesniKlikFiskalni?: (red: RacunRed, e: React.MouseEvent) => void;
+  // Klik na dugme za (de)markiranje naplaćenosti — vidi handleOznaciPlaceno.
+  onOznaciPlaceno?: (red: RacunRed, placen: 0 | 1) => void;
+  // Šifra tabele reda koji je trenutno u obradi (prikazuje spinner na tom redu).
+  oznacavanjeUToku?: string | number | null;
 }) {
   const jeStavke = varijanta === "stavke";
   const imaPartnera =
@@ -570,7 +615,8 @@ function GenericnaTabela({
       style={jeVirtualizovano ? { maxHeight: "70vh", overflowY: "auto" } : undefined}
     >
       <table
-        className={`${jeStavke ? "mx-auto" : "w-full"} text-xs border-collapse`}
+        className={`mx-auto ${jeStavke ? "" : "table-fixed"} text-xs border-collapse`}
+        style={!jeStavke ? { width: "98%" } : undefined}
       >
         <thead>
           <tr
@@ -596,7 +642,12 @@ function GenericnaTabela({
                     : "border-[#634c86] dark:border-[#4a3c69]"
                 }`}
                 style={
-                  !jeStavke ? { borderLeft: "4px solid #8FC74A" } : undefined
+                  !jeStavke
+                    ? {
+                        borderLeft: "4px solid #8FC74A",
+                        minWidth: `${PREGLED_MIN_SIRINA_PARTNER_PX}px`,
+                      }
+                    : undefined
                 }
               >
                 Partner
@@ -634,6 +685,16 @@ function GenericnaTabela({
                           maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
                         }
                       : undefined),
+                    ...(!jeStavke && PREGLED_SIRINA_KARAKTERA[k]
+                      ? {
+                          width: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
+                          maxWidth: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
+                        }
+                      : !jeStavke && k === "napomena"
+                        ? { minWidth: `${PREGLED_MIN_SIRINA_NAPOMENA_PX}px` }
+                        : !jeStavke && k === "br_fiskalnog"
+                          ? { minWidth: `${PREGLED_MIN_SIRINA_BR_FISKALNOG_PX}px` }
+                          : undefined),
                   }}
                 >
                   {donjiKljuc ? (
@@ -648,7 +709,13 @@ function GenericnaTabela({
               );
             })}
             {!jeStavke && (
-              <th className="px-3 py-2 border-b border-[#634c86] dark:border-[#4a3c69]" />
+              <th
+                className="px-3 py-2 border-b border-[#634c86] dark:border-[#4a3c69]"
+                style={{
+                  width: `${PREGLED_SIRINA_STAMPA_PX}px`,
+                  maxWidth: `${PREGLED_SIRINA_STAMPA_PX}px`,
+                }}
+              />
             )}
           </tr>
         </thead>
@@ -729,28 +796,41 @@ function GenericnaTabela({
                         : `border-gray-100 dark:border-[#2a2340] ${
                             storniran
                               ? "bg-red-50/70 dark:bg-red-950/20"
-                              : i % 2 === 0
-                                ? "bg-white dark:bg-[#1a1528]"
-                                : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
+                              : imaPlacenost(red) && jePlacenRacun(red)
+                                ? "bg-emerald-100/70 dark:bg-emerald-900/30"
+                                : i % 2 === 0
+                                  ? "bg-white dark:bg-[#1a1528]"
+                                  : "bg-[#faf9fc] dark:bg-[#1e1a2d]"
                           }`
                   } ${onKlik ? "cursor-pointer hover:bg-[#f4f1f9] dark:hover:bg-[#2d2648]" : ""}`}
                 >
                   {imaPartnera && (
                     <td
-                      className="pl-3 pr-[5px] py-1.5 whitespace-nowrap"
-                      style={
-                        jeProsiren
+                      className="pl-3 pr-[5px] py-1.5 whitespace-nowrap overflow-hidden"
+                      style={{
+                        minWidth: `${PREGLED_MIN_SIRINA_PARTNER_PX}px`,
+                        ...(jeProsiren
                           ? {
                               borderTop: "2px solid #ef4444",
                               borderLeft: "2px solid #ef4444",
                             }
-                          : undefined
-                      }
+                          : undefined),
+                      }}
                     >
-                      <div className="font-semibold text-gray-800 dark:text-[#ede9f6]">
-                        {formatirajVrijednost(red.naziv_partnera)}
+                      <div className="font-semibold text-gray-800 dark:text-[#ede9f6] flex items-center gap-1 min-w-0">
+                        {imaPlacenost(red) && jePlacenRacun(red) && (
+                          <span title="Naplaćeno" className="flex-shrink-0">
+                            <CheckCircle2
+                              size={12}
+                              className="text-emerald-500"
+                            />
+                          </span>
+                        )}
+                        <span className="truncate">
+                          {formatirajVrijednost(red.naziv_partnera)}
+                        </span>
                       </div>
-                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                      <div className="text-[10px] text-gray-400 dark:text-[#5f5878] truncate">
                         Šifra: {formatirajVrijednost(red.sifra_partnera)} ·{" "}
                         {formatirajVrijednost(red.adresa_partnera)} ·{" "}
                         {formatirajVrijednost(red.naziv_grada)}
@@ -765,13 +845,23 @@ function GenericnaTabela({
                       }`;
                       const jeRabatDonji =
                         normalizujKljuc(donjiKljuc).startsWith("rab");
+                      const sirinaPara = !jeStavke
+                        ? PREGLED_SIRINA_KARAKTERA[k]
+                        : undefined;
                       if (k === "br_fiskalnog") {
                         const imaFiskalni = imaFiskalniBroj(red);
                         return (
                           <td
                             key={k}
-                            className={`${padding} py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8] ${onDesniKlikFiskalni ? "cursor-context-menu" : ""}`}
-                            style={obrubCelije(k)}
+                            className={`${padding} py-1.5 whitespace-nowrap overflow-hidden text-gray-700 dark:text-[#c5bfd8] ${onDesniKlikFiskalni ? "cursor-context-menu" : ""}`}
+                            style={{
+                              ...obrubCelije(k),
+                              ...(sirinaPara
+                                ? { width: `${sirinaPara}ch`, maxWidth: `${sirinaPara}ch` }
+                                : !jeStavke
+                                  ? { minWidth: `${PREGLED_MIN_SIRINA_BR_FISKALNOG_PX}px` }
+                                  : undefined),
+                            }}
                             onContextMenu={(e) => {
                               if (!onDesniKlikFiskalni) return;
                               e.preventDefault();
@@ -782,16 +872,18 @@ function GenericnaTabela({
                             {imaFiskalni ? (
                               <>
                                 <div
-                                  className="flex items-center gap-1 font-semibold"
+                                  className="flex items-center gap-1 font-semibold min-w-0"
                                   style={{ color: PRIMARY }}
                                 >
                                   <CheckCircle2
                                     size={12}
                                     className="flex-shrink-0 text-emerald-500"
                                   />
-                                  {formatirajVrijednost(red[k], k)}
+                                  <span className="truncate">
+                                    {formatirajVrijednost(red[k], k)}
+                                  </span>
                                 </div>
-                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878]">
+                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878] truncate">
                                   {formatirajVrijednost(
                                     red[donjiKljuc],
                                     donjiKljuc,
@@ -815,17 +907,22 @@ function GenericnaTabela({
                       return (
                         <td
                           key={k}
-                          className={`${padding} py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]`}
-                          style={obrubCelije(k)}
+                          className={`${padding} py-1.5 whitespace-nowrap overflow-hidden text-gray-700 dark:text-[#c5bfd8]`}
+                          style={{
+                            ...obrubCelije(k),
+                            ...(sirinaPara
+                              ? { width: `${sirinaPara}ch`, maxWidth: `${sirinaPara}ch` }
+                              : undefined),
+                          }}
                         >
                           <div
-                            className="font-semibold"
+                            className="font-semibold truncate"
                             style={{ color: PRIMARY }}
                           >
                             {formatirajVrijednost(red[k], k)}
                           </div>
                           <div
-                            className={`text-[10px] ${jeRabatDonji ? "font-semibold" : "text-gray-400 dark:text-[#5f5878]"}`}
+                            className={`text-[10px] truncate ${jeRabatDonji ? "font-semibold" : "text-gray-400 dark:text-[#5f5878]"}`}
                             style={jeRabatDonji ? { color: ACCENT } : undefined}
                           >
                             {formatirajVrijednost(red[donjiKljuc], donjiKljuc)}
@@ -837,8 +934,14 @@ function GenericnaTabela({
                       return (
                         <td
                           key={k}
-                          className="px-3 py-1.5 whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]"
-                          style={obrubCelije(k)}
+                          className="px-3 py-1.5 whitespace-nowrap overflow-hidden truncate text-gray-700 dark:text-[#c5bfd8]"
+                          style={{
+                            ...obrubCelije(k),
+                            ...(!jeStavke
+                              ? { minWidth: `${PREGLED_MIN_SIRINA_NAPOMENA_PX}px` }
+                              : undefined),
+                          }}
+                          title={String(formatirajVrijednost(red[k], k) ?? "")}
                         >
                           {formatirajVrijednost(red[k], k)}
                         </td>
@@ -849,7 +952,7 @@ function GenericnaTabela({
                     return (
                       <td
                         key={k}
-                        className={`py-1.5 whitespace-nowrap ${
+                        className={`py-1.5 whitespace-nowrap overflow-hidden truncate ${
                           jeUska
                             ? "text-center px-1.5"
                             : jeZbijena
@@ -877,6 +980,12 @@ function GenericnaTabela({
                                 maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
                               }
                             : undefined),
+                          ...(!jeStavke && PREGLED_SIRINA_KARAKTERA[k]
+                            ? {
+                                width: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
+                                maxWidth: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
+                              }
+                            : undefined),
                           ...obrubCelije(k),
                         }}
                       >
@@ -885,7 +994,14 @@ function GenericnaTabela({
                     );
                   })}
                   {!jeStavke && (
-                    <td className="px-3 py-1.5 text-center" style={obrubStampe}>
+                    <td
+                      className="px-3 py-1.5 text-center"
+                      style={{
+                        ...obrubStampe,
+                        width: `${PREGLED_SIRINA_STAMPA_PX}px`,
+                        maxWidth: `${PREGLED_SIRINA_STAMPA_PX}px`,
+                      }}
+                    >
                       <div className="flex flex-col items-center gap-0.5">
                         <button
                           type="button"
@@ -900,14 +1016,54 @@ function GenericnaTabela({
                             className="text-gray-400 dark:text-[#7d7498]"
                           />
                         </button>
-                        {String(red.racun_placen ?? "")
-                          .trim()
-                          .toUpperCase() === "DA" && (
-                          <CheckCircle2
-                            size={13}
-                            className="text-emerald-500"
-                          />
-                        )}
+                        {imaPlacenost(red) &&
+                          (() => {
+                            const jePlacen = jePlacenRacun(red);
+                            const sifraTabele = nadjiSifruTabele(red);
+                            const uObradi =
+                              sifraTabele !== null &&
+                              String(oznacavanjeUToku ?? "") ===
+                                String(sifraTabele);
+                            if (uObradi) {
+                              return (
+                                <Loader2
+                                  size={13}
+                                  className="animate-spin text-gray-400"
+                                />
+                              );
+                            }
+                            return jePlacen ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOznaciPlaceno?.(red, 0);
+                                }}
+                                title="Naplaćeno — klik za vraćanje u neplaćene"
+                                className="p-0.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                              >
+                                <Undo2
+                                  size={13}
+                                  className="text-emerald-500"
+                                />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOznaciPlaceno?.(red, 1);
+                                }}
+                                title="Nije naplaćeno — klik za označavanje kao naplaćeno"
+                                className="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                              >
+                                <Banknote
+                                  size={13}
+                                  className="text-gray-400 dark:text-[#7d7498]"
+                                />
+                              </button>
+                            );
+                          })()}
                       </div>
                     </td>
                   )}
@@ -976,6 +1132,12 @@ export function RacuniPregled() {
     tip: "info" | "greska" | "uspjeh" | "pitanje";
     onPotvrdi?: () => void;
   } | null>(null);
+
+  // Šifra tabele reda koji je trenutno u obradi (de)markiranja naplaćenosti —
+  // vidi handleOznaciPlaceno/klikOznaciPlaceno.
+  const [oznacavanjeUToku, setOznacavanjeUToku] = useState<
+    string | number | null
+  >(null);
 
   // Šifra tabele reda čije su stavke trenutno prikazane ispod njega (accordion).
   const [prosirenaSifra, setProsirenaSifra] = useState<string | number | null>(
@@ -1542,6 +1704,67 @@ export function RacuniPregled() {
     );
   };
 
+  // Markiranje/demarkiranje naplaćenosti računa — isti endpoint kao u Sintetici
+  // partnera (erp.izvodi_uplate_azuriranje_placenosti preko
+  // /api/izvodi/azuriranje-placenosti), samo za tip_dokumenta "RACUN".
+  const handleOznaciPlaceno = async (red: RacunRed, placen: 0 | 1) => {
+    const sifraTabele = nadjiSifruTabele(red);
+    if (sifraTabele === null || oznacavanjeUToku !== null) return;
+    setOznacavanjeUToku(sifraTabele);
+    try {
+      const res = await fetch(`${API_URL}/api/izvodi/azuriranje-placenosti`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dokumenti: [
+            {
+              tip_dokumenta: "RACUN",
+              sifra_dokumenta: sifraTabele,
+              placen,
+            },
+          ],
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) {
+        throw new Error(
+          d.message || d.error || "Greška pri ažuriranju naplaćenosti",
+        );
+      }
+      setRacuni((prev) =>
+        prev.map((r) =>
+          String(nadjiSifruTabele(r)) === String(sifraTabele)
+            ? { ...r, racun_placen: placen === 1 ? "DA" : "NE" }
+            : r,
+        ),
+      );
+    } catch (err) {
+      setFiskalnaPoruka({
+        naslov: "Greška",
+        poruka:
+          err instanceof Error ? err.message : "Greška pri ažuriranju naplaćenosti",
+        tip: "greska",
+      });
+    } finally {
+      setOznacavanjeUToku(null);
+    }
+  };
+
+  const klikOznaciPlaceno = (red: RacunRed, placen: 0 | 1) => {
+    setFiskalnaPoruka({
+      naslov: placen === 1 ? "Označavanje naplaćenosti" : "Vraćanje u neplaćene",
+      poruka:
+        placen === 1
+          ? "Da li želite označiti ovaj račun kao naplaćen? Izmjena se odmah upisuje u bazu."
+          : "Da li želite vratiti ovaj račun u neplaćene? Izmjena se odmah upisuje u bazu.",
+      tip: "pitanje",
+      onPotvrdi: () => {
+        void handleOznaciPlaceno(red, placen);
+      },
+    });
+  };
+
   // GTIN mora imati 8–14 znakova — ako artikal nema barkod, šifra proizvoda se
   // dopunjava nulama slijeva do 13 cifara (isto kao u gotovinskom unosu).
   const gtinZaStavkuPregled = (s: RacunRed): string => {
@@ -1921,6 +2144,8 @@ export function RacuniPregled() {
             onKlik={handleKlikRacun}
             onStampaj={handleStampaj}
             onDesniKlikFiskalni={handleDesniKlikFiskalni}
+            onOznaciPlaceno={klikOznaciPlaceno}
+            oznacavanjeUToku={oznacavanjeUToku}
             prosireniKljuc={prosirenaSifra}
             prosireniSadrzaj={
               loadingStavke ? (

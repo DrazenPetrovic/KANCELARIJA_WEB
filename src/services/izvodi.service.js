@@ -362,7 +362,8 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
 
 // Označavanje dokumenata plaćenim nakon unosa uplata —
 // erp.izvodi_uplate_azuriranje_placenosti(p_json). JSON niz:
-// [{ tip_dokumenta: "RACUN" | "KALKULACIJA", sifra_dokumenta }].
+// [{ tip_dokumenta: "RACUN" | "KALKULACIJA", sifra_dokumenta, placen: 0 | 1 }].
+// placen je obavezan — 1 označava dokument plaćenim, 0 vraća ga u neplaćene.
 // Sve ili ništa: ako jedan dokument ne postoji, ne mijenja se nijedan.
 const TIPOVI_DOKUMENTA_PLACENOST = ["RACUN", "KALKULACIJA"];
 
@@ -376,7 +377,11 @@ export const azuriranjePlacenosti = async ({ dokumenti }) => {
     if (!Number.isInteger(sifra) || sifra <= 0) {
       throw new Error(`Dokument ${idx + 1}: neispravna šifra dokumenta`);
     }
-    return { tip_dokumenta: tip, sifra_dokumenta: sifra };
+    if (![0, 1, "0", "1"].includes(d.placen)) {
+      throw new Error(`Dokument ${idx + 1}: neispravan status plaćenosti`);
+    }
+    const placen = Number(d.placen);
+    return { tip_dokumenta: tip, sifra_dokumenta: sifra, placen };
   });
 
   return withConnection(async (connection) => {
