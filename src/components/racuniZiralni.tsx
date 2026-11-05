@@ -560,6 +560,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [rab2, setRab2] = useState("");
   const [vpc3, setVpc3] = useState("");
   const [rab3, setRab3] = useState("");
+  // Osnovni VPC koji operater sam unosi za usluge (vrsta_proizvoda 3) na računu
+  // usluga (podgrupe 20–30) — kataloški VPC im zna biti 0. Inače se ne koristi.
+  const [vpcRucni, setVpcRucni] = useState("");
   // Šifra proizvoda stavke koja se trenutno mijenja (preko modala) — null znači da se
   // dodaje nova stavka; kad je postavljena, potvrda zamjenjuje (ne sabira) postojeći unos.
   const [urejivanjeSifra, setUrejivanjeSifra] = useState<string | null>(null);
@@ -903,6 +906,11 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
   const rezimUsluga = jePodgrupaUsluga(odabranaPodgrupa);
 
+  // Ručni unos osnovnog VPC-a — samo za usluge (vrsta_proizvoda 3) na računu
+  // usluga; ostali artikli uvijek idu po kataloškom VPC-u.
+  const jeRucniVpc = (a: Artikal) =>
+    rezimUsluga && Number(a.vrsta_proizvoda) === 3;
+
   // Prelaz na podgrupu usluga nije dozvoljen dok su na računu artikli koji nisu
   // usluge — operater ih prvo mora obrisati. Vraća true kad je promjena dozvoljena.
   const dozvoljenPrelazNaPodgrupu = (podgrupa: RacunPodgrupa | null) => {
@@ -1102,6 +1110,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     setRab2("0.00");
     setVpc3(pocetniVpc1.toFixed(2));
     setRab3("0.00");
+    setVpcRucni(vpcKatalog.toFixed(2));
     setUrejivanjeSifra(null);
   };
 
@@ -1124,6 +1133,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     setRab2(s.rab2.toFixed(2));
     setVpc3(s.vpc3.toFixed(2));
     setRab3(s.rab3.toFixed(2));
+    setVpcRucni(s.vpc.toFixed(2));
     setUrejivanjeSifra(s.sifra_proizvoda);
   };
 
@@ -1152,8 +1162,10 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       return;
     }
 
-    const vpc =
-      typeof artikalZaUnos.vpc === "number"
+    // Usluga na računu usluga — VPC unosi operater (vpcRucni), inače kataloški.
+    const vpc = jeRucniVpc(artikalZaUnos)
+      ? parseFloat(vpcRucni) || 0
+      : typeof artikalZaUnos.vpc === "number"
         ? artikalZaUnos.vpc
         : parseFloat(String(artikalZaUnos.vpc)) || 0;
     const nabavnaCijena =
@@ -4154,8 +4166,12 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       {/* Modal unos količine */}
       {artikalZaUnos &&
         (() => {
-          const vpcKatalog =
-            typeof artikalZaUnos.vpc === "number"
+          // Usluga na računu usluga — osnovni VPC unosi operater (vpcRucni),
+          // inače kataloški.
+          const rucniVpc = jeRucniVpc(artikalZaUnos);
+          const vpcKatalog = rucniVpc
+            ? parseFloat(vpcRucni) || 0
+            : typeof artikalZaUnos.vpc === "number"
               ? artikalZaUnos.vpc
               : parseFloat(String(artikalZaUnos.vpc)) || 0;
           const nabavna =
@@ -4213,6 +4229,19 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             const novaVpc2 = izracunajVpcIzRabata(broj1, rab2);
             setVpc2(novaVpc2);
             primijeniVpc3(novaVpc2);
+          };
+
+          // Promjena osnovnog VPC-a (samo račun usluga) — VPC1 ga prati uz
+          // zadržan Rabat 1, pa dalje VPC2/VPC3.
+          const onVpcRucniChange = (val: string) => {
+            setVpcRucni(val);
+            const n = parseFloat(val);
+            if (isNaN(n)) return;
+            const rabat1 = rab1 === "" ? "0.00" : rab1;
+            if (rab1 === "") setRab1(rabat1);
+            const noviVpc1 = izracunajVpcIzRabata(n, rabat1);
+            setVpc1(noviVpc1);
+            primijeniVpc2(noviVpc1);
           };
 
           const onVpc1Change = (val: string) => {
@@ -4297,12 +4326,34 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                         {artikalZaUnos.sifra_proizvoda}
                       </b>
                     </span>
-                    <span>
-                      VPC:{" "}
-                      <b style={{ color: PRIMARY }}>
-                        {vpcKatalog.toFixed(2)} KM
-                      </b>
-                    </span>
+                    {rucniVpc ? (
+                      <label className="flex items-center gap-1.5">
+                        VPC:
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={vpcRucni}
+                          onChange={(e) => onVpcRucniChange(e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          onMouseUp={(e) => e.preventDefault()}
+                          onBlur={() => {
+                            const n = parseFloat(vpcRucni);
+                            onVpcRucniChange(!isNaN(n) ? n.toFixed(2) : "0.00");
+                          }}
+                          className={`w-24 px-2 py-1 text-sm font-bold text-right border-2 rounded-lg bg-white dark:bg-[#1e1a2d] focus:outline-none ${bezStrelicaClass}`}
+                          style={{ color: PRIMARY, borderColor: PRIMARY }}
+                        />
+                        KM
+                      </label>
+                    ) : (
+                      <span>
+                        VPC:{" "}
+                        <b style={{ color: PRIMARY }}>
+                          {vpcKatalog.toFixed(2)} KM
+                        </b>
+                      </span>
+                    )}
                     <span>
                       Nabavna (test):{" "}
                       <b className="text-gray-700 dark:text-[#c5bfd8]">
