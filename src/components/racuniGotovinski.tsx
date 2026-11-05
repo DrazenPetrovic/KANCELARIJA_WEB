@@ -178,6 +178,11 @@ interface RacunPodgrupa {
   obracunava_se_pdv: number;
 }
 
+// Podgrupe računa 20–30 su računi usluga — lista artikala prikazuje samo usluge
+// (vrsta_proizvoda 3) i stanje na zalihama se ne provjerava.
+const jePodgrupaUsluga = (p: RacunPodgrupa | null) =>
+  p != null && p.sifra_podgrupe >= 20 && p.sifra_podgrupe <= 30;
+
 interface StavkaIstorijeRacuna {
   sifra_proizvoda: number;
   naziv_proizvoda: string;
@@ -443,6 +448,13 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
   // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema
   // dovoljno robe na stanju — prikazuje se kao poseban modal (umjesto generičke
   // greške), sa nazivom/JM proizvoda uparenim iz artikli/stavke.
+  // Obavještenje u modalu na sredini ekrana (nedovoljno stanje, zabrana prelaza
+  // na podgrupu usluga) — umjesto browser alert-a.
+  const [obavjestenje, setObavjestenje] = useState<{
+    naslov: string;
+    poruka: string;
+    lista?: string[];
+  } | null>(null);
   const [greskaNedovoljnogStanja, setGreskaNedovoljnogStanja] = useState<
     StavkaNedovoljnoStanje[] | null
   >(null);
@@ -759,6 +771,28 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     [radniNalogProizvoda],
   );
 
+  const rezimUsluga = jePodgrupaUsluga(odabranaPodgrupa);
+
+  // Prelaz na podgrupu usluga nije dozvoljen dok su na računu artikli koji nisu
+  // usluge — operater ih prvo mora obrisati. Vraća true kad je promjena dozvoljena.
+  const dozvoljenPrelazNaPodgrupu = (podgrupa: RacunPodgrupa | null) => {
+    if (!jePodgrupaUsluga(podgrupa)) return true;
+    const nisuUsluge = stavke.filter((s) => {
+      const a = artikli.find(
+        (x) => String(x.sifra_proizvoda) === s.sifra_proizvoda,
+      );
+      return Number(a?.vrsta_proizvoda) !== 3;
+    });
+    if (nisuUsluge.length === 0) return true;
+    setObavjestenje({
+      naslov: "Podgrupa se ne može promijeniti",
+      poruka:
+        "Na računu su artikli koji nisu usluge. Prvo ih obrišite, pa onda promijenite podgrupu u račun usluga.",
+      lista: nisuUsluge.map((s) => s.naziv_proizvoda),
+    });
+    return false;
+  };
+
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
     return artikli.filter((a) => {
@@ -768,10 +802,12 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
         !q ||
         a.naziv_proizvoda.toLowerCase().includes(q) ||
         String(a.sifra_proizvoda).includes(q);
-      const matchStanje = !samoNaStanju || Number(a.kolicina_proizvoda) > 0;
+      const matchStanje = rezimUsluga
+        ? Number(a.vrsta_proizvoda) === 3
+        : !samoNaStanju || Number(a.kolicina_proizvoda) > 0;
       return matchGrupa && matchQ && matchStanje;
     });
-  }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju]);
+  }, [artikli, pretragaArtikala, odabranaGrupa, samoNaStanju, rezimUsluga]);
 
   const handleOdabir = (p: Partner) => {
     korisnickiOdabirPartneraRef.current = true;
@@ -926,10 +962,12 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     const ukupnaKolicinaZaProvjeru = postojecaStavka
       ? postojecaStavka.kolicina + kol
       : kol;
-    if (ukupnaKolicinaZaProvjeru > stanjeNaZalihama) {
-      alert(
-        `Nema dovoljno na stanju. Na stanju je ${stanjeNaZalihama} ${artikalZaUnos.jm}, a pokušavate unijeti ukupno ${ukupnaKolicinaZaProvjeru} ${artikalZaUnos.jm}.`,
-      );
+    // Računi usluga (podgrupe 20–30) — stanje se ne provjerava.
+    if (!rezimUsluga && ukupnaKolicinaZaProvjeru > stanjeNaZalihama) {
+      setObavjestenje({
+        naslov: "Nema dovoljno na stanju",
+        poruka: `${artikalZaUnos.naziv_proizvoda}: na stanju je ${stanjeNaZalihama} ${artikalZaUnos.jm}, a pokušavate unijeti ukupno ${ukupnaKolicinaZaProvjeru} ${artikalZaUnos.jm}.`,
+      });
       return;
     }
 
@@ -1546,7 +1584,12 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
       const artikal = artikli.find(
         (a) => String(a.sifra_proizvoda) === p.sifra_proizvoda,
       );
-      if (!artikal || Number(artikal.kolicina_proizvoda) <= 0) {
+      // Računi usluga (podgrupe 20–30) — stanje se ne provjerava.
+      const bezProvjereStanja = jePodgrupaUsluga(odabranaPodgrupa);
+      if (
+        !artikal ||
+        (!bezProvjereStanja && Number(artikal.kolicina_proizvoda) <= 0)
+      ) {
         preskoceniProizvodi.push(p.naziv_proizvoda);
         return;
       }
@@ -1554,7 +1597,9 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
       // unos, izmjena stanja u međuvremenu) — količina se ograničava na stvarno
       // raspoloživo stanje, operater se posebno obavještava o ograničenju.
       const stanjeNaZalihama = Number(artikal.kolicina_proizvoda) || 0;
-      const kolicinaZaUnos = Math.min(p.kolicina, stanjeNaZalihama);
+      const kolicinaZaUnos = bezProvjereStanja
+        ? p.kolicina
+        : Math.min(p.kolicina, stanjeNaZalihama);
       if (kolicinaZaUnos < p.kolicina) {
         ogranicenaKolicina.push(
           `${p.naziv_proizvoda}: sa terena ${p.kolicina} ${artikal.jm}, na stanju samo ${stanjeNaZalihama} ${artikal.jm} — uneseno ${kolicinaZaUnos} ${artikal.jm}`,
@@ -1622,6 +1667,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     pendingUvozNarudzbe,
     odabraniPartner,
     artikli,
+    odabranaPodgrupa,
     partneriRazni,
     loadingPartneriRazni,
   ]);
@@ -2292,6 +2338,14 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
               <span className="text-xs font-bold text-gray-700 dark:text-[#c5bfd8]">
                 Artikli{!loadingArtikli && `(${filtriranihArtikli.length})`}
               </span>
+              {rezimUsluga ? (
+                <span
+                  className="ml-auto px-2 py-0.5 rounded-full text-[9px] font-semibold text-white flex-shrink-0"
+                  style={{ background: PRIMARY }}
+                >
+                  Usluge
+                </span>
+              ) : (
               <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-full bg-gray-100 dark:bg-[#2a2340] flex-shrink-0">
                 <button
                   onClick={() => setSamoNaStanju(false)}
@@ -2316,6 +2370,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                   Na stanju
                 </button>
               </div>
+              )}
             </div>
 
             {/* Pretraga */}
@@ -2402,7 +2457,9 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                 </div>
               ) : (
                 filtriranihArtikli.map((a) => {
-                  const nemaStanje = Number(a.kolicina_proizvoda) <= 0;
+                  // Na računu usluga artikal bez stanja nije blokiran.
+                  const nemaStanje =
+                    !rezimUsluga && Number(a.kolicina_proizvoda) <= 0;
                   const nivelacija = nivelacijeMap.get(
                     String(a.sifra_proizvoda),
                   );
@@ -2411,7 +2468,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                       key={a.sifra_proizvoda}
                       onClick={() => !nemaStanje && handleKlikArtikl(a)}
                       onContextMenu={(e) => {
-                        if (!nemaStanje) {
+                        if (Number(a.kolicina_proizvoda) > 0) {
                           e.preventDefault();
                           setArtikalZaNivelisanje(a);
                         }
@@ -2837,6 +2894,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                         podgrupeRacuna.find(
                           (p) => String(p.sifra_podgrupe) === e.target.value,
                         ) ?? null;
+                      if (!dozvoljenPrelazNaPodgrupu(podgrupa)) return;
                       setOdabranaPodgrupa(podgrupa);
                     }}
                     disabled={loadingPodgrupeRacuna}
@@ -4121,6 +4179,59 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
                     );
                   })
                 )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Obavještenje (nedovoljno stanje, zabrana prelaza na podgrupu usluga) —
+          iznad modala za unos stavke */}
+      {obavjestenje &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[10001] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setObavjestenje(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] max-h-[80vh] flex flex-col overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
+                style={{ background: "#ef4444" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  {obavjestenje.naslov}
+                </span>
+              </div>
+              <div className="px-6 py-5 overflow-y-auto">
+                <p className="text-sm text-gray-700 dark:text-[#c5bfd8]">
+                  {obavjestenje.poruka}
+                </p>
+                {obavjestenje.lista && obavjestenje.lista.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {obavjestenje.lista.map((s, i) => (
+                      <li
+                        key={`${s}-${i}`}
+                        className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6]"
+                      >
+                        • {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="px-6 pb-5 flex-shrink-0">
+                <button
+                  autoFocus
+                  onClick={() => setObavjestenje(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Razumijem
+                </button>
               </div>
             </div>
           </div>,

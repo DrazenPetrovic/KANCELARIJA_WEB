@@ -332,6 +332,11 @@ interface DogovorenaCijena {
   dogovorena_cijena_vpc: number | null;
 }
 
+// Podgrupe računa 20–30 su računi usluga — lista artikala prikazuje samo usluge
+// (vrsta_proizvoda 3) i stanje na zalihama se ne provjerava.
+const jePodgrupaUsluga = (p: RacunPodgrupa | null) =>
+  p != null && p.sifra_podgrupe >= 20 && p.sifra_podgrupe <= 30;
+
 // Stavka iz uvoza sa terena čija cijena (dogovorena ili kataloški VPC) ide ispod
 // nabavne — čeka odluku operatera.
 interface UvozIspodNabavne {
@@ -527,6 +532,13 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [trazeneCijenePoruka, setTrazeneCijenePoruka] = useState<string | null>(
     null,
   );
+  // Obavještenje u modalu na sredini ekrana (nedovoljno stanje, zabrana prelaza
+  // na podgrupu usluga) — umjesto browser alert-a.
+  const [obavjestenje, setObavjestenje] = useState<{
+    naslov: string;
+    poruka: string;
+    lista?: string[];
+  } | null>(null);
   // Poruke za potvrdu kad ručno unesena cijena ide ispod nabavne — operater bira
   // da li je ipak unosi ili se vraća na unos.
   const [potvrdaIspodNabavne, setPotvrdaIspodNabavne] = useState<
@@ -889,6 +901,28 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     return Math.abs(s.vpc1 - Number(d.dogovorena_cijena_vpc)) < 0.005;
   };
 
+  const rezimUsluga = jePodgrupaUsluga(odabranaPodgrupa);
+
+  // Prelaz na podgrupu usluga nije dozvoljen dok su na računu artikli koji nisu
+  // usluge — operater ih prvo mora obrisati. Vraća true kad je promjena dozvoljena.
+  const dozvoljenPrelazNaPodgrupu = (podgrupa: RacunPodgrupa | null) => {
+    if (!jePodgrupaUsluga(podgrupa)) return true;
+    const nisuUsluge = stavke.filter((s) => {
+      const a = artikli.find(
+        (x) => String(x.sifra_proizvoda) === s.sifra_proizvoda,
+      );
+      return Number(a?.vrsta_proizvoda) !== 3;
+    });
+    if (nisuUsluge.length === 0) return true;
+    setObavjestenje({
+      naslov: "Podgrupa se ne može promijeniti",
+      poruka:
+        "Na računu su artikli koji nisu usluge. Prvo ih obrišite, pa onda promijenite podgrupu u račun usluga.",
+      lista: nisuUsluge.map((s) => s.naziv_proizvoda),
+    });
+    return false;
+  };
+
   // Šifre artikala sa dogovorenom cijenom za izabranog partnera — filter
   // "Dogovoreni" u listi artikala.
   const dogovoreniArtikliPartnera = useMemo(() => {
@@ -946,11 +980,12 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         !q ||
         a.naziv_proizvoda.toLowerCase().includes(q) ||
         String(a.sifra_proizvoda).includes(q);
-      const matchFilter =
-        filterArtikala === "svi" ||
-        (filterArtikala === "naStanju"
-          ? Number(a.kolicina_proizvoda) > 0
-          : dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)));
+      const matchFilter = rezimUsluga
+        ? Number(a.vrsta_proizvoda) === 3
+        : filterArtikala === "svi" ||
+          (filterArtikala === "naStanju"
+            ? Number(a.kolicina_proizvoda) > 0
+            : dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)));
       return matchGrupa && matchQ && matchFilter;
     });
   }, [
@@ -959,6 +994,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     odabranaGrupa,
     filterArtikala,
     dogovoreniArtikliPartnera,
+    rezimUsluga,
   ]);
 
   // Poslovnice (poslovne jedinice) jednog partnera — erp.partneri_lista_poslovnice
@@ -1107,10 +1143,12 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       postojecaStavka && urejivanjeSifra !== artikalZaUnos.sifra_proizvoda
         ? postojecaStavka.kolicina + kol
         : kol;
-    if (ukupnaKolicinaZaProvjeru > stanjeNaZalihama) {
-      alert(
-        `Nema dovoljno na stanju. Na stanju je ${stanjeNaZalihama} ${artikalZaUnos.jm}, a pokušavate unijeti ukupno ${ukupnaKolicinaZaProvjeru} ${artikalZaUnos.jm}.`,
-      );
+    // Računi usluga (podgrupe 20–30) — stanje se ne provjerava.
+    if (!rezimUsluga && ukupnaKolicinaZaProvjeru > stanjeNaZalihama) {
+      setObavjestenje({
+        naslov: "Nema dovoljno na stanju",
+        poruka: `${artikalZaUnos.naziv_proizvoda}: na stanju je ${stanjeNaZalihama} ${artikalZaUnos.jm}, a pokušavate unijeti ukupno ${ukupnaKolicinaZaProvjeru} ${artikalZaUnos.jm}.`,
+      });
       return;
     }
 
@@ -2254,7 +2292,12 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       const artikal = artikli.find(
         (a) => String(a.sifra_proizvoda) === p.sifra_proizvoda,
       );
-      if (!artikal || Number(artikal.kolicina_proizvoda) <= 0) {
+      // Računi usluga (podgrupe 20–30) — stanje se ne provjerava.
+      const bezProvjereStanja = jePodgrupaUsluga(odabranaPodgrupa);
+      if (
+        !artikal ||
+        (!bezProvjereStanja && Number(artikal.kolicina_proizvoda) <= 0)
+      ) {
         preskoceniProizvodi.push(p.naziv_proizvoda);
         return;
       }
@@ -2262,7 +2305,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       // unos, izmjena stanja u međuvremenu) — količina se ograničava na stvarno
       // raspoloživo stanje, operater se posebno obavještava o ograničenju.
       const stanjeNaZalihama = Number(artikal.kolicina_proizvoda) || 0;
-      const kolicinaZaUnos = Math.min(p.kolicina, stanjeNaZalihama);
+      const kolicinaZaUnos = bezProvjereStanja
+        ? p.kolicina
+        : Math.min(p.kolicina, stanjeNaZalihama);
       if (kolicinaZaUnos < p.kolicina) {
         ogranicenaKolicina.push(
           `${p.naziv_proizvoda}: sa terena ${p.kolicina} ${artikal.jm}, na stanju samo ${stanjeNaZalihama} ${artikal.jm} — uneseno ${kolicinaZaUnos} ${artikal.jm}`,
@@ -2723,6 +2768,14 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               <span className="text-xs font-bold text-gray-700 dark:text-[#c5bfd8]">
                 Artikli{!loadingArtikli && `(${filtriranihArtikli.length})`}
               </span>
+              {rezimUsluga ? (
+                <span
+                  className="ml-auto px-2 py-0.5 rounded-full text-[9px] font-semibold text-white flex-shrink-0"
+                  style={{ background: PRIMARY }}
+                >
+                  Usluge
+                </span>
+              ) : (
               <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-full bg-gray-100 dark:bg-[#2a2340] flex-shrink-0">
                 <button
                   onClick={() => setFilterArtikala("svi")}
@@ -2771,6 +2824,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   Dogovoreni
                 </button>
               </div>
+              )}
             </div>
 
             {/* Pretraga */}
@@ -2834,7 +2888,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             {/* Lista artikala — filter "Dogovoreni" ima posebnu pozadinu */}
             <div
               className={`flex-1 overflow-y-auto ${
-                filterArtikala === "dogovoreni"
+                filterArtikala === "dogovoreni" && !rezimUsluga
                   ? "bg-amber-50 dark:bg-amber-950/20"
                   : ""
               }`}
@@ -2866,7 +2920,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                 </div>
               ) : (
                 filtriranihArtikli.map((a) => {
-                  const nemaStanje = Number(a.kolicina_proizvoda) <= 0;
+                  // Na računu usluga artikal bez stanja nije blokiran.
+                  const nemaStanje =
+                    !rezimUsluga && Number(a.kolicina_proizvoda) <= 0;
                   const nivelacija = nivelacijeMap.get(
                     String(a.sifra_proizvoda),
                   );
@@ -2875,7 +2931,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       key={a.sifra_proizvoda}
                       onClick={() => !nemaStanje && handleKlikArtikl(a)}
                       onContextMenu={(e) => {
-                        if (!nemaStanje) {
+                        if (Number(a.kolicina_proizvoda) > 0) {
                           e.preventDefault();
                           setArtikalZaNivelisanje(a);
                         }
@@ -3360,6 +3416,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                               (p) =>
                                 String(p.sifra_podgrupe) === e.target.value,
                             ) ?? null;
+                          if (!dozvoljenPrelazNaPodgrupu(podgrupa)) return;
                           // Promjena na podgrupu bez PDV-a briše sve trenutno uneseno —
                           // prvo se pita za potvrdu (izbornik ostaje na staroj vrijednosti
                           // dok korisnik ne potvrdi, jer se odabranaPodgrupa ne mijenja ovdje).
@@ -3743,6 +3800,59 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Obavještenje (nedovoljno stanje, zabrana prelaza na podgrupu usluga) —
+          iznad modala za unos stavke */}
+      {obavjestenje &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[10001] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setObavjestenje(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] max-h-[80vh] flex flex-col overflow-hidden">
+              <div
+                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
+                style={{ background: "#ef4444" }}
+              >
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  {obavjestenje.naslov}
+                </span>
+              </div>
+              <div className="px-6 py-5 overflow-y-auto">
+                <p className="text-sm text-gray-700 dark:text-[#c5bfd8]">
+                  {obavjestenje.poruka}
+                </p>
+                {obavjestenje.lista && obavjestenje.lista.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {obavjestenje.lista.map((s, i) => (
+                      <li
+                        key={`${s}-${i}`}
+                        className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6]"
+                      >
+                        • {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="px-6 pb-5 flex-shrink-0">
+                <button
+                  autoFocus
+                  onClick={() => setObavjestenje(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Razumijem
+                </button>
               </div>
             </div>
           </div>,

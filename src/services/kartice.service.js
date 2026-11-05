@@ -14,7 +14,7 @@ export const getKarticaPartnera = async (partnerId) => {
 
     const red =
       Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0][0] : null;
-    if (!red) return { kupac: null, dobavljac: null };
+    if (!red) return { kupac: null, dobavljac: null, banka: null };
 
     // Procedura vraća jedan red sa jednom JSON kolonom — vrijednost stiže već
     // parsirana (JSON kolona) ili kao string, zavisno od tipa kolone, pa se
@@ -30,6 +30,8 @@ export const getKarticaPartnera = async (partnerId) => {
     return {
       kupac: kartice.find((k) => Number(k.vrsta_kartice) === 1) ?? null,
       dobavljac: kartice.find((k) => Number(k.vrsta_kartice) === 2) ?? null,
+      // Bankovni transferi (vrste uplate 13 i 14) — prelaz sa banke na banku.
+      banka: kartice.find((k) => Number(k.vrsta_kartice) === 3) ?? null,
     };
   });
 };

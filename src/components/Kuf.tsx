@@ -38,6 +38,8 @@ interface KufRed {
   entitet_partnera: string;
   JIB: string;
   tip_dokumenta: string;
+  // 1 = račun plaćen, 0 = nije plaćen.
+  racun_placen: number;
 }
 
 const formatIznos = (v: number | null | undefined) =>
@@ -189,6 +191,7 @@ export function Kuf() {
   const [loading, setLoading] = useState(true);
   const [greska, setGreska] = useState<string | null>(null);
   const [pretragaPartnera, setPretragaPartnera] = useState("");
+  const [placenFilter, setPlacenFilter] = useState<"" | "1" | "0">("");
   const datumOdRef = useRef<HTMLInputElement>(null);
   const datumDoRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -247,6 +250,11 @@ export function Kuf() {
           )
         )
           return false;
+        if (
+          placenFilter !== "" &&
+          String(Number(r.racun_placen) === 1 ? 1 : 0) !== placenFilter
+        )
+          return false;
         return true;
       })
       .sort(
@@ -254,7 +262,7 @@ export function Kuf() {
           new Date(b.datum_ulaza_dokumenta).getTime() -
           new Date(a.datum_ulaza_dokumenta).getTime(),
       );
-  }, [redovi, primenjeniOd, primenjeniDo, pretragaPartnera]);
+  }, [redovi, primenjeniOd, primenjeniDo, pretragaPartnera, placenFilter]);
 
   const jeVirtualizovano = redoviFiltrirano.length > PRAG_VIRTUALIZACIJE;
 
@@ -378,6 +386,20 @@ export function Kuf() {
               </span>
             )}
           </button>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
+              Plaćanje
+            </span>
+            <select
+              value={placenFilter}
+              onChange={(e) => setPlacenFilter(e.target.value as "" | "1" | "0")}
+              className="px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] transition-colors bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6]"
+            >
+              <option value="">Svi</option>
+              <option value="1">Plaćeni</option>
+              <option value="0">Neplaćeni</option>
+            </select>
+          </div>
           <div className="w-full sm:w-72">
             <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-[#5f5878] mb-1">
               Partner
@@ -466,7 +488,7 @@ export function Kuf() {
         // ekranu, rekapitulacija apsolutno gore lijevo (xl+); na užim
         // ekranima rekapitulacija pada ispod tabele.
         <div className="relative flex flex-col gap-4 xl:block">
-        <div className="w-fit max-w-full xl:max-w-[calc(100%-36rem)] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="w-fit max-w-full xl:w-[calc((100%-36rem)*1.05)] xl:max-w-[calc((100%-36rem)*1.05)] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             ref={jeVirtualizovano ? scrollRef : undefined}
             className="overflow-x-auto"
@@ -476,7 +498,7 @@ export function Kuf() {
                 : undefined
             }
           >
-            <table className="table-auto text-sm">
+            <table className="table-auto w-full text-sm">
               <thead>
                 <tr
                   className={`border-b border-gray-100 dark:border-[#2d2648] ${jeVirtualizovano ? "sticky top-0 z-10" : ""}`}
@@ -539,6 +561,15 @@ export function Kuf() {
                             style={{ background: `${PRIMARY}1f`, color: PRIMARY }}
                           >
                             {r.tip_dokumenta}
+                          </span>
+                        )}
+                        {Number(r.racun_placen) === 1 ? (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                            PLAĆEN
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+                            NEPLAĆEN
                           </span>
                         )}
                       </div>
@@ -627,7 +658,7 @@ export function Kuf() {
         </div>
 
           {/* Rekapitulacija — vertikalno, gore lijevo (xl+) */}
-          <div className="flex flex-col gap-3 w-full xl:w-64 flex-shrink-0 mt-4 xl:mt-[5%] xl:absolute xl:top-0 xl:left-[3%] origin-top-left xl:scale-90">
+          <div className="flex flex-col gap-3 w-full xl:w-[243px] flex-shrink-0 mt-4 xl:mt-[5%] xl:absolute xl:top-0 xl:left-[1%] origin-top-left xl:scale-90">
             <div
               className="rounded-xl px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-white"
               style={{ background: PRIMARY }}

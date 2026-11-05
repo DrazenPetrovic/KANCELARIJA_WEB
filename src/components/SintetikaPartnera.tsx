@@ -156,6 +156,7 @@ interface KarticaStavka {
   izvor_id: number | null;
   vrsta_prometa: number;
   vrsta_prometa_opis: string;
+  vrsta_uplate?: number | null;
   vrsta_uplate_opis: string | null;
 }
 
@@ -173,6 +174,14 @@ const TIP_DOKUMENTA_PLACENOST: Record<number, "RACUN" | "KALKULACIJA"> = {
 // vraćaju u neplaćene.
 const jeKnjiznoOdobrenje = (s: KarticaStavka) =>
   Number(s.vrsta_prometa) === 1 && !!s.opis?.startsWith("KO ");
+
+// "zbirna uplata - Izvod:..." → "Izvod:..."; samo "zbirna uplata" ostaje kako jeste.
+// "MP - 10-42-G - Gotovinska uplata :Kupac#10492" → "MP - 10-42-G"; bez broja
+// računa ispred ("Gotovinska uplata :...") ostaje kako jeste.
+const prikazOpisa = (opis: string | null) =>
+  opis
+    ?.replace(/^zbirna (uplata|isplata)\s*-\s*(?=\S)/i, "")
+    .replace(/(\S)\s*-\s*Gotovinska uplata\b.*$/i, "$1") || "—";
 
 function TabelaStavki({
   naslov,
@@ -272,7 +281,7 @@ function TabelaStavki({
                       }
                       title={s.opis ?? undefined}
                     >
-                      {s.opis || "—"}
+                      {prikazOpisa(s.opis)}
                     </span>
                   </TD>
                   <TD right>{formatIznos(iznos(s))}</TD>
@@ -454,7 +463,11 @@ function StavkePartnera({
       .then(([k, p]) => {
         if (cancelled) return;
         const kartica = konto === 1 ? k.data?.kupac : k.data?.dobavljac;
-        setStavke(kartica?.stavke ?? []);
+        // Transferi (13/14) dolaze kao posebna kartica "BANKA" i idu među uplate.
+        setStavke([
+          ...(kartica?.stavke ?? []),
+          ...(k.data?.banka?.stavke ?? []),
+        ]);
         setPlaceni({
           1: new Set(p.data?.racuni ?? []),
           2: new Set(p.data?.kalkulacije ?? []),
@@ -486,8 +499,11 @@ function StavkePartnera({
   // kod dobavljača je obrnuto. Pozajmice i povrati pretplate idu sa minusom.
   const iznosDokumenta = (s: KarticaStavka) =>
     konto === 1 ? Number(s.duguje) : Number(s.potrazuje);
+  // Transfer: 13 (ka banci, ulaz novca) plus, 14 (od banke, izlaz novca) minus.
   const iznosUplate = (s: KarticaStavka) =>
-    konto === 1
+    [13, 14].includes(Number(s.vrsta_uplate))
+      ? Number(s.duguje) - Number(s.potrazuje)
+      : konto === 1
       ? Number(s.potrazuje) - Number(s.duguje)
       : Number(s.duguje) - Number(s.potrazuje);
 
