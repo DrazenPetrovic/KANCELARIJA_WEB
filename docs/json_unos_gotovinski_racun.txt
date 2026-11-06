@@ -1,5 +1,5 @@
 JSON koji se šalje na POST /api/racuni/unos (racuniGotovinski.tsx -> pripremiRacunZaUnos)
-Procedura koja ga prima: erp.sp_racuni_unos
+Procedura koja ga prima: erp.racuni_unos
 Oblik: { header, items } — header je jedan objekat (glavna tabela računa),
 items je niz objekata (jedan po stavki/proizvodu na računu).
 

@@ -84,7 +84,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-// Prepoznaje poruke koje erp.sp_racuni_unos vraća kad na stanju nema dovoljno
+// Prepoznaje poruke koje erp.racuni_unos vraća kad na stanju nema dovoljno
 // robe za neku stavku, npr. "Nema dovoljno robe na stanju. Proizvod: 394,
 // stanje: 6.000, trazeno: 8.000, nedostaje: 2.000" — može ih biti više u istoj
 // poruci ako procedura provjerava sve stavke odjednom.
@@ -256,7 +256,7 @@ interface StavkaRacuna {
 interface Partner {
   // = erp.partneri.partner_id (potvrđeno identično sa ziralni.partneri.sifra_partnera
   // za svakog partnera — vidi napomenu uz fetchData ispod), isto polje se šalje
-  // kao sifra_kupca u erp.sp_racuni_unos.
+  // kao sifra_kupca u erp.racuni_unos.
   sifra_partnera: number;
   naziv_partnera: string;
   jib: string;
@@ -348,7 +348,7 @@ interface UvozIspodNabavne {
 }
 
 // Red pomoćne tabele (stavke) žiralnog računa — priprema za slanje kroz proceduru
-// erp.sp_racuni_unos. Za razliku od gotovinskog, ovdje se stvarno koriste rabatni
+// erp.racuni_unos. Za razliku od gotovinskog, ovdje se stvarno koriste rabatni
 // nivoi (rabat_proc/rabat_proc_2/rabat_proc_3) unešeni kroz VPC1/VPC2/VPC3.
 interface StavkaZaUnos {
   sifra_proizvoda: number;
@@ -503,7 +503,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [stampajFiskalniIsjecak, setStampajFiskalniIsjecak] = useState(false);
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
-  // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema
+  // Popunjava se kad erp.racuni_unos odbije unos jer za neku stavku nema
   // dovoljno robe na stanju — prikazuje se kao poseban modal (umjesto generičke
   // greške), sa nazivom/JM proizvoda uparenim iz artikli/stavke.
   const [greskaNedovoljnogStanja, setGreskaNedovoljnogStanja] = useState<
@@ -1474,7 +1474,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   };
 
   // Priprema kompletnog JSON-a (header + items) za slanje kroz proceduru
-  // erp.sp_racuni_unos — vrsta_racuna "z" (žiralni), vrsta_racuna_novi 2 (VP).
+  // erp.racuni_unos — vrsta_racuna "z" (žiralni), vrsta_racuna_novi 2 (VP).
   // Osnova obračuna po stavci je "osnova" (VPC nakon kaskade VPC1/VPC2/VPC3);
   // vpc (kataloški, prije rabata) ide u vpc_bez_rabata, a rabati po nivoima
   // (1/2/3) idu i procentualno (rabat_proc*) i finansijski u KM (rabat_km*).
@@ -1641,7 +1641,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     URL.revokeObjectURL(url);
   };
 
-  // Šalje { header, items } proceduri erp.sp_racuni_unos preko POST /api/racuni/unos,
+  // Šalje { header, items } proceduri erp.racuni_unos preko POST /api/racuni/unos,
   // pa best-effort ažurira "stampano" za uvezenu narudžbu, pa fiskalizuje preko ESIR-a
   // (device "ziralni" — VITE_ESIR_URL_ZIRALNI) — isti princip kao kod gotovinskog računa.
   const handleSacuvajRacun = async (stampaj: boolean) => {
@@ -5274,7 +5274,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           document.body,
         )}
 
-      {/* Nema dovoljno robe na stanju — erp.sp_racuni_unos je odbio unos */}
+      {/* Nema dovoljno robe na stanju — erp.racuni_unos je odbio unos */}
       {greskaNedovoljnogStanja &&
         ReactDOM.createPortal(
           <div

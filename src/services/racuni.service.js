@@ -287,7 +287,13 @@ export const unosRacuna = async (podaci) => {
   return withConnection(async (connection) => {
     try {
       const json = JSON.stringify(podaci);
-      const [rows] = await connection.query("CALL erp.sp_racuni_unos(?)", [
+      // STARA PROCEDURA — prebačeno na erp.racuni_unos (isti JSON, ista logika).
+      // U novoj proceduri stanje se skida prvo sa erp.artikli (glavno),
+      // a pomoćno sa ziralni.proizvodi.
+      // const [rows] = await connection.query("CALL erp.sp_racuni_unos(?)", [
+      //   json,
+      // ]);
+      const [rows] = await connection.query("CALL erp.racuni_unos(?)", [
         json,
       ]);
 

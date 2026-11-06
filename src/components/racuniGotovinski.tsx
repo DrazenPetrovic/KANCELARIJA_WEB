@@ -70,7 +70,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 const pad = (n: number) => String(n).padStart(2, "0");
 
-// Prepoznaje poruke koje erp.sp_racuni_unos vraća kad na stanju nema dovoljno
+// Prepoznaje poruke koje erp.racuni_unos vraća kad na stanju nema dovoljno
 // robe za neku stavku, npr. "Nema dovoljno robe na stanju. Proizvod: 394,
 // stanje: 6.000, trazeno: 8.000, nedostaje: 2.000" — može ih biti više u istoj
 // poruci ako procedura provjerava sve stavke odjednom.
@@ -308,7 +308,7 @@ interface Radnik {
 
 interface Partner {
   // = erp.partneri.partner_id (potvrđeno identično sa ziralni.partneri.sifra_partnera
-  // za svakog partnera), isto polje se šalje kao sifra_kupca u erp.sp_racuni_unos.
+  // za svakog partnera), isto polje se šalje kao sifra_kupca u erp.racuni_unos.
   sifra_partnera: number;
   naziv_partnera: string;
   jib: string;
@@ -445,7 +445,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
 
   const [spremanjeLoading, setSpremanjeLoading] = useState(false);
   const [spremanjeGreska, setSpremanjeGreska] = useState<string | null>(null);
-  // Popunjava se kad erp.sp_racuni_unos odbije unos jer za neku stavku nema
+  // Popunjava se kad erp.racuni_unos odbije unos jer za neku stavku nema
   // dovoljno robe na stanju — prikazuje se kao poseban modal (umjesto generičke
   // greške), sa nazivom/JM proizvoda uparenim iz artikli/stavke.
   // Obavještenje u modalu na sredini ekrana (nedovoljno stanje, zabrana prelaza
@@ -1672,7 +1672,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
     loadingPartneriRazni,
   ]);
 
-  // Šalje { header, items } proceduri erp.sp_racuni_unos preko POST /api/racuni/unos.
+  // Šalje { header, items } proceduri erp.racuni_unos preko POST /api/racuni/unos.
   // Procedura vraća kod=0 uz sifra_tabele/broj_racuna pri uspjehu, ili kod!=0 uz poruku
   // greške (šifrarnik grešaka: public/kodovi_unosa.txt) — tu poruku samo prosljeđujemo.
   // "stampaj" nakon uspješnog čuvanja otvara A5 print preview (RacunA5) — izdavanje
@@ -4238,7 +4238,7 @@ export function GotovinskiRacuni({ javiStatusPina }: GotovinskiRacuniProps = {})
           document.body,
         )}
 
-      {/* Nema dovoljno robe na stanju — erp.sp_racuni_unos je odbio unos */}
+      {/* Nema dovoljno robe na stanju — erp.racuni_unos je odbio unos */}
       {greskaNedovoljnogStanja &&
         ReactDOM.createPortal(
           <div
