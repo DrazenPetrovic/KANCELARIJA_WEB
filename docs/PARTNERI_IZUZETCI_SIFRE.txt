@@ -1,0 +1,23 @@
+PARTNERI IZUZETCI - SIFRE
+=========================
+
+Tabela: erp.partneri_izuzeti_od_ucitavanja
+Pregled: erp.partneri_izuzetci_pregeld()   (vraca samo aktivno = 1)
+Unos:    erp.partneri_izuzetci_unos(p_json)
+
+Polje izuzeti_iz_pregleda odredjuje za koji pregled vazi izuzetak:
+
+  1  Sintetika partnera
+
+(nove preglede dodavati ovdje sa sljedecim brojem; u kodu ih drzati u
+ src/utils/partneriIzuzetciSifre.ts)
+
+JSON za unos na listu:
+  { "sifra_partnera": 125, "izuzeti_iz_pregleda": 1, "aktivno": 1 }
+
+JSON za skidanje sa liste:
+  { "sifra_partnera": 125, "izuzeti_iz_pregleda": 1, "aktivno": 0 }
+
+API:
+  GET  /api/partneri/izuzetci?vrsta=1   -> aktivni izuzetci za tu vrstu
+  POST /api/partneri/izuzetci           -> body = JSON iznad

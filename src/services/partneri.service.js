@@ -75,6 +75,62 @@ export const getSintetikaPlaceniDokumenti = async (partnerId, konto) => {
   });
 };
 
+// Lista izuzetih partnera — erp.partneri_izuzetci_pregeld() vraća sve aktivne
+// izuzetke; vrsta (izuzeti_iz_pregleda) određuje za koji pregled važe — vidi
+// docs/PARTNERI_IZUZETCI_SIFRE.txt (1 = Sintetika partnera).
+export const getPartneriIzuzetci = async (vrsta) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.partneri_izuzetci_pregeld()",
+    );
+    const lista = Array.isArray(rows?.[0]) ? rows[0] : [];
+    return vrsta == null || vrsta === ""
+      ? lista
+      : lista.filter(
+          (r) => Number(r.izuzeti_iz_pregleda) === Number(vrsta),
+        );
+  });
+};
+
+// Dodavanje (aktivno 1) ili skidanje (aktivno 0) partnera sa liste izuzetaka —
+// erp.partneri_izuzetci_unos(p_json).
+export const sacuvajPartnerIzuzetak = async ({
+  sifra_partnera,
+  izuzeti_iz_pregleda,
+  aktivno,
+}) => {
+  const sifra = Number(sifra_partnera);
+  const vrsta = Number(izuzeti_iz_pregleda);
+  const akt = Number(aktivno);
+  if (!Number.isInteger(sifra) || sifra <= 0) {
+    throw new Error("Neispravna šifra partnera");
+  }
+  if (!Number.isInteger(vrsta) || vrsta <= 0) {
+    throw new Error("Neispravna vrsta izuzetka");
+  }
+  if (![0, 1].includes(akt)) {
+    throw new Error("Aktivno mora biti 0 ili 1");
+  }
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute(
+        "CALL erp.partneri_izuzetci_unos(?)",
+        [
+          JSON.stringify({
+            sifra_partnera: sifra,
+            izuzeti_iz_pregleda: vrsta,
+            aktivno: akt,
+          }),
+        ],
+      );
+    } catch (error) {
+      throw new Error(error.sqlMessage || error.message);
+    }
+    return Array.isArray(rows?.[0]) ? (rows[0][0] ?? null) : null;
+  });
+};
+
 export const dodajPartneraRaznog = async ({
   nazivPartnera,
   pripadaRadniku,

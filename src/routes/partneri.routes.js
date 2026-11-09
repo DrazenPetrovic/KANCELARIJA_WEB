@@ -11,6 +11,8 @@ router.get(
   PartneriController.getSintetikaPlaceniDokumenti,
 );
 router.post("/razni", PartneriController.createPartnerRazni);
+router.get("/izuzetci", PartneriController.getPartneriIzuzetci);
+router.post("/izuzetci", PartneriController.sacuvajPartnerIzuzetak);
 router.put("/razni/:sifra", PartneriController.updatePartnerRazni);
 router.get("/dodatne-lokacije", PartneriController.getPartneriDodatneLokacije);
 router.get("/dodatne-lokacije-pregled", PartneriController.getPartneriDodatneLokacijePregled);

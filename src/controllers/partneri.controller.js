@@ -50,6 +50,26 @@ export const getSintetikaPlaceniDokumenti = async (req, res) => {
   }
 };
 
+export const getPartneriIzuzetci = async (req, res) => {
+  try {
+    const data = await PartneriService.getPartneriIzuzetci(req.query.vrsta);
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Partneri izuzetci error:", error);
+    return res.status(500).json({ success: false, error: "Greška pri učitavanju liste izuzetaka" });
+  }
+};
+
+export const sacuvajPartnerIzuzetak = async (req, res) => {
+  try {
+    const data = await PartneriService.sacuvajPartnerIzuzetak(req.body ?? {});
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Partneri izuzetak unos error:", error);
+    return res.status(400).json({ success: false, error: error.message || "Greška pri izmjeni liste izuzetaka" });
+  }
+};
+
 export const createPartnerRazni = async (req, res) => {
   try {
     const { nazivPartnera, pripadaRadniku, sifraGrada, nazivGrada } = req.body;

@@ -7,6 +7,7 @@ import {
   ArrowUpDown,
   Banknote,
   CircleSlash2,
+  ListX,
   Loader2,
   Minus,
   Plus,
@@ -18,6 +19,7 @@ import {
   UserX,
 } from "lucide-react";
 import { usePrint } from "../context/PrintContext";
+import { PARTNERI_IZUZETCI_SIFRE } from "../utils/partneriIzuzetciSifre";
 import {
   SintetikaPartneraTemplate,
   type SintetikaPrintDetalji,
@@ -636,6 +638,112 @@ function StavkePartnera({
   );
 }
 
+// Dodavanje / skidanje partnera sa liste izuzetaka za Sintetiku partnera —
+// erp.partneri_izuzetci_unos (izuzeti_iz_pregleda = 1).
+function IzuzetakModal({
+  partner,
+  izuzet,
+  onClose,
+  onSacuvano,
+}: {
+  partner: SintetikaRed;
+  izuzet: boolean;
+  onClose: () => void;
+  onSacuvano: (sifra: number, izuzet: boolean) => void;
+}) {
+  const [cuva, setCuva] = useState(false);
+  const [greska, setGreska] = useState<string | null>(null);
+
+  const sacuvaj = async () => {
+    setCuva(true);
+    setGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/partneri/izuzetci`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sifra_partnera: partner.sifra_partnera,
+          izuzeti_iz_pregleda: PARTNERI_IZUZETCI_SIFRE.SINTETIKA_PARTNERA,
+          aktivno: izuzet ? 0 : 1,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) {
+        throw new Error(d.error || d.message || "Greška pri izmjeni liste izuzetaka");
+      }
+      onSacuvano(partner.sifra_partnera, !izuzet);
+      onClose();
+    } catch (e) {
+      setGreska(e instanceof Error ? e.message : "Greška pri izmjeni liste izuzetaka");
+      setCuva(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.55)" }}
+    >
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[460px] max-w-[95vw] flex flex-col overflow-hidden">
+        <div
+          className="px-6 py-4 flex items-center gap-3"
+          style={{ background: PRIMARY }}
+        >
+          <ListX size={18} className="text-white flex-shrink-0" />
+          <div className="font-bold text-white text-base">Lista izuzetaka</div>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 text-sm text-gray-600 dark:text-[#c5bfd8]">
+          <p>
+            {izuzet
+              ? "Partner je na listi izuzetaka za Sintetiku partnera. Da li ga želite skinuti sa liste?"
+              : "Da li želite staviti partnera na listu izuzetaka za Sintetiku partnera?"}
+          </p>
+          <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] bg-[#faf9fc] dark:bg-[#1e1a2d] px-4 py-3 space-y-1">
+            <div className="font-bold text-gray-800 dark:text-[#ede9f6]">
+              {partner.sifra_partnera} — {partner.naziv_partnera || "—"}
+            </div>
+            <div>
+              {[partner.adresa_partnera, partner.Naziv_grada]
+                .filter(Boolean)
+                .join(", ") || "—"}
+            </div>
+          </div>
+          <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+            Izmjena se odmah upisuje u bazu.
+          </div>
+          {greska && (
+            <div className="text-xs font-medium text-red-500">{greska}</div>
+          )}
+        </div>
+
+        <div className="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-[#2d2648]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={cuva}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] bg-white dark:bg-[#261f38] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-40"
+          >
+            Odustani
+          </button>
+          <button
+            type="button"
+            onClick={() => void sacuvaj()}
+            disabled={cuva}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 ${izuzet ? "bg-orange-600 hover:bg-orange-700" : "bg-blue-600 hover:bg-blue-700"}`}
+          >
+            {cuva && <Loader2 size={14} className="animate-spin" />}
+            {izuzet ? "Skini sa liste" : "Stavi na listu"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function SintetikaPartnera() {
   const [data, setData] = useState<SintetikaRed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -648,6 +756,30 @@ export function SintetikaPartnera() {
   const [sortPolje, setSortPolje] = useState<SortPolje>("sifra");
   const [sortSmjer, setSortSmjer] = useState<SmjerSortiranja>("asc");
   const [otvoreniRed, setOtvoreniRed] = useState<string | null>(null);
+  // Šifre partnera na listi izuzetaka za Sintetiku (izuzeti_iz_pregleda = 1).
+  const [izuzeti, setIzuzeti] = useState<Set<number>>(new Set());
+  const [sakrijIzuzete, setSakrijIzuzete] = useState(false);
+  const [izuzetakPartner, setIzuzetakPartner] = useState<SintetikaRed | null>(
+    null,
+  );
+
+  useEffect(() => {
+    fetch(
+      `${API_URL}/api/partneri/izuzetci?vrsta=${PARTNERI_IZUZETCI_SIFRE.SINTETIKA_PARTNERA}`,
+      { credentials: "include" },
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) =>
+        setIzuzeti(
+          new Set(
+            ((d.data ?? []) as { sifra_partnera: number }[]).map((r) =>
+              Number(r.sifra_partnera),
+            ),
+          ),
+        ),
+      )
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -681,6 +813,7 @@ export function SintetikaPartnera() {
             Number(r.ukupno_rac) !== 0 ||
             Number(r.ukupno_uplata) !== 0) &&
           (!sakrijSaldoNula || Number(r.saldo) !== 0) &&
+          (!sakrijIzuzete || !izuzeti.has(Number(r.sifra_partnera))) &&
           (!kontoFilter || String(r.konto) === kontoFilter) &&
           (!q ||
             String(r.sifra_partnera).includes(q) ||
@@ -701,6 +834,8 @@ export function SintetikaPartnera() {
     pretraga,
     prikaziBezPrometa,
     sakrijSaldoNula,
+    sakrijIzuzete,
+    izuzeti,
     kontoFilter,
     sortPolje,
     sortSmjer,
@@ -815,6 +950,7 @@ export function SintetikaPartnera() {
       sakrijSaldoNula ? "Bez partnera sa saldom 0" : "",
       pretraga.trim() ? `Pretraga: "${pretraga.trim()}"` : "",
     ]
+      .concat(sakrijIzuzete ? ["Bez partnera sa liste izuzetaka"] : [])
       .filter(Boolean)
       .join(" · ");
 
@@ -898,6 +1034,12 @@ export function SintetikaPartnera() {
               promijeni: () => setSakrijSaldoNula((v) => !v),
               Ikona: CircleSlash2,
               naziv: "Sakrij partnere sa saldom 0",
+            },
+            {
+              ukljuceno: sakrijIzuzete,
+              promijeni: () => setSakrijIzuzete((v) => !v),
+              Ikona: ListX,
+              naziv: `Sakrij partnere sa liste izuzetaka (${izuzeti.size})`,
             },
           ].map(({ ukljuceno, promijeni, Ikona, naziv }) => (
             <button
@@ -1083,6 +1225,7 @@ export function SintetikaPartnera() {
                   <TH right>Uplate</TH>
                   <TH right>Saldo</TH>
                   <TH>Konto</TH>
+                  <TH>Izuzetak</TH>
                 </tr>
               </thead>
               <tbody>
@@ -1119,10 +1262,18 @@ export function SintetikaPartnera() {
                             da kolona Saldo stane u tabelu. */}
                         <TD bold>
                           <span
-                            className="block max-w-[240px] truncate"
+                            className="flex items-center gap-1.5 max-w-[240px]"
                             title={r.naziv_partnera ?? undefined}
                           >
-                            {r.naziv_partnera || "—"}
+                            {izuzeti.has(Number(r.sifra_partnera)) && (
+                              <ListX
+                                size={13}
+                                className="flex-shrink-0 !text-orange-500"
+                              />
+                            )}
+                            <span className="truncate">
+                              {r.naziv_partnera || "—"}
+                            </span>
                           </span>
                         </TD>
                         <TD>
@@ -1166,11 +1317,33 @@ export function SintetikaPartnera() {
                             </span>
                           )}
                         </TD>
+                        <TD>
+                          {/* Stavi / skini partnera sa liste izuzetaka. */}
+                          <button
+                            type="button"
+                            onClick={() => setIzuzetakPartner(r)}
+                            title={
+                              izuzeti.has(Number(r.sifra_partnera))
+                                ? "Skini sa liste izuzetaka"
+                                : "Stavi na listu izuzetaka"
+                            }
+                            className="p-1 rounded-lg hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
+                          >
+                            <ListX
+                              size={15}
+                              className={
+                                izuzeti.has(Number(r.sifra_partnera))
+                                  ? "!text-orange-500"
+                                  : "!text-gray-400"
+                              }
+                            />
+                          </button>
+                        </TD>
                       </tr>
                       {otvoren && (
                         <tr>
                           <td
-                            colSpan={9}
+                            colSpan={10}
                             className="px-4 py-3 bg-[#faf9fc] dark:bg-[#1e1a2d]"
                           >
                             <StavkePartnera
@@ -1189,6 +1362,22 @@ export function SintetikaPartnera() {
           </div>
         )}
       </div>
+
+      {izuzetakPartner && (
+        <IzuzetakModal
+          partner={izuzetakPartner}
+          izuzet={izuzeti.has(Number(izuzetakPartner.sifra_partnera))}
+          onClose={() => setIzuzetakPartner(null)}
+          onSacuvano={(sifra, izuzet) =>
+            setIzuzeti((prev) => {
+              const novi = new Set(prev);
+              if (izuzet) novi.add(sifra);
+              else novi.delete(sifra);
+              return novi;
+            })
+          }
+        />
+      )}
     </div>
   );
 }
