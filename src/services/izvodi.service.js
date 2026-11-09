@@ -362,10 +362,11 @@ export const unosUplataIzvoda = async ({ stavke, sifraRadnika }) => {
 
 // Označavanje dokumenata plaćenim nakon unosa uplata —
 // erp.izvodi_uplate_azuriranje_placenosti(p_json). JSON niz:
-// [{ tip_dokumenta: "RACUN" | "KALKULACIJA", sifra_dokumenta, placen: 0 | 1 }].
+// [{ tip_dokumenta: "RACUN" | "KALKULACIJA" | "KUF" | "POCETNO_STANJE", sifra_dokumenta, placen: 0 | 1 }].
 // placen je obavezan — 1 označava dokument plaćenim, 0 vraća ga u neplaćene.
 // Sve ili ništa: ako jedan dokument ne postoji, ne mijenja se nijedan.
-const TIPOVI_DOKUMENTA_PLACENOST = ["RACUN", "KALKULACIJA"];
+const TIPOVI_DOKUMENTA_PLACENOST = ["RACUN", "KALKULACIJA", "KUF", "POCETNO_STANJE"];
+// Za POCETNO_STANJE sifra_dokumenta je sifra_partnera.
 
 export const azuriranjePlacenosti = async ({ dokumenti }) => {
   const json = dokumenti.map((d, idx) => {
@@ -402,6 +403,8 @@ export const azuriranjePlacenosti = async ({ dokumenti }) => {
     return {
       brojRacuna: Number(rezultat?.broj_racuna ?? 0),
       brojKalkulacija: Number(rezultat?.broj_kalkulacija ?? 0),
+      brojKuf: Number(rezultat?.broj_kuf ?? 0),
+      brojPocetnihStanja: Number(rezultat?.broj_pocetnih_stanja ?? 0),
     };
   });
 };

@@ -6,14 +6,23 @@ import {
   ArrowUp,
   ArrowUpDown,
   Banknote,
+  CircleSlash2,
   Loader2,
   Minus,
   Plus,
+  Printer,
   Search,
   ShoppingCart,
   Truck,
   Undo2,
+  UserX,
 } from "lucide-react";
+import { usePrint } from "../context/PrintContext";
+import {
+  SintetikaPartneraTemplate,
+  type SintetikaPrintDetalji,
+  type SintetikaPrintStavka,
+} from "../print/templates/SintetikaPartneraTemplate";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
@@ -163,11 +172,17 @@ interface KarticaStavka {
 // vrsta_prometa: 1 račun, 2 kalkulacija, 3 KUF, 4 početno stanje, 5 uplata.
 const VRSTA_PROMETA_UPLATA = 5;
 
-// Plaćenost se preko erp.izvodi_uplate_azuriranje_placenosti može označiti
-// samo za račune i kalkulacije — KUF nema tu mogućnost.
-const TIP_DOKUMENTA_PLACENOST: Record<number, "RACUN" | "KALKULACIJA"> = {
+// Plaćenost se označava preko erp.izvodi_uplate_azuriranje_placenosti
+// (vrsta prometa → tip dokumenta).
+const VRSTA_PROMETA_POCETNO_STANJE = 4;
+const TIP_DOKUMENTA_PLACENOST: Record<
+  number,
+  "RACUN" | "KALKULACIJA" | "KUF" | "POCETNO_STANJE"
+> = {
   1: "RACUN",
   2: "KALKULACIJA",
+  3: "KUF",
+  [VRSTA_PROMETA_POCETNO_STANJE]: "POCETNO_STANJE",
 };
 
 // Knjižna odobrenja (opis "KO MP-...", "KO VP-...", "KO USLUGA-...") se ne
@@ -175,12 +190,13 @@ const TIP_DOKUMENTA_PLACENOST: Record<number, "RACUN" | "KALKULACIJA"> = {
 const jeKnjiznoOdobrenje = (s: KarticaStavka) =>
   Number(s.vrsta_prometa) === 1 && !!s.opis?.startsWith("KO ");
 
-// "zbirna uplata - Izvod:..." → "Izvod:..."; samo "zbirna uplata" ostaje kako jeste.
+// Ako opis sadrži podatke o izvodu, prikazuje se samo to:
+// "zbirna uplata - Izvod:..." / "kompenzacija br 8/26 - Izvod:..." → "Izvod:...".
 // "MP - 10-42-G - Gotovinska uplata :Kupac#10492" → "MP - 10-42-G"; bez broja
 // računa ispred ("Gotovinska uplata :...") ostaje kako jeste.
 const prikazOpisa = (opis: string | null) =>
   opis
-    ?.replace(/^zbirna (uplata|isplata)\s*-\s*(?=\S)/i, "")
+    ?.replace(/^.*?\s-\s*(?=Izvod:)/i, "")
     .replace(/(\S)\s*-\s*Gotovinska uplata\b.*$/i, "$1") || "—";
 
 function TabelaStavki({
@@ -230,10 +246,7 @@ function TabelaStavki({
   };
 
   const ukupno = stavke.reduce((z, s) => z + iznos(s), 0);
-  // Najnoviji dokument prvi; stavke bez datuma (početno stanje) idu na kraj.
-  const vrijeme = (s: KarticaStavka) =>
-    s.datum ? new Date(s.datum.replace(" ", "T")).getTime() : -Infinity;
-  const sortirane = [...stavke].sort((a, b) => vrijeme(b) - vrijeme(a));
+  const sortirane = sortirajPoDatumu(stavke);
   return (
     <div className="flex-1 min-w-[360px]">
       <div
@@ -276,7 +289,7 @@ function TabelaStavki({
                     <span
                       className={
                         siriOpis
-                          ? "block min-w-[320px] max-w-[560px] whitespace-normal"
+                          ? "block max-w-[560px] whitespace-normal"
                           : "block max-w-[240px] truncate"
                       }
                       title={s.opis ?? undefined}
@@ -430,6 +443,84 @@ const formatDatum = (v: string | null) => {
   return `${dan}.${mjesec}.${godina}.`;
 };
 
+type PlaceniDokumenti = Record<number, Set<number>>;
+
+// Stavke kartice partnera (kupac ili dobavljač + bankovni transferi) i
+// plaćeni dokumenti — koristi se i za proširivanje reda i za štampu.
+async function ucitajDokumentePartnera(
+  sifraPartnera: number,
+  konto: number,
+): Promise<{ stavke: KarticaStavka[]; placeni: PlaceniDokumenti }> {
+  const ucitaj = (url: string) =>
+    fetch(url, { credentials: "include" }).then((r) =>
+      r.ok ? r.json() : Promise.reject(new Error("Greška pri učitavanju")),
+    );
+  const [k, p] = await Promise.all([
+    ucitaj(`${API_URL}/api/kartice/partner/${sifraPartnera}`),
+    ucitaj(
+      `${API_URL}/api/partneri/sintetika/${sifraPartnera}/placeni?konto=${konto}`,
+    ),
+  ]);
+  const kartica = konto === 1 ? k.data?.kupac : k.data?.dobavljac;
+  return {
+    // Transferi (13/14) dolaze kao posebna kartica "BANKA" i idu među uplate.
+    // Početno stanje nema izvor_id iz kartice — njegova šifra za
+    // označavanje plaćenosti je šifra partnera.
+    stavke: [
+      ...((kartica?.stavke ?? []) as KarticaStavka[]).map((s) =>
+        Number(s.vrsta_prometa) === VRSTA_PROMETA_POCETNO_STANJE
+          ? { ...s, izvor_id: sifraPartnera }
+          : s,
+      ),
+      ...((k.data?.banka?.stavke ?? []) as KarticaStavka[]),
+    ],
+    placeni: {
+      1: new Set(p.data?.racuni ?? []),
+      2: new Set(p.data?.kalkulacije ?? []),
+      3: new Set(p.data?.kuf ?? []),
+      4: new Set(p.data?.pocetnoStanje ?? []),
+    },
+  };
+}
+
+// Stavke do izabranog datuma, podijeljene na dokumente i uplate.
+const podijeliStavke = (stavke: KarticaStavka[], datum: string) => {
+  const prikazane = stavke.filter(
+    (s) => !s.datum || s.datum.slice(0, 10) <= datum,
+  );
+  return {
+    dokumenti: prikazane.filter(
+      (s) => Number(s.vrsta_prometa) !== VRSTA_PROMETA_UPLATA,
+    ),
+    uplate: prikazane.filter(
+      (s) => Number(s.vrsta_prometa) === VRSTA_PROMETA_UPLATA,
+    ),
+  };
+};
+
+// Kupcu dokumenti povećavaju dug (duguje), a uplate ga smanjuju (potražuje);
+// kod dobavljača je obrnuto. Pozajmice i povrati pretplate idu sa minusom.
+const iznosDokumentaZa = (konto: number) => (s: KarticaStavka) =>
+  konto === 1 ? Number(s.duguje) : Number(s.potrazuje);
+// Transfer: 13 (ka banci, ulaz novca) plus, 14 (od banke, izlaz novca) minus.
+const iznosUplateZa = (konto: number) => (s: KarticaStavka) =>
+  [13, 14].includes(Number(s.vrsta_uplate))
+    ? Number(s.duguje) - Number(s.potrazuje)
+    : konto === 1
+    ? Number(s.potrazuje) - Number(s.duguje)
+    : Number(s.duguje) - Number(s.potrazuje);
+
+// Najnoviji dokument prvi; stavke bez datuma (početno stanje) idu na kraj.
+const sortirajPoDatumu = (stavke: KarticaStavka[]) => {
+  const vrijeme = (s: KarticaStavka) =>
+    s.datum ? new Date(s.datum.replace(" ", "T")).getTime() : -Infinity;
+  return [...stavke].sort((a, b) => vrijeme(b) - vrijeme(a));
+};
+
+const jePlacen = (placeni: PlaceniDokumenti) => (s: KarticaStavka) =>
+  s.izvor_id != null &&
+  !!placeni[Number(s.vrsta_prometa)]?.has(Number(s.izvor_id));
+
 // Dokumenti partnera do izabranog datuma: kupac (konto 1) ima račune i uplate,
 // a dobavljač (konto 2) kalkulacije, KUF i uplate. Procedura nema parametar za
 // datum, pa se stavke filtriraju ovdje.
@@ -444,35 +535,17 @@ function StavkePartnera({
 }) {
   const [stavke, setStavke] = useState<KarticaStavka[]>([]);
   // Plaćeni dokumenti po vrsti prometa (1 račun, 2 kalkulacija, 3 KUF).
-  const [placeni, setPlaceni] = useState<Record<number, Set<number>>>({});
+  const [placeni, setPlaceni] = useState<PlaceniDokumenti>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const ucitaj = (url: string) =>
-      fetch(url, { credentials: "include" }).then((r) =>
-        r.ok ? r.json() : Promise.reject(),
-      );
-    Promise.all([
-      ucitaj(`${API_URL}/api/kartice/partner/${sifraPartnera}`),
-      ucitaj(
-        `${API_URL}/api/partneri/sintetika/${sifraPartnera}/placeni?konto=${konto}`,
-      ),
-    ])
-      .then(([k, p]) => {
+    ucitajDokumentePartnera(sifraPartnera, konto)
+      .then((d) => {
         if (cancelled) return;
-        const kartica = konto === 1 ? k.data?.kupac : k.data?.dobavljac;
-        // Transferi (13/14) dolaze kao posebna kartica "BANKA" i idu među uplate.
-        setStavke([
-          ...(kartica?.stavke ?? []),
-          ...(k.data?.banka?.stavke ?? []),
-        ]);
-        setPlaceni({
-          1: new Set(p.data?.racuni ?? []),
-          2: new Set(p.data?.kalkulacije ?? []),
-          3: new Set(p.data?.kuf ?? []),
-        });
+        setStavke(d.stavke);
+        setPlaceni(d.placeni);
       })
       .catch(() => {
         if (!cancelled) setError("Greška pri učitavanju dokumenata");
@@ -485,27 +558,12 @@ function StavkePartnera({
     };
   }, [sifraPartnera, konto]);
 
-  const prikazane = useMemo(
-    () => stavke.filter((s) => !s.datum || s.datum.slice(0, 10) <= datum),
+  const { dokumenti, uplate } = useMemo(
+    () => podijeliStavke(stavke, datum),
     [stavke, datum],
   );
-  const dokumenti = prikazane.filter(
-    (s) => Number(s.vrsta_prometa) !== VRSTA_PROMETA_UPLATA,
-  );
-  const uplate = prikazane.filter(
-    (s) => Number(s.vrsta_prometa) === VRSTA_PROMETA_UPLATA,
-  );
-  // Kupcu dokumenti povećavaju dug (duguje), a uplate ga smanjuju (potražuje);
-  // kod dobavljača je obrnuto. Pozajmice i povrati pretplate idu sa minusom.
-  const iznosDokumenta = (s: KarticaStavka) =>
-    konto === 1 ? Number(s.duguje) : Number(s.potrazuje);
-  // Transfer: 13 (ka banci, ulaz novca) plus, 14 (od banke, izlaz novca) minus.
-  const iznosUplate = (s: KarticaStavka) =>
-    [13, 14].includes(Number(s.vrsta_uplate))
-      ? Number(s.duguje) - Number(s.potrazuje)
-      : konto === 1
-      ? Number(s.potrazuje) - Number(s.duguje)
-      : Number(s.duguje) - Number(s.potrazuje);
+  const iznosDokumenta = iznosDokumentaZa(konto);
+  const iznosUplate = iznosUplateZa(konto);
 
   // Isto kao kod unosa uplata iz izvoda — erp.izvodi_uplate_azuriranje_placenosti.
   const promijeniPlacenost = async (s: KarticaStavka, placen: 0 | 1) => {
@@ -565,10 +623,7 @@ function StavkePartnera({
         naslov={konto === 1 ? "Računi" : "Kalkulacije i KUF"}
         stavke={dokumenti}
         iznos={iznosDokumenta}
-        placen={(s) =>
-          s.izvor_id != null &&
-          !!placeni[Number(s.vrsta_prometa)]?.has(Number(s.izvor_id))
-        }
+        placen={jePlacen(placeni)}
         promijeniPlacenost={promijeniPlacenost}
       />
       <TabelaStavki
@@ -651,6 +706,145 @@ export function SintetikaPartnera() {
     sortSmjer,
   ]);
 
+  // Zbir salda filtriranih partnera, posebno za kupce i dobavljače.
+  const rekapitulacija = useMemo(
+    () =>
+      [
+        { naziv: "Kupci", konto: 1, dobavljac: false },
+        { naziv: "Dobavljači", konto: 2, dobavljac: true },
+      ].map((g) => {
+        const lista = filtrirani.filter((r) => Number(r.konto) === g.konto);
+        return {
+          ...g,
+          broj: lista.length,
+          saldo: lista.reduce((z, r) => z + Number(r.saldo ?? 0), 0),
+        };
+      }),
+    [filtrirani],
+  );
+
+  const { openPrint } = usePrint();
+  const [stampaMeni, setStampaMeni] = useState(false);
+  // Tekst napretka dok se za proširenu štampu učitavaju dokumenti partnera.
+  const [pripremaStampe, setPripremaStampe] = useState<string | null>(null);
+  const [greskaStampe, setGreskaStampe] = useState<string | null>(null);
+
+  // Štampa tačno ono što je trenutno filtrirano i sortirano u tabeli.
+  const stampaj = async (prosireno: boolean) => {
+    setStampaMeni(false);
+    setGreskaStampe(null);
+    const redovi = filtrirani;
+
+    let detalji = new Map<string, SintetikaPrintDetalji>();
+    if (prosireno) {
+      let gotovo = 0;
+      setPripremaStampe(`Učitavanje dokumenata 0 / ${redovi.length}`);
+      try {
+        // Po nekoliko partnera paralelno, da se server ne zatrpa zahtjevima.
+        const PARALELNO = 6;
+        for (let i = 0; i < redovi.length; i += PARALELNO) {
+          const dio = redovi.slice(i, i + PARALELNO);
+          const rezultati = await Promise.all(
+            dio.map((r) =>
+              ucitajDokumentePartnera(r.sifra_partnera, Number(r.konto)),
+            ),
+          );
+          rezultati.forEach((d, j) => {
+            const r = dio[j];
+            const konto = Number(r.konto);
+            const { dokumenti, uplate } = podijeliStavke(d.stavke, datum);
+            const placen = jePlacen(d.placeni);
+            const iznosDok = iznosDokumentaZa(konto);
+            const iznosUpl = iznosUplateZa(konto);
+            const uStavke = (
+              lista: KarticaStavka[],
+              iznos: (s: KarticaStavka) => number,
+              saPlacenim: boolean,
+            ): SintetikaPrintStavka[] =>
+              sortirajPoDatumu(lista).map((s) => ({
+                datum: formatDatum(s.datum),
+                vrsta: s.vrsta_uplate_opis || s.vrsta_prometa_opis,
+                opis: prikazOpisa(s.opis),
+                iznos: formatIznos(iznos(s)),
+                placen: saPlacenim && placen(s),
+              }));
+            const zbir = (
+              lista: KarticaStavka[],
+              iznos: (s: KarticaStavka) => number,
+            ) => formatIznos(lista.reduce((z, s) => z + iznos(s), 0));
+            detalji.set(`${r.sifra_partnera}-${r.konto}`, {
+              naslovDokumenata: konto === 1 ? "Računi" : "Kalkulacije i KUF",
+              dokumenti: uStavke(dokumenti, iznosDok, true),
+              ukupnoDokumenti: zbir(dokumenti, iznosDok),
+              uplate: uStavke(uplate, iznosUpl, false),
+              ukupnoUplate: zbir(uplate, iznosUpl),
+            });
+          });
+          gotovo += dio.length;
+          setPripremaStampe(
+            `Učitavanje dokumenata ${gotovo} / ${redovi.length}`,
+          );
+        }
+      } catch {
+        setGreskaStampe("Greška pri učitavanju dokumenata za štampu");
+        detalji = new Map();
+        setPripremaStampe(null);
+        return;
+      }
+      setPripremaStampe(null);
+    }
+
+    const ukupnoZa = (naziv: string, lista: SintetikaRed[]) => ({
+      naziv,
+      racuni: formatIznos(lista.reduce((z, r) => z + Number(r.ukupno_rac ?? 0), 0)),
+      uplate: formatIznos(
+        lista.reduce((z, r) => z + Number(r.ukupno_uplata ?? 0), 0),
+      ),
+      saldo: formatIznos(lista.reduce((z, r) => z + Number(r.saldo ?? 0), 0)),
+    });
+    const kupci = redovi.filter((r) => Number(r.konto) === 1);
+    const dobavljaci = redovi.filter((r) => Number(r.konto) === 2);
+    const ukupno = [
+      ...(kupci.length ? [ukupnoZa("Ukupno kupci", kupci)] : []),
+      ...(dobavljaci.length ? [ukupnoZa("Ukupno dobavljači", dobavljaci)] : []),
+    ];
+
+    const filter = [
+      kontoFilter === "1" ? "Samo kupci" : kontoFilter === "2" ? "Samo dobavljači" : "",
+      prikaziBezPrometa ? "Uključeni partneri bez prometa" : "",
+      sakrijSaldoNula ? "Bez partnera sa saldom 0" : "",
+      pretraga.trim() ? `Pretraga: "${pretraga.trim()}"` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    openPrint({
+      title: `Sintetika partnera ${formatDatum(datum)}`,
+      orientation: "portrait",
+      format: "A4",
+      component: (
+        <SintetikaPartneraTemplate
+          datum={formatDatum(datum)}
+          filter={filter}
+          prosireno={prosireno}
+          ukupno={ukupno}
+          redovi={redovi.map((r) => ({
+            kljuc: `${r.sifra_partnera}-${r.konto}`,
+            sifra: r.sifra_partnera,
+            naziv: r.naziv_partnera || "—",
+            adresa: r.adresa_partnera || "—",
+            grad: r.Naziv_grada || "—",
+            racuni: formatIznos(r.ukupno_rac),
+            uplate: formatIznos(r.ukupno_uplata),
+            saldo: formatIznos(r.saldo),
+            konto: Number(r.konto) === 2 ? "D" : "K",
+            detalji: detalji.get(`${r.sifra_partnera}-${r.konto}`) ?? null,
+          }))}
+        />
+      ),
+    });
+  };
+
   const promijeniSortiranje = (polje: SortPolje) => {
     if (sortPolje === polje) {
       setSortSmjer((s) => (s === "asc" ? "desc" : "asc"));
@@ -661,9 +855,10 @@ export function SintetikaPartnera() {
   };
 
   return (
-    <div className="space-y-2 w-fit max-w-full mx-auto">
-      {/* Pretraga */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+    <div className="space-y-2 w-full">
+      {/* Pretraga — 20% šira od tabele (84% naspram 70%). */}
+      <div className="w-[84%] mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+        <div className="flex flex-wrap items-center gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-72">
             <Search
@@ -691,36 +886,150 @@ export function SintetikaPartnera() {
             <option value="2">Dobavljači</option>
           </select>
 
-          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#c5bfd8] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={prikaziBezPrometa}
-              onChange={(e) => setPrikaziBezPrometa(e.target.checked)}
-              className="w-4 h-4 cursor-pointer accent-[#785E9E]"
-            />
-            Prikaži i partnere bez prometa
-          </label>
+          {[
+            {
+              ukljuceno: prikaziBezPrometa,
+              promijeni: () => setPrikaziBezPrometa((v) => !v),
+              Ikona: UserX,
+              naziv: "Prikaži i partnere bez prometa",
+            },
+            {
+              ukljuceno: sakrijSaldoNula,
+              promijeni: () => setSakrijSaldoNula((v) => !v),
+              Ikona: CircleSlash2,
+              naziv: "Sakrij partnere sa saldom 0",
+            },
+          ].map(({ ukljuceno, promijeni, Ikona, naziv }) => (
+            <button
+              key={naziv}
+              type="button"
+              onClick={promijeni}
+              title={naziv}
+              aria-pressed={ukljuceno}
+              className={`p-2 rounded-xl border transition-colors ${
+                ukljuceno
+                  ? "bg-[#785E9E] border-[#785E9E] text-white"
+                  : "border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#9f97b8] hover:border-[#785E9E] hover:text-[#785E9E]"
+              }`}
+            >
+              <Ikona className="w-4 h-4" />
+            </button>
+          ))}
+        </div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#c5bfd8] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={sakrijSaldoNula}
-              onChange={(e) => setSakrijSaldoNula(e.target.checked)}
-              className="w-4 h-4 cursor-pointer accent-[#785E9E]"
-            />
-            Sakrij partnere sa saldom 0
-          </label>
-
+        {/* Rekapitulacija salda po kupcima i dobavljačima (prati filtere). */}
+        <div className="flex-1 flex justify-center">
           {!loading && !error && (
-            <span className="ml-auto text-xs text-gray-400 dark:text-[#5f5878]">
+            <table className="text-xs">
+              <tbody>
+                {rekapitulacija.map((r) => (
+                  <tr
+                    key={r.naziv}
+                    className={
+                      r.dobavljac
+                        ? "text-red-500"
+                        : "text-gray-700 dark:text-[#c5bfd8]"
+                    }
+                  >
+                    <td className="px-3 py-0.5 font-semibold">
+                      <span className="inline-flex items-center gap-1.5">
+                        {r.dobavljac ? <Truck size={13} /> : <ShoppingCart size={13} />}
+                        {r.naziv}
+                      </span>
+                    </td>
+                    <td className="px-3 py-0.5 text-right">{r.broj}</td>
+                    <td className="px-3 py-0.5 text-right font-bold whitespace-nowrap">
+                      {formatIznos(r.saldo)}
+                    </td>
+                  </tr>
+                ))}
+                {/* Razlika = saldo kupaca − saldo dobavljača. */}
+                <tr className="border-t border-gray-200 dark:border-[#3a3158] text-gray-800 dark:text-[#ede9f6]">
+                  <td className="px-3 pt-1 font-bold">Razlika</td>
+                  <td className="px-3 pt-1">{""}</td>
+                  <td className="px-3 pt-1 text-right font-bold whitespace-nowrap">
+                    {formatIznos(
+                      (rekapitulacija[0]?.saldo ?? 0) -
+                        (rekapitulacija[1]?.saldo ?? 0),
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setStampaMeni((v) => !v)}
+              disabled={
+                loading || !!error || filtrirani.length === 0 || !!pripremaStampe
+              }
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110 disabled:opacity-40"
+              style={{ background: PRIMARY }}
+            >
+              {pripremaStampe ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Printer size={15} />
+              )}
+              {pripremaStampe ?? "Štampaj"}
+            </button>
+            {stampaMeni && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setStampaMeni(false)}
+                />
+                <div className="absolute right-0 mt-1 z-20 w-60 bg-white dark:bg-[#261f38] rounded-xl border border-gray-100 dark:border-[#2d2648] shadow-lg overflow-hidden">
+                  {[
+                    {
+                      prosireno: false,
+                      naziv: "Osnovna tabela",
+                      opis: "Samo partneri i saldo",
+                    },
+                    {
+                      prosireno: true,
+                      naziv: "Proširena",
+                      opis: "Uz svakog partnera računi i uplate",
+                    },
+                  ].map((o) => (
+                    <button
+                      key={o.naziv}
+                      type="button"
+                      onClick={() => void stampaj(o.prosireno)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
+                    >
+                      <div className="text-sm font-semibold text-gray-800 dark:text-[#ede9f6]">
+                        {o.naziv}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-[#7d7498]">
+                        {o.opis}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          {!loading && !error && (
+            <span className="text-xs text-gray-400 dark:text-[#5f5878]">
               Ukupno: {filtrirani.length} / {data.length}
+            </span>
+          )}
+        </div>
+          {greskaStampe && (
+            <span className="w-full text-right text-xs text-red-500 dark:text-red-400">
+              {greskaStampe}
             </span>
           )}
         </div>
       </div>
 
       {/* Tabela */}
-      <div className="w-full min-w-[320px] bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="w-[70%] mx-auto min-w-[320px] bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-20 gap-3">
             <Loader2
@@ -750,7 +1059,7 @@ export function SintetikaPartnera() {
 
         {!loading && !error && filtrirani.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="table-auto text-sm">
+            <table className="w-full table-auto text-sm">
               <thead>
                 <tr>
                   <TH>{null}</TH>
@@ -806,9 +1115,32 @@ export function SintetikaPartnera() {
                             {r.sifra_partnera}
                           </span>
                         </TD>
-                        <TD bold>{r.naziv_partnera || "—"}</TD>
-                        <TD>{r.adresa_partnera || "—"}</TD>
-                        <TD>{r.Naziv_grada || "—"}</TD>
+                        {/* Dugi tekstovi se skraćuju (pun tekst na hover)
+                            da kolona Saldo stane u tabelu. */}
+                        <TD bold>
+                          <span
+                            className="block max-w-[240px] truncate"
+                            title={r.naziv_partnera ?? undefined}
+                          >
+                            {r.naziv_partnera || "—"}
+                          </span>
+                        </TD>
+                        <TD>
+                          <span
+                            className="block max-w-[180px] truncate"
+                            title={r.adresa_partnera ?? undefined}
+                          >
+                            {r.adresa_partnera || "—"}
+                          </span>
+                        </TD>
+                        <TD>
+                          <span
+                            className="block max-w-[120px] truncate"
+                            title={r.Naziv_grada ?? undefined}
+                          >
+                            {r.Naziv_grada || "—"}
+                          </span>
+                        </TD>
                         <TD right>{formatIznos(r.ukupno_rac)}</TD>
                         <TD right>{formatIznos(r.ukupno_uplata)}</TD>
                         <TD right bold>

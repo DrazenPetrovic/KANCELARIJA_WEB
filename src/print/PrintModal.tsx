@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Printer, ZoomIn, ZoomOut, CheckCircle2, Loader2, FileDown } from "lucide-react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
-import { PrintJob } from "../context/PrintContext";
+import type { jsPDF } from "jspdf";
+import { PrintJob, usePrint } from "../context/PrintContext";
+import { pdfIzElementa, VELIKI_DOKUMENT_STRANA } from "../utils/pdfIzElementa";
 import {
   bytesToBase64,
   getPrintServiceStatus,
@@ -41,6 +41,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
   const [contentHeightPx, setContentHeightPx] = useState(0);
 
   const allowBrowserPrintFallback = job.allowBrowserPrintFallback !== false;
+  const { pokreniUPozadini } = usePrint();
 
   const paperW =
     orientation === "portrait"
@@ -54,6 +55,7 @@ export function PrintModal({ job, onClose, printerName }: Props) {
 
   const pageCount =
     contentHeightPx > 0 ? Math.max(1, Math.ceil(contentHeightPx / paperH)) : 1;
+  const velikiDokument = pageCount > VELIKI_DOKUMENT_STRANA;
 
   useEffect(() => {
     const el = directPrintRef.current;
@@ -122,74 +124,15 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       throw { code: "INVALID_REQUEST", message: "Nema izvora za štampu" };
     }
 
-    const renderScale = 2;
-    const canvas = await html2canvas(printSource, {
-      backgroundColor: "#ffffff",
-      scale: renderScale,
-      useCORS: true,
-      logging: false,
-      windowWidth: Math.ceil(paperW),
-    });
+    // Pusti browser da iscrta overlay ("Kreiranje PDF-a...") prije nego
+    // html2canvas zauzme glavnu nit — inače korisnik ne vidi da je kliknuo.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
 
-    const pdf = new jsPDF({
-      orientation,
-      unit: "mm",
-      format,
-      compress: true,
-    });
-
-    const pageWidthMm = format === "A4" ? (orientation === "portrait" ? 210 : 297) : (orientation === "portrait" ? 148 : 210);
-    const pageHeightMm = format === "A4" ? (orientation === "portrait" ? 297 : 210) : (orientation === "portrait" ? 210 : 148);
-
-    const pageHeightPx = Math.round(paperH * renderScale);
-    const pageWidthPx = canvas.width;
-    const totalHeightPx = canvas.height;
-
-    let renderedHeightPx = 0;
-    let pageIndex = 0;
-
-    while (renderedHeightPx < totalHeightPx) {
-      const sliceHeightPx = Math.min(pageHeightPx, totalHeightPx - renderedHeightPx);
-
-      const pageCanvas = document.createElement("canvas");
-      pageCanvas.width = pageWidthPx;
-      pageCanvas.height = sliceHeightPx;
-      const ctx = pageCanvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageWidthPx, sliceHeightPx);
-        ctx.drawImage(
-          canvas,
-          0,
-          renderedHeightPx,
-          pageWidthPx,
-          sliceHeightPx,
-          0,
-          0,
-          pageWidthPx,
-          sliceHeightPx,
-        );
-      }
-
-      if (pageIndex > 0) pdf.addPage(format, orientation);
-
-      const sliceHeightMm = (sliceHeightPx / pageHeightPx) * pageHeightMm;
-      pdf.addImage(
-        pageCanvas.toDataURL("image/png"),
-        "PNG",
-        0,
-        0,
-        pageWidthMm,
-        sliceHeightMm,
-        undefined,
-        "FAST",
-      );
-
-      renderedHeightPx += sliceHeightPx;
-      pageIndex++;
-    }
-
-    return pdf;
+    // Iscrtava se u dijelovima — jedan ogroman canvas za dugi dokument
+    // zamrzava stranicu.
+    return pdfIzElementa(printSource, { format, orientation });
   };
 
   const sendDirectPrintFromPreview = async (status: PrintServiceStatus) => {
@@ -263,6 +206,30 @@ export function PrintModal({ job, onClose, printerName }: Props) {
       return;
     }
 
+    // Veliki dokument: priprema i slanje idu u pozadini, modal se zatvara.
+    if (velikiDokument) {
+      const resolvedPrinter = resolvePrinterName(latestStatus);
+      if (!resolvedPrinter) {
+        setPrintError(mapPrintError("PRINTER_NOT_FOUND"));
+        setIsPrinting(false);
+        return;
+      }
+      pokreniUPozadini({
+        naziv: job.title,
+        component: job.component,
+        format,
+        orientation,
+        akcija: {
+          tip: "stampa",
+          printerName: resolvedPrinter,
+          copies: job.copies ?? 1,
+          documentType: job.title.toLowerCase(),
+        },
+      });
+      onClose();
+      return;
+    }
+
     try {
       await sendDirectPrintFromPreview(latestStatus);
       handlePrintSuccess();
@@ -281,6 +248,20 @@ export function PrintModal({ job, onClose, printerName }: Props) {
 
   const handleSaveAsPdf = async () => {
     setPrintError(null);
+
+    // Veliki dokument: PDF se pravi u pozadini, modal se zatvara.
+    if (velikiDokument) {
+      pokreniUPozadini({
+        naziv: job.title,
+        component: job.component,
+        format,
+        orientation,
+        akcija: { tip: "pdf", nazivFajla: `${sanitizeFileName(job.title)}.pdf` },
+      });
+      onClose();
+      return;
+    }
+
     setIsSavingPdf(true);
     try {
       const pdf = await buildPdf();

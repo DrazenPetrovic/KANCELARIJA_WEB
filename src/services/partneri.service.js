@@ -47,6 +47,11 @@ export const getSintetikaPlaceniDokumenti = async (partnerId, konto) => {
       const [rows] = await connection.execute(sql, [partnerId]);
       return rows.map((r) => Number(r.sifra));
     };
+    // Početno stanje nema svoju šifru — jedan red po partneru, šifra je
+    // sifra_partnera.
+    const pocetnoStanje = await sifre(
+      "SELECT sifra_partnera AS sifra FROM ziralni.pocetno_stanje_partnera WHERE sifra_partnera = ? AND racun_placen = 1",
+    );
     if (Number(konto) === 1) {
       return {
         racuni: await sifre(
@@ -54,9 +59,11 @@ export const getSintetikaPlaceniDokumenti = async (partnerId, konto) => {
         ),
         kalkulacije: [],
         kuf: [],
+        pocetnoStanje,
       };
     }
     return {
+      pocetnoStanje,
       racuni: [],
       kalkulacije: await sifre(
         "SELECT sifra_kalkulacije AS sifra FROM ziralni.kalkulacija_gl WHERE sifra_dobavljaca = ? AND racun_placen = 1",

@@ -3338,7 +3338,8 @@ export function Dashboard({
                       activeSection === "artikli-lager-liste" ||
                       activeSection === "racuni-knjizna-virmanski" ||
                       activeSection === "ulazi-kalkulacija-storno" ||
-                      activeSection === "analitika-kuf"
+                      activeSection === "analitika-kuf" ||
+                      activeSection === "partneri-sintetika"
                     ? "pt-[10px] pb-8"
                     : activeSection === "trgovacke-knjige-veleprodaja"
                       ? "pt-[22px] pb-8"
