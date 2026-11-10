@@ -22,10 +22,19 @@ const ACCENT = "#8FC74A";
 // Partner koji se ne prikazuje u izboru — za njega se ne vodi stanje (kartica).
 const IZOSTAVLJENI_PARTNER_ID = 300;
 
+// Šifra vrste prometa "početno stanje" (vidi SintetikaPartnera.tsx).
+const VRSTA_PROMETA_POCETNO_STANJE = 4;
+
 interface Partner {
   partner_id: number;
   naziv: string;
   skraceni_naziv: string | null;
+  jib: string | null;
+  pib: string | null;
+  adresa: string | null;
+  grad: string | null;
+  postanski_broj: string | null;
+  drzava: string | null;
 }
 
 // Jedna stavka (red prometa) u kartici — vidi erp.kartica_partnera_pregled.
@@ -397,7 +406,14 @@ export function KarticaPartnera() {
   // duguje/potražuje dio se izdvaja iz ukupnog zaduženja/razduženja da bi ono
   // prikazivalo samo stvarni promet tokom perioda (isto kao stvarniUlaz kod
   // kartice proizvoda).
-  const pocetnaStavka = aktivnaKartica?.stavke?.[0] ?? null;
+  // Partner ne mora imati početno stanje (npr. novi partner) — tada je prva
+  // stavka običan promet i ne smije se tretirati kao početno stanje.
+  const prvaStavka = aktivnaKartica?.stavke?.[0] ?? null;
+  const pocetnaStavka =
+    prvaStavka &&
+    Number(prvaStavka.vrsta_prometa) === VRSTA_PROMETA_POCETNO_STANJE
+      ? prvaStavka
+      : null;
   const pocetnoStanje = pocetnaStavka?.saldo ?? 0;
   const stvarnoZaduzenje =
     (aktivnaKartica?.ukupno_duguje ?? 0) - (pocetnaStavka?.duguje ?? 0);
@@ -407,25 +423,10 @@ export function KarticaPartnera() {
   return (
     <div className="space-y-4">
       <div className="relative flex flex-col lg:flex-row lg:items-center gap-3">
-      {/* Naslov — centriran na sredini ekrana (desktop), iznad pretrage na mobilnom */}
-      <div className="order-1 lg:order-2 flex items-center gap-3 lg:absolute lg:left-1/2 lg:top-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:pointer-events-none">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50] flex-shrink-0">
-          <CreditCard size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6] whitespace-nowrap">
-            Kartica partnera
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878] whitespace-nowrap">
-            Pregled stanja duguje/potražuje po partneru od početka godine
-          </p>
-        </div>
-      </div>
-
-      {/* Izbor partnera — lijevi ugao, u istoj visini kao naslov */}
-      <div className="order-2 lg:order-1 w-full lg:w-[30%] flex-shrink-0">
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
-        <div className="flex items-end gap-2">
+      {/* Izbor partnera + generalije odabranog partnera */}
+      <div className="w-full">
+      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-6">
+        <div className="flex items-end gap-2 w-full lg:w-[30%] flex-shrink-0">
           <div className="flex-1 min-w-0">
             <label className="block text-xs font-semibold text-gray-500 dark:text-[#a99fc2] mb-1">
               Partner
@@ -515,6 +516,49 @@ export function KarticaPartnera() {
             Prikaži
           </button>
         </div>
+
+        {odabraniPartner && (
+          <div className="flex-1 min-w-0 pt-3 border-t lg:pt-0 lg:border-t-0 lg:pl-6 lg:border-l border-gray-100 dark:border-[#2d2648] text-xs">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
+                <User size={15} style={{ color: PRIMARY }} />
+              </div>
+              <span
+                className="text-base font-bold truncate"
+                style={{ color: PRIMARY }}
+              >
+                {odabraniPartner.naziv}
+              </span>
+              <span
+                className="px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0"
+                style={{ background: `${PRIMARY}1f`, color: PRIMARY }}
+              >
+                ID: {odabraniPartner.partner_id}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+            <div className="text-gray-500 dark:text-[#a99fc2]">
+              <span className="text-gray-400 dark:text-[#5f5878]">Adresa: </span>
+              {odabraniPartner.adresa || "–"}
+            </div>
+            <div className="text-gray-500 dark:text-[#a99fc2]">
+              <span className="text-gray-400 dark:text-[#5f5878]">Grad: </span>
+              {[odabraniPartner.postanski_broj, odabraniPartner.grad]
+                .filter(Boolean)
+                .join(" ") || "–"}
+              {odabraniPartner.drzava ? `, ${odabraniPartner.drzava}` : ""}
+            </div>
+            <div className="text-gray-500 dark:text-[#a99fc2]">
+              <span className="text-gray-400 dark:text-[#5f5878]">JIB: </span>
+              {odabraniPartner.jib || "–"}
+            </div>
+            <div className="text-gray-500 dark:text-[#a99fc2]">
+              <span className="text-gray-400 dark:text-[#5f5878]">PIB: </span>
+              {odabraniPartner.pib || "–"}
+            </div>
+            </div>
+          </div>
+        )}
       </div>
       </div>
       </div>
@@ -667,52 +711,44 @@ export function KarticaPartnera() {
                   <div className="overflow-x-auto">
                     <table className="table-auto">
                       <thead>
-                        <tr style={{ background: `${PRIMARY}1f` }}>
+                        <tr style={{ background: PRIMARY }}>
                           <th
-                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Rb
                           </th>
                           <th
-                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Datum
                           </th>
                           <th
-                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Vrsta prometa
                           </th>
                           <th
-                            className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Opis
                           </th>
                           <th
-                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Ref.
                           </th>
                           <th
-                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Duguje
                           </th>
                           <th
-                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Potražuje
                           </th>
                           <th
-                            className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wide"
-                            style={{ color: PRIMARY }}
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
                           >
                             Saldo
                           </th>
@@ -741,13 +777,13 @@ export function KarticaPartnera() {
                                 : "bg-white dark:bg-[#261f38]"
                             }`}
                           >
-                            <td className="px-3 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.rb}
                             </td>
-                            <td className="px-3 py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                               {formatDatum(s.datum)}
                             </td>
-                            <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.vrsta_prometa_opis}
                               {s.vrsta_uplate_opis && (
                                 <div
@@ -758,23 +794,23 @@ export function KarticaPartnera() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.opis ?? "–"}
                             </td>
-                            <td className="px-3 py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
                               {s.izvor_id ?? "–"}
                             </td>
-                            <td className="px-3 py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
+                            <td className="px-[18px] py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
                               {s.duguje ? formatIznos(s.duguje) : "–"}
                             </td>
                             <td
-                              className="px-3 py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
+                              className="px-[18px] py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
                               style={{ color: ACCENT }}
                             >
                               {s.potrazuje ? formatIznos(s.potrazuje) : "–"}
                             </td>
                             <td
-                              className="px-3 py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
+                              className="px-[18px] py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
                               style={{ color: PRIMARY }}
                             >
                               {formatIznos(s.saldo)}

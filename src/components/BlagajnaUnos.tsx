@@ -199,6 +199,7 @@ export function BlagajnaUnos() {
   const [racuniLoading, setRacuniLoading] = useState(true);
   const [racuniGreska, setRacuniGreska] = useState<string | null>(null);
   const [pretragaRacuna, setPretragaRacuna] = useState("");
+  const [skenPoruka, setSkenPoruka] = useState<string | null>(null);
   const [sacuvane, setSacuvane] = useState<SacuvanaUplata[]>([]);
 
   // Forma
@@ -321,6 +322,7 @@ export function BlagajnaUnos() {
       (r) =>
         !dodatiRacuni.has(Number(r.sifra_tabele)) &&
         (!q ||
+          String(r.sifra_tabele) === q ||
           oznakaRacuna(r).toLowerCase().includes(q) ||
           (r.naziv_partnera ?? "").toLowerCase().includes(q)),
     );
@@ -367,6 +369,32 @@ export function BlagajnaUnos() {
     setOpis(`Uplata po računu ${oznakaRacuna(r)}`);
     setNapomena("Gotovinska uplata");
     setGreskaForme(null);
+  };
+
+  // Skener bar koda upisuje sifra_tabele u pretragu i šalje Enter.
+  const obradiSkeniranje = () => {
+    const kod = pretragaRacuna.trim();
+    if (!/^\d+$/.test(kod)) {
+      if (filtriraniRacuni.length === 1) {
+        izaberiRacun(filtriraniRacuni[0]);
+        setPretragaRacuna("");
+        setSkenPoruka(null);
+      }
+      return;
+    }
+    const sifra = Number(kod);
+    if (dodatiRacuni.has(sifra)) {
+      setSkenPoruka(`Račun ${kod} je već dodat u stavke`);
+    } else {
+      const r = racuni.find((x) => Number(x.sifra_tabele) === sifra);
+      if (r) {
+        izaberiRacun(r);
+        setSkenPoruka(null);
+      } else {
+        setSkenPoruka(`Račun ${kod} nije među neplaćenim gotovinskim računima`);
+      }
+    }
+    setPretragaRacuna("");
   };
 
   const ocistiFormu = () => {
@@ -851,7 +879,7 @@ export function BlagajnaUnos() {
         </div>
 
         {/* Neplaćeni gotovinski računi — u prikazu PRVI (lijevo), širok koliko tabela */}
-        <div className="order-1 w-fit max-w-full flex-shrink-0bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="order-1 w-fit max-w-full flex-shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             className="px-4 py-2 flex flex-wrap items-center gap-3"
             style={{ background: PRIMARY }}
@@ -867,12 +895,28 @@ export function BlagajnaUnos() {
               <input
                 type="text"
                 value={pretragaRacuna}
-                onChange={(e) => setPretragaRacuna(e.target.value)}
-                placeholder="Broj računa ili partner..."
+                onChange={(e) => {
+                  setPretragaRacuna(e.target.value);
+                  setSkenPoruka(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    obradiSkeniranje();
+                  }
+                }}
+                autoFocus
+                placeholder="Skeniraj bar kod / broj računa / partner..."
                 className={`${inputCls} pl-8`}
               />
             </div>
           </div>
+          {skenPoruka && (
+            <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-300">
+              <AlertCircle size={13} />
+              {skenPoruka}
+            </div>
+          )}
           {racuniLoading ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-400 dark:text-[#5f5878]">
               <Loader2 size={18} className="animate-spin" style={{ color: PRIMARY }} />
