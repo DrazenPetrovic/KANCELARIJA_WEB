@@ -27,6 +27,10 @@ const SIFRA_DRZAVE_BIH = 1;
 // UIO (Uprava za indirektno oporezivanje) — uplata njima je PDV, a ne trošak
 // proizvoda: uneseni iznos ZT stavke je uvijek domaći PDV, bez izbora.
 const SIFRA_PARTNERA_UIO = 2020;
+// Vrsta ZT troška "PDV" (po nazivu iz erp.kalkulacija_zavisan_trosak_vrste).
+// Kod UIO samo ta vrsta ide u PDV; ostale (carina, takse...) idu u iznos.
+const jeVrstaPdv = (naziv: string | null | undefined) =>
+  /\bPDV\b/i.test(naziv ?? "");
 
 // Red sa /api/partneri/lista-sve (isti izvor kao PartneriPregled).
 interface Partner {
@@ -119,6 +123,9 @@ interface StavkaTroska {
   // u nabavnu cijenu proizvoda.
   samoPdv?: boolean;
   pdvIznos?: number;
+  // Proizvod sa kalkulacije na koji se trošak stavlja cijeli; null/undefined
+  // = raspodjela na sve proizvode srazmjerno količini.
+  sifraProizvoda?: number | null;
 }
 
 // Račun vezanih troškova jednog partnera — partner, broj i datum se unose
@@ -149,6 +156,9 @@ interface VezaniTrosak {
   pdv: PdvTroska;
   samoPdv?: boolean;
   pdvIznos?: number;
+  // Proizvod sa kalkulacije na koji se trošak stavlja cijeli; null/undefined
+  // = raspodjela na sve proizvode srazmjerno količini.
+  sifraProizvoda?: number | null;
 }
 
 const inputClass =
@@ -463,6 +473,7 @@ function VezaniRacunModal({
   pocetni,
   glavniPartnerId,
   zauzetiPartneri,
+  proizvodi,
   onSacuvaj,
   onZatvori,
 }: {
@@ -474,6 +485,8 @@ function VezaniRacunModal({
   // Partneri koji već imaju račun ZT na ovoj kalkulaciji — jedan partner
   // može imati samo jedan račun (jedan red u kalkulacija_gl).
   zauzetiPartneri: number[];
+  // Proizvodi sa kalkulacije — trošak se može vezati za jedan od njih.
+  proizvodi: { sifra: number; naziv: string; kolicina: number; jm: string }[];
   onSacuvaj: (r: Omit<VezaniRacun, "id">) => void;
   onZatvori: () => void;
 }) {
@@ -503,6 +516,8 @@ function VezaniRacunModal({
   const [saPdv, setSaPdv] = useState(false);
   // Kad se PDV obračunava, operater mora izričito izabrati domaći ili ino.
   const [vrstaPdv, setVrstaPdv] = useState<"domaci" | "ino" | null>(null);
+  // "" = svi proizvodi (raspodjela po količini), inače šifra proizvoda.
+  const [vezanProizvod, setVezanProizvod] = useState("");
 
   const [greska, setGreska] = useState<string | null>(null);
   const partnerRef = useRef<HTMLInputElement>(null);
@@ -566,11 +581,15 @@ function VezaniRacunModal({
 
   const iznosBroj = round2(broj(iznos));
   const jeUio = partner?.partner_id === SIFRA_PARTNERA_UIO;
-  // Za UIO je uneseni iznos sam PDV, a osnovica 0.
-  const osnovicaStavke = jeUio ? 0 : iznosBroj;
-  const iznosPdv = jeUio
+  // UIO + vrsta troška PDV: uneseni iznos je sam PDV (osnovica 0). UIO sa
+  // drugom vrstom (carina...): iznos ide u ukupno, bez PDV-a.
+  const izabranaVrsta = vrste.find((v) => String(v.sifra) === sifraVrste);
+  const jeUioPdv =
+    jeUio && jeVrstaPdv(izabranaVrsta?.naziv_zavisnog_troska);
+  const osnovicaStavke = jeUioPdv ? 0 : iznosBroj;
+  const iznosPdv = jeUioPdv
     ? iznosBroj
-    : saPdv
+    : !jeUio && saPdv
       ? round2(iznosBroj * PDV_STOPA)
       : 0;
 
@@ -592,6 +611,7 @@ function VezaniRacunModal({
     setIznos("");
     setSaPdv(false);
     setVrstaPdv(null);
+    setVezanProizvod("");
   };
 
   const izmijeniStavku = (s: StavkaTroska) => {
@@ -602,6 +622,7 @@ function VezaniRacunModal({
     setIznos(String(s.samoPdv ? (s.pdvIznos ?? 0) : s.iznos));
     setSaPdv(s.pdv !== "bez");
     setVrstaPdv(s.pdv === "bez" ? null : s.pdv);
+    setVezanProizvod(s.sifraProizvoda ? String(s.sifraProizvoda) : "");
     setGreska(null);
     setTimeout(() => tipRef.current?.focus(), 0);
   };
@@ -618,13 +639,13 @@ function VezaniRacunModal({
       );
     if (!vrsta) return setGreska("Izaberite vrstu troška.");
     if (!(iznosBroj > 0)) return setGreska("Unesite ukupan iznos stavke.");
-    if ((jeUio || saPdv) && !vrstaPdv)
+    if ((jeUioPdv || (!jeUio && saPdv)) && !vrstaPdv)
       return setGreska(
-        jeUio
+        jeUioPdv
           ? "Izaberite da li je PDV domaći ili uvozni."
           : "Izaberite da li je PDV domaći ili INO.",
       );
-    const stavka: StavkaTroska = jeUio
+    const stavka: StavkaTroska = jeUioPdv
       ? {
           id: izmjenaId ?? sljedeciId.current++,
           tipDokumenta,
@@ -635,6 +656,7 @@ function VezaniRacunModal({
           pdv: vrstaPdv ?? "domaci",
           samoPdv: true,
           pdvIznos: iznosBroj,
+          sifraProizvoda: null,
         }
       : {
       id: izmjenaId ?? sljedeciId.current++,
@@ -643,7 +665,9 @@ function VezaniRacunModal({
       nazivVrste: vrsta.naziv_zavisnog_troska,
       napomena: napomena.trim(),
           iznos: iznosBroj,
-          pdv: saPdv ? (vrstaPdv ?? "bez") : "bez",
+          // UIO bez PDV vrste (carina...) — PDV se ne obračunava.
+          pdv: !jeUio && saPdv ? (vrstaPdv ?? "bez") : "bez",
+          sifraProizvoda: vezanProizvod ? Number(vezanProizvod) : null,
         };
     setStavke((prev) =>
       izmjenaId === null
@@ -678,12 +702,10 @@ function VezaniRacunModal({
       );
     if (stavke.length === 0)
       return setGreska("Račun mora imati bar jednu stavku.");
-    // Stavke unesene za UIO (samo PDV) i za ostale partnere se ne miješaju.
-    if (stavke.some((s) => !!s.samoPdv !== jeUio))
+    // PDV stavke za UIO (samo PDV) ne mogu ostati kod drugog partnera.
+    if (!jeUio && stavke.some((s) => s.samoPdv))
       return setGreska(
-        jeUio
-          ? "Stavke su unesene za drugog partnera — za UIO obrišite ih i unesite ponovo."
-          : "Stavke su unesene kao PDV za UIO — obrišite ih ili vratite partnera UIO.",
+        "Stavke su unesene kao PDV za UIO — obrišite ih ili vratite partnera UIO.",
       );
     onSacuvaj({
       partnerId: partner.partner_id,
@@ -701,7 +723,7 @@ function VezaniRacunModal({
     // Ne zatvara se klikom pored ni Escape-om — da se unesene stavke ne
     // izgube slučajno; samo X ili "Odustani".
     <div className="fixed inset-0 z-[9990] flex items-center justify-center p-4 bg-black/50">
-      <div className="w-full max-w-2xl max-h-full overflow-y-auto rounded-2xl bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648] shadow-2xl p-6 space-y-4">
+      <div className="w-full max-w-4xl max-h-full overflow-y-auto rounded-2xl bg-white dark:bg-[#261f38] border border-gray-100 dark:border-[#2d2648] shadow-2xl p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
             {pocetni ? "Izmjena računa vezanih troškova" : "Novi račun vezanih troškova"}
@@ -864,6 +886,24 @@ function VezaniRacunModal({
             </Field>
           </div>
 
+          <Field label="Vezano za proizvod">
+            <select
+              value={jeUioPdv ? "" : vezanProizvod}
+              disabled={jeUioPdv}
+              onChange={(e) => setVezanProizvod(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">
+                Svi proizvodi — raspodjela srazmjerno količini
+              </option>
+              {proizvodi.map((p) => (
+                <option key={p.sifra} value={p.sifra}>
+                  {p.sifra} – {p.naziv} ({formatBroj(p.kolicina, 3)} {p.jm})
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
             <Field label="Napomena">
               <input
@@ -874,7 +914,7 @@ function VezaniRacunModal({
                 className={`${inputClass} ${okvir("m-napomena")}`}
               />
             </Field>
-            <Field label={jeUio ? "Iznos PDV-a (UIO)" : "Ukupan iznos"}>
+            <Field label={jeUioPdv ? "Iznos PDV-a (UIO)" : "Ukupan iznos"}>
               <input
                 type="number"
                 step="0.01"
@@ -893,14 +933,20 @@ function VezaniRacunModal({
             </Field>
           </div>
 
-          {jeUio ? (
+          {jeUio && !jeUioPdv ? (
+            <div
+              className="rounded-xl px-3 py-2 text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300"
+            >
+              Partner UIO: iznos ide u ukupno (trošak proizvoda), bez PDV-a.
+              Za PDV izaberite vrstu troška PDV.
+            </div>
+          ) : jeUioPdv ? (
             <div className="space-y-2">
               <div
-                className="rounded-xl px-3 py-2 text-xs font-semibold text-white"
-                style={{ background: PRIMARY }}
+                className="rounded-xl px-3 py-2 text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300"
               >
-                Partner UIO: cijeli uneseni iznos je PDV i ne ulazi u trošak
-                proizvoda.
+                Partner UIO, vrsta PDV: cijeli uneseni iznos je PDV i ne ulazi
+                u trošak proizvoda.
               </div>
               <Field label="Vrsta PDV-a">
                 <div className="grid grid-cols-2 gap-2">
@@ -1005,6 +1051,7 @@ function VezaniRacunModal({
                 <TH>Tip</TH>
                 <TH>Vrsta troška</TH>
                 <TH>Napomena</TH>
+                <TH>Proizvod</TH>
                 <TH right>Iznos</TH>
                 <TH right>PDV</TH>
                 <TH />
@@ -1014,7 +1061,7 @@ function VezaniRacunModal({
               {stavke.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-5 text-center text-sm text-gray-400 dark:text-[#6f6890]"
                   >
                     Nema stavki — dodajte bar jednu stavku računa.
@@ -1034,6 +1081,12 @@ function VezaniRacunModal({
                   <TD>{s.nazivVrste}</TD>
                   <TD className="max-w-[180px] truncate">
                     {s.napomena || "—"}
+                  </TD>
+                  <TD className="max-w-[200px] truncate">
+                    {s.sifraProizvoda
+                      ? (proizvodi.find((p) => p.sifra === s.sifraProizvoda)
+                          ?.naziv ?? `šifra ${s.sifraProizvoda} (nije na kalkulaciji)`)
+                      : "svi"}
                   </TD>
                   <TD right>{formatBroj(s.iznos)}</TD>
                   <TD right>
@@ -1062,7 +1115,7 @@ function VezaniRacunModal({
             {stavke.length > 0 && (
               <tfoot>
                 <tr className="bg-[#f4f1f9] dark:bg-[#1c1828] font-bold text-sm text-gray-800 dark:text-[#ede9f6]">
-                  <td colSpan={3} className="px-1.5 py-2 text-right">
+                  <td colSpan={4} className="px-1.5 py-2 text-right">
                     Ukupno računa:
                   </td>
                   <td className="px-1.5 py-2 text-right tabular-nums">
@@ -1216,6 +1269,7 @@ export function KalkulacijaUnos() {
       pdv: s.pdv,
       samoPdv: s.samoPdv,
       pdvIznos: s.pdvIznos,
+      sifraProizvoda: s.sifraProizvoda ?? null,
     })),
   );
   // Modal za račun: "novi", postojeći račun (izmjena) ili zatvoren (null).
@@ -1671,10 +1725,33 @@ export function KalkulacijaUnos() {
   const ukupnaKolicina = stavke.reduce((z, s) => z + s.kolicina, 0);
   // Na 5 decimala — isto kao naša ulazna cijena, pa prikaz i obračun
   // koriste istu vrijednost.
+  // Trošak vezan za proizvod koji je na kalkulaciji ide samo na njega; svi
+  // ostali (nevezani) se dijele na sve proizvode srazmjerno količini.
+  const naKalkulaciji = new Set(stavke.map((s) => s.sifra_proizvoda));
+  const vezaniPoProizvodu = new Map<number, number>();
+  let opstiTroskovi = 0;
+  for (const t of troskovi) {
+    if (t.sifraProizvoda && naKalkulaciji.has(t.sifraProizvoda))
+      vezaniPoProizvodu.set(
+        t.sifraProizvoda,
+        (vezaniPoProizvodu.get(t.sifraProizvoda) ?? 0) + t.iznos,
+      );
+    else opstiTroskovi += t.iznos;
+  }
+  opstiTroskovi = round2(opstiTroskovi);
+  // ZT stavke vezane za proizvod koji je u međuvremenu uklonjen sa
+  // kalkulacije — blokiraju zaključenje dok se ne isprave.
+  const ztBezProizvoda = troskovi.filter(
+    (t) => t.sifraProizvoda && !naKalkulaciji.has(t.sifraProizvoda),
+  );
   const ztPoJedinici =
-    ukupnaKolicina > 0 ? round5(ukupnoTroskovi / ukupnaKolicina) : 0;
+    ukupnaKolicina > 0 ? round5(opstiTroskovi / ukupnaKolicina) : 0;
+  const ztVezanPoJedinici = (s: StavkaKalkulacije) =>
+    s.kolicina > 0
+      ? round5((vezaniPoProizvodu.get(s.sifra_proizvoda) ?? 0) / s.kolicina)
+      : 0;
   const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
-    round5(s.fakturnaCijena + ztPoJedinici);
+    round5(s.fakturnaCijena + ztPoJedinici + ztVezanPoJedinici(s));
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
 
   // Nakon pokušaja zaključenja, grupa (kartica) kojoj nešto nedostaje dobija
@@ -1759,6 +1836,8 @@ export function KalkulacijaUnos() {
         iznos_pdv: pdvTroska(s),
         // 1 = UIO: iznos je 0, a uplaćeni PDV je u iznos_pdv.
         samo_pdv: s.samoPdv ? 1 : 0,
+        // Proizvod na koji je trošak stavljen cijeli; null = svi proizvodi.
+        sifra_proizvoda: s.sifraProizvoda ?? null,
         duzi_se_za_iznos: dugTroska(s),
       })),
     })),
@@ -1775,6 +1854,12 @@ export function KalkulacijaUnos() {
     if (datumValute < datumKalkulacije)
       return setGreska("Datum valute ne može biti prije datuma fakture.");
     if (stavke.length === 0) return setGreska("Kalkulacija nema stavki.");
+    if (ztBezProizvoda.length > 0)
+      return setGreska(
+        `Vezani trošak je vezan za proizvod koji više nije na kalkulaciji (${ztBezProizvoda
+          .map((t) => `${t.nazivPartnera}: ${t.nazivVrste}`)
+          .join(", ")}) — izmijenite taj račun.`,
+      );
     setPotvrda({
       naslov: "Zaključenje kalkulacije",
       poruka: `Zaključiti kalkulaciju po fakturi br. ${brojKalkulacije.trim()} (${stavke.length} stavki)?`,
@@ -2041,6 +2126,12 @@ export function KalkulacijaUnos() {
           vrste={vrsteTroska}
           pocetni={trosakModal === "novi" ? null : trosakModal}
           glavniPartnerId={partner?.partner_id ?? null}
+          proizvodi={stavke.map((s) => ({
+            sifra: s.sifra_proizvoda,
+            naziv: s.naziv_proizvoda,
+            kolicina: s.kolicina,
+            jm: s.jm,
+          }))}
           zauzetiPartneri={racuni
             .filter(
               (r) => trosakModal === "novi" || r.id !== trosakModal?.id,
@@ -2955,7 +3046,7 @@ export function KalkulacijaUnos() {
                   </div>
                   {ztPoJedinici > 0 && (
                     <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
-                      <span>ZT po jedinici količine</span>
+                      <span>ZT po jedinici (zajednički)</span>
                       <span className="tabular-nums">
                         {formatBroj(ztPoJedinici, 5)}
                       </span>

@@ -24,6 +24,35 @@ export const otvoriBlagajnu = async (req, res) => {
   }
 };
 
+export const zatvoriBlagajnu = async (req, res) => {
+  const krajStvarno = Number(req.body?.krajStvarno);
+  if (!Number.isFinite(krajStvarno) || krajStvarno < 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Neispravno prebrojano stanje gotovine" });
+  }
+  try {
+    const rezultat = await BlagajnaService.zatvoriBlagajnu({
+      krajStvarno,
+      potvrdiRazliku: req.body?.potvrdiRazliku === true,
+    });
+    if (rezultat.potrebnaPotvrda) {
+      return res.status(409).json({
+        success: false,
+        code: "RAZLIKA",
+        message: "Prebrojano stanje se razlikuje od obračunatog",
+        ...rezultat,
+      });
+    }
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("zatvoriBlagajnu error:", error);
+    return res
+      .status(error.status || 500)
+      .json({ success: false, message: error.message || "Greška pri zatvaranju blagajne" });
+  }
+};
+
 export const getBlagajnaPreglediSaUplatama = async (req, res) => {
   try {
     const { blagajne, uplate, isplate } =

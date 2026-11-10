@@ -170,3 +170,64 @@ export const otvoriBlagajnu = async () => {
     };
   });
 };
+
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
+// Zatvaranje otvorenog naloga blagajne. Obračunato stanje (početno + uplate
+// − isplate) se računa ovdje na serveru i poredi sa prebrojanim iznosom.
+// Ako se razlikuju, nalog se NE zatvara dok operater ne potvrdi razliku
+// (potvrdiRazliku = true). U erp.blagajna_zatvaranje se upisuje prebrojano
+// (stvarno) stanje kao krajnje_stanje.
+export const zatvoriBlagajnu = async ({ krajStvarno, potvrdiRazliku }) => {
+  const stanje = await getBlagajnaStanje();
+  if (!stanje) {
+    const err = new Error("Ne postoji nalog blagajne");
+    err.status = 400;
+    throw err;
+  }
+  if (stanje.status !== "otvorena") {
+    const err = new Error(`Nalog #${stanje.id} je već zatvoren`);
+    err.status = 400;
+    throw err;
+  }
+
+  const obracun = round2(stanje.tekuci_obracun);
+  const stvarno = round2(krajStvarno);
+  const razlika = round2(stvarno - obracun);
+
+  if (Math.abs(razlika) >= 0.01 && !potvrdiRazliku) {
+    return {
+      zatvoreno: false,
+      potrebnaPotvrda: true,
+      id: stanje.id,
+      pocetno_stanje: stanje.pocetak_gotovine,
+      uplate: stanje.tekuce_uplate,
+      isplate: stanje.tekuce_isplate,
+      obracun,
+      stvarno,
+      razlika,
+    };
+  }
+
+  await withConnection(async (connection) => {
+    try {
+      await connection.execute("CALL erp.blagajna_zatvaranje(?, ?)", [
+        stanje.id,
+        stvarno,
+      ]);
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage || error.message || "Greška pri zatvaranju blagajne",
+      );
+    }
+  });
+
+  return {
+    zatvoreno: true,
+    potrebnaPotvrda: false,
+    id: stanje.id,
+    obracun,
+    stvarno,
+    razlika,
+  };
+};

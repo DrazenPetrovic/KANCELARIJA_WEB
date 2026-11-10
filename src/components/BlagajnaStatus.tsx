@@ -17,9 +17,10 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 const PRIMARY = "#785E9E";
 const ACCENT = "#8FC74A";
 
-// NAPOMENA: zatvaranje naloga blagajne (POST /api/blagajna/zatvori) je
-// sljedeći korak — backend za njega još nije napravljen. Otvaranje
-// (POST /api/blagajna/otvori) je povezano na erp.blagajna_otvaranje().
+// Otvaranje (POST /api/blagajna/otvori) → erp.blagajna_otvaranje().
+// Zatvaranje (POST /api/blagajna/zatvori) → erp.blagajna_zatvaranje(sifra,
+// krajnje_stanje); server poredi prebrojano sa obračunatim i kod razlike
+// vraća code "RAZLIKA" — zatvara tek uz potvrdiRazliku = true.
 // Status se čita iz zajedničkog BlagajnaContext-a, koji koristi i meni u
 // Dashboard-u (da omogući/onemogući "Unos uplata/isplata"), tako da se oba
 // mjesta odmah usklade nakon otvaranja/zatvaranja.
@@ -78,6 +79,11 @@ export function BlagajnaStatus() {
   const [zatvaranjeMode, setZatvaranjeMode] = useState(false);
   const [krajStvarno, setKrajStvarno] = useState("");
   const [showOtvoriModal, setShowOtvoriModal] = useState(false);
+  // Server je javio da se prebrojano razlikuje od obračunatog — čeka potvrdu.
+  const [razlikaServer, setRazlikaServer] = useState<{
+    obracun: number;
+    razlika: number;
+  } | null>(null);
 
   const handleOtvori = async () => {
     setShowOtvoriModal(false);
@@ -102,7 +108,7 @@ export function BlagajnaStatus() {
     }
   };
 
-  const handleZatvori = async () => {
+  const handleZatvori = async (potvrdiRazliku = false) => {
     const iznos = parseFloat(krajStvarno.replace(",", "."));
     if (isNaN(iznos) || iznos < 0) {
       setGreska("Unesite ispravno prebrojano stanje gotovine");
@@ -115,12 +121,23 @@ export function BlagajnaStatus() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ krajStvarno: iznos }),
+        body: JSON.stringify({ krajStvarno: iznos, potvrdiRazliku }),
       });
-      const d = await res.json();
+      const tekst = await res.text();
+      let d;
+      try {
+        d = JSON.parse(tekst);
+      } catch {
+        throw new Error(`Server nije vratio ispravan odgovor (HTTP ${res.status})`);
+      }
+      if (d.code === "RAZLIKA") {
+        setRazlikaServer({ obracun: d.obracun, razlika: d.razlika });
+        return;
+      }
       if (!d.success) throw new Error(d.message);
       setZatvaranjeMode(false);
       setKrajStvarno("");
+      setRazlikaServer(null);
       await refresh();
     } catch (e: unknown) {
       setGreska(
@@ -363,7 +380,10 @@ export function BlagajnaStatus() {
                           <input
                             type="text"
                             value={krajStvarno}
-                            onChange={(e) => setKrajStvarno(e.target.value)}
+                            onChange={(e) => {
+                              setKrajStvarno(e.target.value);
+                              setRazlikaServer(null);
+                            }}
                             placeholder="0,00"
                             className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/30 bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] text-right font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                             autoFocus
@@ -389,6 +409,22 @@ export function BlagajnaStatus() {
                           </div>
                         )}
 
+                        {razlikaServer && (
+                          <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400">
+                            <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                            <span>
+                              Prebrojano stanje se razlikuje od obračunatog (
+                              {fmtKM(razlikaServer.obracun)}) za{" "}
+                              <b>
+                                {razlikaServer.razlika >= 0 ? "+" : ""}
+                                {fmtKM(razlikaServer.razlika)}
+                              </b>
+                              . Da li sigurno želite zatvoriti blagajnu sa
+                              razlikom?
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex gap-2 pt-1">
                           <button
                             type="button"
@@ -396,6 +432,7 @@ export function BlagajnaStatus() {
                               setZatvaranjeMode(false);
                               setKrajStvarno("");
                               setGreska(null);
+                              setRazlikaServer(null);
                             }}
                             className="flex-1 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-500 dark:text-[#7d7498] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all"
                           >
@@ -403,7 +440,7 @@ export function BlagajnaStatus() {
                           </button>
                           <button
                             type="button"
-                            onClick={handleZatvori}
+                            onClick={() => handleZatvori(razlikaServer !== null)}
                             disabled={submitting || krajStvarno === ""}
                             className="flex-2 flex-grow flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 disabled:opacity-50"
                             style={{ background: "#ef4444" }}
@@ -413,7 +450,9 @@ export function BlagajnaStatus() {
                             ) : (
                               <Lock size={14} />
                             )}
-                            Potvrdi zatvaranje
+                            {razlikaServer
+                              ? "Zatvori sa razlikom"
+                              : "Potvrdi zatvaranje"}
                           </button>
                         </div>
                       </div>
