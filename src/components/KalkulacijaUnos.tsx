@@ -1718,8 +1718,8 @@ export function KalkulacijaUnos() {
   );
 
   // Naša ulazna cijena = fakturna cijena + udio vezanih troškova (bez PDV).
-  // Troškovi se raspoređuju srazmjerno količini: svaka jedinica (svih
-  // stavki zajedno) nosi isti iznos ZT. Bez troškova = fakturna cijena.
+  // Zajednički troškovi se raspoređuju srazmjerno fakturnoj vrijednosti
+  // stavke, vezani samo na svoj proizvod. Bez troškova = fakturna cijena.
   // Računa se uvijek iz trenutnih stavki i troškova, pa redoslijed unosa nije
   // bitan.
   const ukupnaKolicina = stavke.reduce((z, s) => z + s.kolicina, 0);
@@ -1744,14 +1744,30 @@ export function KalkulacijaUnos() {
   const ztBezProizvoda = troskovi.filter(
     (t) => t.sifraProizvoda && !naKalkulaciji.has(t.sifraProizvoda),
   );
-  const ztPoJedinici =
-    ukupnaKolicina > 0 ? round5(opstiTroskovi / ukupnaKolicina) : 0;
+  // Zajednički ZT se dijeli srazmjerno fakturnoj vrijednosti stavke
+  // (količina × fakturna cijena, nakon rabata) u ukupnoj fakturnoj
+  // vrijednosti. Ako je ukupna vrijednost 0 (npr. sve besplatno), dijeli se
+  // po količini.
+  const ukupnaVrijednost = stavke.reduce(
+    (z, s) => z + s.kolicina * s.fakturnaCijena,
+    0,
+  );
+  const ztZajednickiStavke = (s: StavkaKalkulacije) => {
+    if (opstiTroskovi === 0) return 0;
+    if (ukupnaVrijednost > 0)
+      return (opstiTroskovi * s.kolicina * s.fakturnaCijena) / ukupnaVrijednost;
+    return ukupnaKolicina > 0
+      ? (opstiTroskovi * s.kolicina) / ukupnaKolicina
+      : 0;
+  };
+  const ztPoJedinici = (s: StavkaKalkulacije) =>
+    s.kolicina > 0 ? ztZajednickiStavke(s) / s.kolicina : 0;
   const ztVezanPoJedinici = (s: StavkaKalkulacije) =>
     s.kolicina > 0
-      ? round5((vezaniPoProizvodu.get(s.sifra_proizvoda) ?? 0) / s.kolicina)
+      ? (vezaniPoProizvodu.get(s.sifra_proizvoda) ?? 0) / s.kolicina
       : 0;
   const nasaUlaznaCijena = (s: StavkaKalkulacije) =>
-    round5(s.fakturnaCijena + ztPoJedinici + ztVezanPoJedinici(s));
+    round5(s.fakturnaCijena + ztPoJedinici(s) + ztVezanPoJedinici(s));
   const ukupnoNabavno = round2(ukupnoOsnovica + ukupnoTroskovi);
 
   // Nakon pokušaja zaključenja, grupa (kartica) kojoj nešto nedostaje dobija
@@ -2978,7 +2994,7 @@ export function KalkulacijaUnos() {
                       </TD>
                       <TD
                         right
-                        className={ztPoJedinici > 0 ? "font-semibold" : ""}
+                        className={ukupnoTroskovi > 0 ? "font-semibold" : ""}
                       >
                         {formatBroj(nasaUlaznaCijena(s), 5)}
                       </TD>
@@ -3044,11 +3060,19 @@ export function KalkulacijaUnos() {
                       {formatBroj(ukupnoNabavno)}
                     </span>
                   </div>
-                  {ztPoJedinici > 0 && (
+                  {opstiTroskovi > 0 && (
                     <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
-                      <span>ZT po jedinici (zajednički)</span>
+                      <span>ZT zajednički (po vrijednosti)</span>
                       <span className="tabular-nums">
-                        {formatBroj(ztPoJedinici, 5)}
+                        {formatBroj(opstiTroskovi)}
+                      </span>
+                    </div>
+                  )}
+                  {ukupnoTroskovi - opstiTroskovi > 0.004 && (
+                    <div className="flex justify-between gap-4 text-xs text-gray-500 dark:text-[#9e96b8]">
+                      <span>ZT vezan za proizvod</span>
+                      <span className="tabular-nums">
+                        {formatBroj(round2(ukupnoTroskovi - opstiTroskovi))}
                       </span>
                     </div>
                   )}
