@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -67,6 +67,7 @@ interface Partner {
 interface RacunNeplacen extends RacunKupca {
   sifra_partnera: number | string | null;
   naziv_partnera: string | null;
+  Napomena?: string | null;
 }
 
 // Gotovinski račun: vrsta_racuna "g" (racuniGotovinski.tsx). Ako stari
@@ -616,9 +617,9 @@ export function BlagajnaUnos() {
       </div>
 
       {/* Lijevo neplaćeni računi (širina po tabeli), desno od njih forma */}
-      <div className="flex flex-wrap items-start gap-4">
+      <div className="flex flex-wrap lg:flex-nowrap items-start gap-4">
         {/* Forma — u prikazu ide DRUGA (order-2) */}
-        <div className="order-2 w-full max-w-[440px] bg-[#f4effa] dark:bg-[#2c2444] rounded-2xl border-2 border-[#785E9E55] shadow-md overflow-hidden">
+        <div className="order-2 w-full max-w-[374px] lg:w-[374px] flex-shrink-0 bg-[#f4effa] dark:bg-[#2c2444] rounded-2xl border-2 border-[#785E9E55] shadow-md overflow-hidden">
           <div
             className="px-4 py-2.5 text-xs font-extrabold tracking-widest uppercase text-center text-white"
             style={{ background: PRIMARY }}
@@ -850,7 +851,7 @@ export function BlagajnaUnos() {
         </div>
 
         {/* Neplaćeni gotovinski računi — u prikazu PRVI (lijevo), širok koliko tabela */}
-        <div className="order-1 w-fit max-w-full bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        <div className="order-1 w-fit max-w-full flex-shrink-0bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
           <div
             className="px-4 py-2 flex flex-wrap items-center gap-3"
             style={{ background: PRIMARY }}
@@ -915,22 +916,30 @@ export function BlagajnaUnos() {
                             : "hover:bg-purple-50 dark:hover:bg-[#2d2648]"
                         }`}
                       >
-                        <td className="px-2 py-1 whitespace-nowrap font-bold text-gray-800 dark:text-[#ede9f6]">
+                        <td className="px-1.5 py-1 whitespace-nowrap font-bold text-gray-800 dark:text-[#ede9f6]">
                           {oznakaRacuna(r)}
+                          {r.Napomena && (
+                            <div
+                              className="text-[10px] font-normal text-gray-400 dark:text-[#5f5878] truncate max-w-[170px]"
+                              title={r.Napomena}
+                            >
+                              {r.Napomena}
+                            </div>
+                          )}
                         </td>
-                        <td className="px-2 py-1 text-gray-600 dark:text-[#c5bfd8]">
+                        <td className="px-1.5 py-1 text-gray-600 dark:text-[#c5bfd8]">
                           <span
-                            className="block truncate max-w-[260px]"
+                            className="block truncate max-w-[190px]"
                             title={r.naziv_partnera ?? undefined}
                           >
                             {r.naziv_partnera ?? `Partner #${r.sifra_partnera}`}
                           </span>
                         </td>
-                        <td className="px-2 py-1 whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]">
+                        <td className="px-1.5 py-1 whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]">
                           {formatDatum(r.datum_racuna)}
                         </td>
                         <td
-                          className="px-2 py-1 whitespace-nowrap text-right font-bold"
+                          className="px-1.5 py-1 whitespace-nowrap text-right font-bold"
                           style={{ color: PRIMARY }}
                         >
                           {r.ukupno == null ? "–" : formatKM(r.ukupno)}
@@ -945,7 +954,7 @@ export function BlagajnaUnos() {
         </div>
 
       {/* Stavke blagajne (desno od forme): nesačuvane na vrhu, pa sačuvane */}
-      <div className="order-3 flex-1 min-w-[360px] max-w-full bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="order-3 flex-1 min-w-[300px] lg:min-w-0 max-w-fullbg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         <div
           className="px-4 py-2.5 flex items-center gap-3 text-xs font-extrabold tracking-widest uppercase text-white"
           style={{ background: PRIMARY }}
@@ -1007,7 +1016,6 @@ export function BlagajnaUnos() {
                   <TH>Vrsta</TH>
                   <TH>Datum</TH>
                   <TH right>Iznos</TH>
-                  <TH>Opis</TH>
                   <TH />
                 </tr>
               </thead>
@@ -1016,15 +1024,15 @@ export function BlagajnaUnos() {
                   const v = vrstaPoKodu(s.vrsta_uplate);
                   const boja = v.tip === "uplata" ? ACCENT : "#ef4444";
                   return (
-                    <tr
-                      key={`N-${s.kljuc}`}
-                      className="border-b border-gray-200 dark:border-[#3a3158] bg-amber-50/70 dark:bg-amber-900/15"
-                    >
-                      <td className="px-3 py-1 text-gray-700 dark:text-[#c5bfd8] whitespace-nowrap">
+                    <Fragment key={`N-${s.kljuc}`}>
+                    <tr className="bg-amber-50/70 dark:bg-amber-900/15">
+                      <td className="px-3 py-1 whitespace-nowrap">
                         <span className="mr-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 dark:bg-amber-800/60 dark:text-amber-200">
                           NOVO
                         </span>
-                        {s.naziv_partnera}
+                        <span className="text-[15px] font-bold text-gray-900 dark:text-white">
+                          {s.naziv_partnera}
+                        </span>
                         {s.veza_prikaz && (
                           <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
                             {s.veza_prikaz}
@@ -1035,7 +1043,7 @@ export function BlagajnaUnos() {
                         className="px-3 py-1 whitespace-nowrap text-xs font-medium"
                         style={{ color: boja }}
                       >
-                        {v.naziv}
+                        {v.tip === "uplata" ? "Uplate" : "Isplate"}
                       </td>
                       <td className="px-3 py-1 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
                         {danasPrikaz()}
@@ -1046,14 +1054,6 @@ export function BlagajnaUnos() {
                       >
                         {v.tip === "isplata" ? "− " : ""}
                         {formatKM(s.uplaceno)}
-                      </td>
-                      <td className="px-3 py-1 text-gray-600 dark:text-[#c5bfd8]">
-                        {s.opis || "–"}
-                        {s.napomena && (
-                          <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
-                            {s.napomena}
-                          </span>
-                        )}
                       </td>
                       <td className="px-3 py-1 text-right">
                         <button
@@ -1067,6 +1067,21 @@ export function BlagajnaUnos() {
                         </button>
                       </td>
                     </tr>
+                    {/* Opis (i napomena) u redu ispod */}
+                    <tr className="border-b border-gray-200 dark:border-[#3a3158] bg-amber-50/70 dark:bg-amber-900/15">
+                      <td
+                        colSpan={5}
+                        className="px-3 pb-1 pt-0 text-xs text-gray-600 dark:text-[#c5bfd8]"
+                      >
+                        {s.opis || "–"}
+                        {s.napomena && (
+                          <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            {s.napomena}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    </Fragment>
                   );
                 })}
 
@@ -1074,18 +1089,16 @@ export function BlagajnaUnos() {
                   const v = vrstaPoKodu(u.vrsta_uplate);
                   const boja = v.tip === "isplata" ? "#ef4444" : ACCENT;
                   return (
-                    <tr
-                      key={`U-${u.sifra_uplate}`}
-                      className="border-b border-gray-200 dark:border-[#3a3158] bg-[#f3eefa] hover:bg-[#e9e1f6] dark:bg-[#2c2444] dark:hover:bg-[#342a52]"
-                    >
-                      <td className="px-3 py-1 text-gray-700 dark:text-[#c5bfd8] whitespace-nowrap">
+                    <Fragment key={`U-${u.sifra_uplate}`}>
+                    <tr className="bg-[#f3eefa] dark:bg-[#2c2444]">
+                      <td className="px-3 py-1 whitespace-nowrap text-[15px] font-bold text-gray-900 dark:text-white">
                         {u.naziv_partnera ?? `Partner #${u.sifra_partnera}`}
                       </td>
                       <td
                         className="px-3 py-1 whitespace-nowrap text-xs font-medium"
                         style={{ color: boja }}
                       >
-                        {v.naziv}
+                        {v.tip === "uplata" ? "Uplate" : "Isplate"}
                       </td>
                       <td className="px-3 py-1 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
                         {formatDatum(u.datum_uplate)}
@@ -1097,11 +1110,18 @@ export function BlagajnaUnos() {
                         {v.tip === "isplata" ? "− " : ""}
                         {formatKM(u.uplaceno)}
                       </td>
-                      <td className="px-3 py-1 text-gray-600 dark:text-[#c5bfd8]">
-                        {u.opis || "–"}
-                      </td>
                       <td className="px-3 py-1" />
                     </tr>
+                    {/* Opis u redu ispod */}
+                    <tr className="border-b border-gray-200 dark:border-[#3a3158] bg-[#f3eefa] dark:bg-[#2c2444]">
+                      <td
+                        colSpan={5}
+                        className="px-3 pb-1 pt-0 text-xs text-gray-600 dark:text-[#c5bfd8]"
+                      >
+                        {u.opis || "–"}
+                      </td>
+                    </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
