@@ -173,6 +173,93 @@ export const otvoriBlagajnu = async () => {
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
+// "YYYY-MM-DD" po lokalnom vremenu servera.
+const danasLokalno = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// Unos uplata/isplata na otvoreni nalog blagajne — sve stavke idu jednim
+// pozivom erp.blagajna_uplate_unos(p_json) kao JSON niz. Server sam
+// postavlja sifra_blagajne (trenutno otvoreni nalog), datum_uplate (danas)
+// i sifra_radnika (prijavljeni operater) — ne vjeruje se klijentu.
+// Svaka stavka mora biti vezana za stvarnog partnera (bez -1).
+// sifra_veze = sifra_tabele gotovinskog računa ili null.
+export const unosUplataBlagajne = async ({ stavke, sifraRadnika }) => {
+  const stanje = await getBlagajnaStanje();
+  if (!stanje || stanje.status !== "otvorena") {
+    const err = new Error("Blagajna nije otvorena — otvorite je u Statusu blagajne");
+    err.status = 400;
+    throw err;
+  }
+
+  const datum = danasLokalno();
+  const json = stavke.map((s, idx) => {
+    const redBr = idx + 1;
+    const vrsta = Number(s.vrsta_uplate);
+    const partner = Number(s.sifra_partnera);
+    const iznos = Number(s.uplaceno);
+    // Na unosu u blagajnu dozvoljene su samo vrste 0 i 1.
+    if (vrsta !== 0 && vrsta !== 1) {
+      throw new Error(`Stavka ${redBr}: vrsta uplate može biti samo 0 ili 1`);
+    }
+    if (!Number.isInteger(partner) || partner <= 0) {
+      throw new Error(`Stavka ${redBr}: partner nije izabran`);
+    }
+    if (!Number.isFinite(iznos) || iznos <= 0) {
+      throw new Error(`Stavka ${redBr}: iznos mora biti veći od 0`);
+    }
+    const veza =
+      s.sifra_veze === null || s.sifra_veze === undefined || s.sifra_veze === ""
+        ? null
+        : Number(s.sifra_veze);
+    if (veza !== null && (!Number.isInteger(veza) || veza <= 0)) {
+      throw new Error(`Stavka ${redBr}: neispravna šifra veze`);
+    }
+    return {
+      vrsta_uplate: vrsta,
+      sifra_partnera: partner,
+      sifra_blagajne: Number(stanje.id),
+      datum_uplate: datum,
+      uplaceno: round2(iznos),
+      sifra_veze: veza,
+      opis: String(s.opis ?? ""),
+      sifra_radnika: sifraRadnika,
+      napomena: String(s.napomena ?? ""),
+      konto_knjizenja: Number(s.konto_knjizenja) || 0,
+    };
+  });
+
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute("CALL erp.blagajna_uplate_unos(?)", [
+        JSON.stringify(json),
+      ]);
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage || error.message || "Greška pri unosu uplata u blagajnu",
+      );
+    }
+    // Na uspjeh procedura vraća: uspjesno, poruka, broj_unesenih_uplata,
+    // prva_sifra_uplate, zadnja_sifra_uplate.
+    const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
+    if (!rezultat || Number(rezultat.uspjesno) !== 1) {
+      throw new Error(
+        rezultat?.poruka || "Unos uplata nije uspio — procedura nije potvrdila unos",
+      );
+    }
+    return {
+      sifraBlagajne: Number(stanje.id),
+      poruka: rezultat.poruka ?? null,
+      broj: Number(rezultat.broj_unesenih_uplata ?? json.length),
+      prvaSifra: rezultat.prva_sifra_uplate ?? null,
+      posljednjaSifra: rezultat.zadnja_sifra_uplate ?? null,
+    };
+  });
+};
+
 // Zatvaranje otvorenog naloga blagajne. Obračunato stanje (početno + uplate
 // − isplate) se računa ovdje na serveru i poredi sa prebrojanim iznosom.
 // Ako se razlikuju, nalog se NE zatvara dok operater ne potvrdi razliku

@@ -53,6 +53,34 @@ export const zatvoriBlagajnu = async (req, res) => {
   }
 };
 
+export const unosUplataBlagajne = async (req, res) => {
+  const stavke = req.body?.stavke;
+  if (!Array.isArray(stavke) || stavke.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Nema stavki za unos" });
+  }
+  const sifraRadnika = req.user?.sifraRadnika;
+  if (!sifraRadnika) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Operater nije prijavljen" });
+  }
+  try {
+    const rezultat = await BlagajnaService.unosUplataBlagajne({
+      stavke,
+      sifraRadnika,
+    });
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("unosUplataBlagajne error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Greška pri unosu uplata u blagajnu",
+    });
+  }
+};
+
 export const getBlagajnaPreglediSaUplatama = async (req, res) => {
   try {
     const { blagajne, uplate, isplate } =

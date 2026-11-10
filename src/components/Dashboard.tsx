@@ -45,6 +45,7 @@ import { IzvodiUnos } from "./IzvodiUnos";
 import { PlacenostRacuna } from "./PlacenostRacuna";
 import { BlagajnaPregled } from "./BlagajnaPregled";
 import { BlagajnaStatus } from "./BlagajnaStatus";
+import { BlagajnaUnos } from "./BlagajnaUnos";
 import { BackupStatus } from "./BackupStatus";
 import { useBlagajna } from "../context/BlagajnaContext";
 import { useEffect, useRef, useState } from "react";
@@ -3339,7 +3340,8 @@ export function Dashboard({
                       activeSection === "racuni-knjizna-virmanski" ||
                       activeSection === "ulazi-kalkulacija-storno" ||
                       activeSection === "analitika-kuf" ||
-                      activeSection === "partneri-sintetika"
+                      activeSection === "partneri-sintetika" ||
+                      activeSection === "finansije-blagajna-unos"
                     ? "pt-[10px] pb-8"
                     : activeSection === "trgovacke-knjige-veleprodaja"
                       ? "pt-[22px] pb-8"
@@ -3547,29 +3549,7 @@ export function Dashboard({
             <BlagajnaStatus />
           )}
 
-          {activeSection === "finansije-blagajna-unos" && (
-            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-sm border border-gray-100 dark:border-[#2d2648] p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-                  <Wallet size={20} style={{ color: PRIMARY }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-                  Unos uplata/isplata
-                </h2>
-              </div>
-              {blagajnaOtvorena ? (
-                <p className="text-gray-500 dark:text-[#7d7498]">
-                  Forma za unos uplata i isplata na trenutno otvorenu blagajnu
-                  dolazi u sljedećem koraku.
-                </p>
-              ) : (
-                <p className="text-gray-500 dark:text-[#7d7498]">
-                  Blagajna je u međuvremenu zatvorena — otvorite je ponovo u
-                  Statusu blagajne da nastavite.
-                </p>
-              )}
-            </div>
-          )}
+          {activeSection === "finansije-blagajna-unos" && <BlagajnaUnos />}
 
           {activeSection === "narudzbe-zavrsene-lokalno" && (
             <NarudzbeZavrseneLokalno />
