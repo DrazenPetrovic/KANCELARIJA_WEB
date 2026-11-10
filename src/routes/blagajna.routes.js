@@ -12,6 +12,26 @@ router.post(
   verifyToken,
   BlagajnaController.unosUplataBlagajne,
 );
+router.get(
+  "/isplate-dobavljaci",
+  verifyToken,
+  BlagajnaController.getIsplateDobavljaci,
+);
+router.post(
+  "/isplate-dobavljaci-unos",
+  verifyToken,
+  BlagajnaController.unosDobavljaca,
+);
+router.get(
+  "/isplate-troskovi",
+  verifyToken,
+  BlagajnaController.getIsplateTroskovi,
+);
+router.post(
+  "/isplate-unos",
+  verifyToken,
+  BlagajnaController.unosIsplataBlagajne,
+);
 
 router.get(
   "/pregled-sa-uplatama",

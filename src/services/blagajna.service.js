@@ -200,7 +200,8 @@ export const unosUplataBlagajne = async ({ stavke, sifraRadnika }) => {
     const vrsta = Number(s.vrsta_uplate);
     const partner = Number(s.sifra_partnera);
     const iznos = Number(s.uplaceno);
-    // Na unosu u blagajnu dozvoljene su samo vrste 0 i 1.
+    // Na unosu u blagajnu (tabela uplata) dozvoljene su samo vrste 0 i 1.
+    // Isplate dobavljačima (vrsta 3 na formi) idu posebno — unosIsplataBlagajne.
     if (vrsta !== 0 && vrsta !== 1) {
       throw new Error(`Stavka ${redBr}: vrsta uplate može biti samo 0 ili 1`);
     }
@@ -256,6 +257,151 @@ export const unosUplataBlagajne = async ({ stavke, sifraRadnika }) => {
       broj: Number(rezultat.broj_unesenih_uplata ?? json.length),
       prvaSifra: rezultat.prva_sifra_uplate ?? null,
       posljednjaSifra: rezultat.zadnja_sifra_uplate ?? null,
+    };
+  });
+};
+
+// Registrovani dobavljači za isplate iz blagajne: sifra, naziv_dobavljaca,
+// Adresa_dobavljaca, JIB.
+export const getIsplateDobavljaci = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.blagajna_uplate_isplata_dobavljaci_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+// Često korišteni opisi troškova za isplate: sifra, naziv_troska.
+export const getIsplateTroskovi = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.blagajna_uplate_ispate_troskovi_pregled()",
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
+const ISO_DATUM = /^\d{4}-\d{2}-\d{2}$/;
+
+// Isplate dobavljačima (računi) na otvoreni nalog blagajne —
+// erp.blagajna_uplate_isplate(p_json), posebna tabela od uplata.
+// sifra_blagajne postavlja server; datum_racuna unosi operater (datum sa
+// računa, nije vezan za danas). PDV se unosi ručno: 0 <= ulazni_pdv <=
+// iskazani_pdv <= ukupno (dobavljač van PDV sistema → oba 0; iskazan PDV
+// koji ne koristimo → ulazni 0). Provjera 17% je samo upozorenje na formi.
+export const unosIsplataBlagajne = async ({ isplate }) => {
+  const stanje = await getBlagajnaStanje();
+  if (!stanje || stanje.status !== "otvorena") {
+    const err = new Error("Blagajna nije otvorena — otvorite je u Statusu blagajne");
+    err.status = 400;
+    throw err;
+  }
+
+  const json = isplate.map((s, idx) => {
+    const redBr = idx + 1;
+    const dobavljac = Number(s.sifra_dobavljaca);
+    const ukupno = round2(s.ukupno);
+    const iskazani = round2(s.iskazani_pdv ?? 0);
+    const ulazni = round2(s.ulazni_pdv ?? 0);
+    const brojRacuna = String(s.broj_racuna ?? "").trim();
+    const datum = String(s.datum_racuna ?? "").trim();
+    if (!Number.isInteger(dobavljac) || dobavljac <= 0) {
+      throw new Error(`Isplata ${redBr}: dobavljač nije izabran`);
+    }
+    if (!brojRacuna) throw new Error(`Isplata ${redBr}: unesite broj računa`);
+    if (!ISO_DATUM.test(datum)) {
+      throw new Error(`Isplata ${redBr}: neispravan datum računa`);
+    }
+    if (!Number.isFinite(ukupno) || ukupno <= 0) {
+      throw new Error(`Isplata ${redBr}: ukupno mora biti veće od 0`);
+    }
+    if (!Number.isFinite(iskazani) || iskazani < 0 || iskazani > ukupno) {
+      throw new Error(`Isplata ${redBr}: iskazani PDV mora biti između 0 i ukupnog iznosa`);
+    }
+    if (!Number.isFinite(ulazni) || ulazni < 0 || ulazni > iskazani) {
+      throw new Error(`Isplata ${redBr}: ulazni PDV ne može biti veći od iskazanog`);
+    }
+    return {
+      sifra_dobavljaca: dobavljac,
+      sifra_blagajne: Number(stanje.id),
+      datum_racuna: `${datum} 00:00:00`,
+      opis: String(s.opis ?? "").trim(),
+      broj_racuna: brojRacuna,
+      iskazani_pdv: iskazani,
+      ulazni_pdv: ulazni,
+      ukupno,
+    };
+  });
+
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute("CALL erp.blagajna_uplate_isplate(?)", [
+        JSON.stringify(json),
+      ]);
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage || error.message || "Greška pri unosu isplata u blagajnu",
+      );
+    }
+    // Na uspjeh: uspjesno, poruka, broj_unesenih_isplata, prva_sifra, zadnja_sifra.
+    const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
+    if (!rezultat || Number(rezultat.uspjesno) !== 1) {
+      throw new Error(
+        rezultat?.poruka || "Unos isplata nije uspio — procedura nije potvrdila unos",
+      );
+    }
+    return {
+      sifraBlagajne: Number(stanje.id),
+      poruka: rezultat.poruka ?? null,
+      broj: Number(rezultat.broj_unesenih_isplata ?? json.length),
+      prvaSifra: rezultat.prva_sifra ?? null,
+      posljednjaSifra: rezultat.zadnja_sifra ?? null,
+    };
+  });
+};
+
+// Unos novog dobavljača za isplate iz blagajne →
+// erp.blagajna_uplate_isplata_dobavljaci_unos(p_json).
+// JSON: { naziv_dobavljaca, Adresa_dobavljaca, JIB }.
+// Rezultat: uspjesno, poruka, sifra_dobavljaca.
+export const unosDobavljaca = async ({ naziv, adresa, jib }) => {
+  const json = {
+    naziv_dobavljaca: String(naziv ?? "").trim(),
+    Adresa_dobavljaca: String(adresa ?? "").trim(),
+    JIB: String(jib ?? "").trim(),
+  };
+  if (!json.naziv_dobavljaca) {
+    const err = new Error("Unesite naziv dobavljača");
+    err.status = 400;
+    throw err;
+  }
+  if (json.JIB && !/^\d+$/.test(json.JIB)) {
+    const err = new Error("JIB smije sadržati samo cifre");
+    err.status = 400;
+    throw err;
+  }
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute(
+        "CALL erp.blagajna_uplate_isplata_dobavljaci_unos(?)",
+        [JSON.stringify(json)],
+      );
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage || error.message || "Greška pri unosu dobavljača",
+      );
+    }
+    // Na uspjeh: uspjesno, poruka, sifra_dobavljaca.
+    const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
+    if (!rezultat || Number(rezultat.uspjesno) !== 1) {
+      throw new Error(rezultat?.poruka || "Unos dobavljača nije uspio");
+    }
+    return {
+      poruka: rezultat.poruka ?? null,
+      sifra: rezultat.sifra_dobavljaca ?? null,
     };
   });
 };

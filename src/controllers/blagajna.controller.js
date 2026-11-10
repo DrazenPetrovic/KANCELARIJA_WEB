@@ -81,6 +81,66 @@ export const unosUplataBlagajne = async (req, res) => {
   }
 };
 
+export const getIsplateDobavljaci = async (req, res) => {
+  try {
+    const data = await BlagajnaService.getIsplateDobavljaci();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("getIsplateDobavljaci error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Greška pri učitavanju dobavljača" });
+  }
+};
+
+export const getIsplateTroskovi = async (req, res) => {
+  try {
+    const data = await BlagajnaService.getIsplateTroskovi();
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("getIsplateTroskovi error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Greška pri učitavanju troškova" });
+  }
+};
+
+export const unosIsplataBlagajne = async (req, res) => {
+  const isplate = req.body?.isplate;
+  if (!Array.isArray(isplate) || isplate.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Nema isplata za unos" });
+  }
+  try {
+    const rezultat = await BlagajnaService.unosIsplataBlagajne({ isplate });
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("unosIsplataBlagajne error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Greška pri unosu isplata u blagajnu",
+    });
+  }
+};
+
+export const unosDobavljaca = async (req, res) => {
+  try {
+    const rezultat = await BlagajnaService.unosDobavljaca({
+      naziv: req.body?.naziv_dobavljaca,
+      adresa: req.body?.Adresa_dobavljaca,
+      jib: req.body?.JIB,
+    });
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("unosDobavljaca error:", error);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: error.message || "Greška pri unosu dobavljača",
+    });
+  }
+};
+
 export const getBlagajnaPreglediSaUplatama = async (req, res) => {
   try {
     const { blagajne, uplate, isplate } =

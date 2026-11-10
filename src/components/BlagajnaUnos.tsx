@@ -46,9 +46,61 @@ const VRSTE: { kod: number; naziv: string; tip: "uplata" | "isplata" }[] = [
   { kod: 12, naziv: "Povrat pretplate kupcu", tip: "isplata" },
 ];
 
-// Na unosu u blagajnu dozvoljene su samo vrste 0 i 1; puni šifarnik iznad
-// služi za prikaz već sačuvanih stavki.
-const VRSTE_UNOS = VRSTE.filter((v) => v.kod === 0 || v.kod === 1);
+// Na unosu: 0 i 1 idu u uplate (erp.blagajna_uplate_unos), 3 = isplata
+// dobavljaču po računu — posebna tabela (erp.blagajna_uplate_isplate).
+// Puni šifarnik iznad služi za prikaz već sačuvanih stavki.
+const VRSTA_ISPLATA_DOB = 3;
+const VRSTE_UNOS: { kod: number; naziv: string; tip: "uplata" | "isplata" }[] = [
+  { kod: 1, naziv: "Uplate kupaca", tip: "uplata" },
+  { kod: VRSTA_ISPLATA_DOB, naziv: "Isplata dobavljaču (račun)", tip: "isplata" },
+];
+
+// Red iz erp.blagajna_uplate_isplata_dobavljaci_pregled.
+interface Dobavljac {
+  sifra: number;
+  naziv_dobavljaca: string | null;
+  Adresa_dobavljaca: string | null;
+  JIB: string | null;
+}
+
+// Red iz erp.blagajna_uplate_ispate_troskovi_pregled.
+interface Trosak {
+  sifra: number;
+  naziv_troska: string | null;
+}
+
+interface NovaIsplata {
+  kljuc: number;
+  sifra_dobavljaca: number;
+  naziv_dobavljaca: string;
+  broj_racuna: string;
+  datum_racuna: string; // yyyy-mm-dd
+  opis: string;
+  ukupno: number;
+  iskazani_pdv: number;
+  ulazni_pdv: number;
+}
+
+// Red iz erp.blagajna_isplate_pregled (broj_naloga = sifra blagajne).
+interface SacuvanaIsplata {
+  sifra: number;
+  sifra_dobavljaca: number | string | null;
+  naziv_dobavljaca: string | null;
+  datum_racuna: string | null;
+  opis: string | null;
+  broj_racuna: string | null;
+  iskazani_pdv: number | string | null;
+  ulazni_pdv: number | string | null;
+  ukupno: number | string | null;
+  broj_naloga: number | string;
+}
+
+const isoUPrikaz = (iso: string) => {
+  const [g, m, d] = iso.split("-");
+  return g && m && d ? `${d}.${m}.${g}` : null;
+};
+
+const broj = (s: string) => parseFloat(s.replace(",", "."));
 
 const vrstaPoKodu = (kod: number | string | null | undefined) =>
   VRSTE.find((v) => v.kod === Number(kod)) ?? {
@@ -108,6 +160,8 @@ type StatusKoraka = "ceka" | "radi" | "ok" | "greska" | "nema";
 interface ObradaCuvanja {
   unos: StatusKoraka;
   unosPoruka: string | null;
+  isplate: StatusKoraka;
+  isplatePoruka: string | null;
   placenost: StatusKoraka;
   placenostPoruka: string | null;
   racuni: { sifra: number; oznaka: string }[];
@@ -121,6 +175,44 @@ const danasPrikaz = () => {
 const inputCls =
   "w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6]";
 const labelCls = "block text-xs text-gray-500 dark:text-[#7d7498] mb-1";
+
+// Datum dd.MM.yyyy, klik bilo gdje u polju otvara kalendar.
+function DatumPolje({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const otvoriPicker = () => {
+    const input = ref.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") input.showPicker();
+    else input.focus();
+  };
+  return (
+    <div className="relative cursor-pointer" onClick={otvoriPicker}>
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ color: "transparent" }}
+        className={`${inputCls} cursor-pointer`}
+      />
+      <div
+        className={`absolute inset-0 flex items-center px-3 text-sm tabular-nums pointer-events-none ${
+          value
+            ? "text-gray-800 dark:text-[#ede9f6]"
+            : "text-gray-400 dark:text-[#6f6890]"
+        }`}
+      >
+        {isoUPrikaz(value) ?? "dd.mm.gggg"}
+      </div>
+    </div>
+  );
+}
 
 const TH = ({
   children,
@@ -201,6 +293,30 @@ export function BlagajnaUnos() {
   const [pretragaRacuna, setPretragaRacuna] = useState("");
   const [skenPoruka, setSkenPoruka] = useState<string | null>(null);
   const [sacuvane, setSacuvane] = useState<SacuvanaUplata[]>([]);
+  const [sacuvaneIsp, setSacuvaneIsp] = useState<SacuvanaIsplata[]>([]);
+  const [dobavljaci, setDobavljaci] = useState<Dobavljac[]>([]);
+  const [dobavljaciLoading, setDobavljaciLoading] = useState(true);
+  const [dobavljaciGreska, setDobavljaciGreska] = useState<string | null>(null);
+  const [pretragaDob, setPretragaDob] = useState("");
+  const [troskovi, setTroskovi] = useState<Trosak[]>([]);
+
+  // Forma — isplata dobavljaču (vrsta 3)
+  const [dobavljac, setDobavljac] = useState<Dobavljac | null>(null);
+  const [brojRacuna, setBrojRacuna] = useState("");
+  const [datumRacuna, setDatumRacuna] = useState("");
+  const [ukupnoIsp, setUkupnoIsp] = useState("");
+  const [iskazaniPdv, setIskazaniPdv] = useState("");
+  const [ulazniPdv, setUlazniPdv] = useState("");
+  const [isplate, setIsplate] = useState<NovaIsplata[]>([]);
+
+  // Novi dobavljač (modal)
+  const [noviDob, setNoviDob] = useState<{
+    naziv: string;
+    adresa: string;
+    jib: string;
+  } | null>(null);
+  const [noviDobGreska, setNoviDobGreska] = useState<string | null>(null);
+  const [noviDobSlanje, setNoviDobSlanje] = useState(false);
 
   // Forma
   const [vrsta, setVrsta] = useState(1);
@@ -221,9 +337,13 @@ export function BlagajnaUnos() {
   const [obrada, setObrada] = useState<ObradaCuvanja | null>(null);
 
   const pretragaRef = useRef<HTMLDivElement>(null);
+  const [pokaziTroskove, setPokaziTroskove] = useState(false);
+  const [pretragaTroska, setPretragaTroska] = useState("");
   const kljucRef = useRef(1);
 
-  const izabranaVrsta = vrstaPoKodu(vrsta);
+  const izabranaVrsta =
+    VRSTE_UNOS.find((v) => v.kod === vrsta) ?? vrstaPoKodu(vrsta);
+  const jeIsplataDob = vrsta === VRSTA_ISPLATA_DOB;
   const sifraBlagajne = stanje?.id ?? null;
 
   const ucitajRacune = async () => {
@@ -263,14 +383,124 @@ export function BlagajnaUnos() {
       });
       const d = await res.json().catch(() => ({}));
       setSacuvane((d.uplate ?? []) as SacuvanaUplata[]);
+      setSacuvaneIsp((d.isplate ?? []) as SacuvanaIsplata[]);
     } catch {
       setSacuvane([]);
+      setSacuvaneIsp([]);
+    }
+  };
+
+  const ucitajDobavljace = async (): Promise<Dobavljac[]> => {
+    setDobavljaciLoading(true);
+    setDobavljaciGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/blagajna/isplate-dobavljaci`, {
+        credentials: "include",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.success === false) {
+        throw new Error(d.message || "Greška pri učitavanju dobavljača");
+      }
+      const lista = (d.data ?? []) as Dobavljac[];
+      setDobavljaci(lista);
+      return lista;
+    } catch (e: unknown) {
+      setDobavljaci([]);
+      setDobavljaciGreska(
+        e instanceof Error ? e.message : "Greška pri učitavanju dobavljača",
+      );
+      return [];
+    } finally {
+      setDobavljaciLoading(false);
+    }
+  };
+
+  // Izbor dobavljača uvijek kreće od prazne forme isplate.
+  const izaberiDobavljaca = (d: Dobavljac) => {
+    setDobavljac(d);
+    setBrojRacuna("");
+    setDatumRacuna("");
+    setUkupnoIsp("");
+    setIskazaniPdv("");
+    setUlazniPdv("");
+    setOpis("");
+    setGreskaForme(null);
+  };
+
+  // Unos novog dobavljača → POST /api/blagajna/isplate-dobavljaci-unos.
+  // Nakon uspjeha lista se osvježi i novi dobavljač se odmah izabere.
+  const sacuvajNovogDobavljaca = async () => {
+    if (!noviDob || noviDobSlanje) return;
+    const naziv = noviDob.naziv.trim();
+    const adresa = noviDob.adresa.trim();
+    const jib = noviDob.jib.trim();
+    if (!naziv) {
+      setNoviDobGreska("Unesite naziv dobavljača");
+      return;
+    }
+    if (jib && !/^\d+$/.test(jib)) {
+      setNoviDobGreska("JIB smije sadržati samo cifre");
+      return;
+    }
+    if (jib && dobavljaci.some((d) => String(d.JIB ?? "").trim() === jib)) {
+      setNoviDobGreska(`Dobavljač sa JIB-om ${jib} već postoji u listi`);
+      return;
+    }
+    setNoviDobSlanje(true);
+    setNoviDobGreska(null);
+    try {
+      const res = await fetch(`${API_URL}/api/blagajna/isplate-dobavljaci-unos`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          naziv_dobavljaca: naziv,
+          Adresa_dobavljaca: adresa,
+          JIB: jib,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.success) {
+        throw new Error(d.message || "Greška pri unosu dobavljača");
+      }
+      const lista = await ucitajDobavljace();
+      const novi =
+        (d.sifra != null &&
+          lista.find((x) => String(x.sifra) === String(d.sifra))) ||
+        lista.find(
+          (x) =>
+            (jib && String(x.JIB ?? "").trim() === jib) ||
+            (x.naziv_dobavljaca ?? "").trim().toLowerCase() ===
+              naziv.toLowerCase(),
+        );
+      if (novi) izaberiDobavljaca(novi);
+      setNoviDob(null);
+    } catch (e: unknown) {
+      setNoviDobGreska(
+        e instanceof Error ? e.message : "Greška pri unosu dobavljača",
+      );
+    } finally {
+      setNoviDobSlanje(false);
+    }
+  };
+
+  const ucitajTroskove = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/blagajna/isplate-troskovi`, {
+        credentials: "include",
+      });
+      const d = await res.json().catch(() => ({}));
+      setTroskovi(res.ok ? ((d.data ?? []) as Trosak[]) : []);
+    } catch {
+      setTroskovi([]);
     }
   };
 
   const osvjeziSve = () => {
     void ucitajRacune();
     void ucitajSacuvane();
+    void ucitajDobavljace();
+    void ucitajTroskove();
     void osvjeziStanje();
   };
 
@@ -282,6 +512,8 @@ export function BlagajnaUnos() {
       .finally(() => setPartneriLoading(false));
     void ucitajRacune();
     void ucitajSacuvane();
+    void ucitajDobavljace();
+    void ucitajTroskove();
   }, []);
 
   useEffect(() => {
@@ -342,6 +574,111 @@ export function BlagajnaUnos() {
             }),
     [sacuvane, sifraBlagajne],
   );
+
+  const sacuvaneIsplateBlagajne = useMemo(
+    () =>
+      sifraBlagajne == null
+        ? []
+        : sacuvaneIsp.filter(
+            (i) => String(i.broj_naloga) === String(sifraBlagajne),
+          ),
+    [sacuvaneIsp, sifraBlagajne],
+  );
+
+  const filtriraniTroskovi = useMemo(() => {
+    const q = pretragaTroska.trim().toLowerCase();
+    if (!q) return troskovi;
+    return troskovi.filter((t) =>
+      (t.naziv_troska ?? "").toLowerCase().includes(q),
+    );
+  }, [troskovi, pretragaTroska]);
+
+  const izaberiTrosak = (t: Trosak) => {
+    setOpis(t.naziv_troska ?? "");
+    setPokaziTroskove(false);
+  };
+
+  const filtriraniDobavljaci = useMemo(() => {
+    const q = pretragaDob.trim().toLowerCase();
+    if (!q) return dobavljaci;
+    return dobavljaci.filter(
+      (d) =>
+        (d.naziv_dobavljaca ?? "").toLowerCase().includes(q) ||
+        (d.JIB ?? "").toLowerCase().includes(q) ||
+        (d.Adresa_dobavljaca ?? "").toLowerCase().includes(q) ||
+        String(d.sifra) === q,
+    );
+  }, [dobavljaci, pretragaDob]);
+
+  // PDV se unosi ručno; ovo je samo upozorenje ako iskazani PDV nije 17%
+  // sadržan u ukupnom iznosu (ukupno * 17/117). Ne blokira dodavanje.
+  const upozorenjePdv = useMemo(() => {
+    const uk = broj(ukupnoIsp);
+    const isk = iskazaniPdv.trim() ? broj(iskazaniPdv) : 0;
+    if (!Number.isFinite(uk) || uk <= 0 || !Number.isFinite(isk) || isk <= 0) {
+      return null;
+    }
+    const ocekivano = Math.round(((uk * 17) / 117) * 100) / 100;
+    if (Math.abs(isk - ocekivano) <= 0.02) return null;
+    return `Iskazani PDV nije 17% od ukupnog (očekivano ${formatKM(ocekivano)})`;
+  }, [ukupnoIsp, iskazaniPdv]);
+
+  const dodajIsplatu = () => {
+    if (!dobavljac) {
+      setGreskaForme("Izaberite dobavljača iz liste lijevo");
+      return;
+    }
+    if (!brojRacuna.trim()) {
+      setGreskaForme("Unesite broj računa");
+      return;
+    }
+    if (!datumRacuna) {
+      setGreskaForme("Unesite datum računa");
+      return;
+    }
+    const uk = broj(ukupnoIsp);
+    if (!Number.isFinite(uk) || uk <= 0) {
+      setGreskaForme("Ukupno mora biti veće od 0");
+      return;
+    }
+    const isk = iskazaniPdv.trim() ? broj(iskazaniPdv) : 0;
+    const ul = ulazniPdv.trim() ? broj(ulazniPdv) : 0;
+    if (!Number.isFinite(isk) || isk < 0 || isk > uk) {
+      setGreskaForme("Iskazani PDV mora biti između 0 i ukupnog iznosa");
+      return;
+    }
+    if (!Number.isFinite(ul) || ul < 0 || ul > isk) {
+      setGreskaForme("Ulazni PDV ne može biti veći od iskazanog");
+      return;
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    setIsplate((prev) => [
+      ...prev,
+      {
+        kljuc: kljucRef.current++,
+        sifra_dobavljaca: Number(dobavljac.sifra),
+        naziv_dobavljaca:
+          dobavljac.naziv_dobavljaca ?? `Dobavljač #${dobavljac.sifra}`,
+        broj_racuna: brojRacuna.trim(),
+        datum_racuna: datumRacuna,
+        opis: opis.trim(),
+        ukupno: r2(uk),
+        iskazani_pdv: r2(isk),
+        ulazni_pdv: r2(ul),
+      },
+    ]);
+    setDobavljac(null);
+    setBrojRacuna("");
+    setDatumRacuna("");
+    setUkupnoIsp("");
+    setIskazaniPdv("");
+    setUlazniPdv("");
+    setOpis("");
+    setGreskaForme(null);
+  };
+
+  const ukloniIsplatu = (kljuc: number) =>
+    setIsplate((prev) => prev.filter((s) => s.kljuc !== kljuc));
 
   const izaberiPartnera = (p: Partner) => {
     setPartner(p);
@@ -444,9 +781,12 @@ export function BlagajnaUnos() {
   const sumaNovihUplata = stavke
     .filter((s) => vrstaPoKodu(s.vrsta_uplate).tip === "uplata")
     .reduce((a, s) => a + s.uplaceno, 0);
-  const sumaNovihIsplata = stavke
-    .filter((s) => vrstaPoKodu(s.vrsta_uplate).tip === "isplata")
-    .reduce((a, s) => a + s.uplaceno, 0);
+  const sumaNovihIsplata =
+    stavke
+      .filter((s) => vrstaPoKodu(s.vrsta_uplate).tip === "isplata")
+      .reduce((a, s) => a + s.uplaceno, 0) +
+    isplate.reduce((a, s) => a + s.ukupno, 0);
+  const brojNovih = stavke.length + isplate.length;
 
   const azurirajPlacenost = async (
     racuniZaPlacenost: ObradaCuvanja["racuni"],
@@ -503,10 +843,15 @@ export function BlagajnaUnos() {
 
   // Šalju se samo nesačuvane stavke; nakon uspjeha iz liste se skidaju
   // tačno poslane (nova stavka dodata tokom slanja ostaje).
+  // Redoslijed: 1) uplate (erp.blagajna_uplate_unos), 2) isplate
+  // dobavljačima (erp.blagajna_uplate_isplate), 3) plaćenost računa.
+  // Ako uplate padnu, ništa dalje se ne šalje.
   const spremi = async () => {
-    if (stavke.length === 0 || slanje) return;
+    if (brojNovih === 0 || slanje) return;
     const zaSlanje = stavke;
+    const zaIsplate = isplate;
     const poslani = new Set(zaSlanje.map((s) => s.kljuc));
+    const poslaneIsp = new Set(zaIsplate.map((s) => s.kljuc));
     const racuniZaPlacenost = zaSlanje
       .filter((s) => s.sifra_veze !== null)
       .map((s) => ({
@@ -515,14 +860,16 @@ export function BlagajnaUnos() {
       }));
     setSlanje(true);
     setObrada({
-      unos: "radi",
-      unosPoruka: null,
+      unos: zaSlanje.length > 0 ? "radi" : "nema",
+      unosPoruka: zaSlanje.length > 0 ? null : "Nema uplata za unos.",
+      isplate: "ceka",
+      isplatePoruka: null,
       placenost: "ceka",
       placenostPoruka: null,
       racuni: racuniZaPlacenost,
     });
-    let unosUspio = false;
-    try {
+    let unosUspio = zaSlanje.length === 0;
+    if (zaSlanje.length > 0) try {
       const res = await fetch(`${API_URL}/api/blagajna/uplate-unos`, {
         method: "POST",
         credentials: "include",
@@ -569,7 +916,62 @@ export function BlagajnaUnos() {
         },
       );
     }
-    if (unosUspio) await azurirajPlacenost(racuniZaPlacenost);
+    if (unosUspio) {
+      if (zaIsplate.length === 0) {
+        setObrada(
+          (o) => o && { ...o, isplate: "nema", isplatePoruka: "Nema isplata za unos." },
+        );
+      } else {
+        setObrada((o) => o && { ...o, isplate: "radi", isplatePoruka: null });
+        try {
+          const res = await fetch(`${API_URL}/api/blagajna/isplate-unos`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              isplate: zaIsplate.map((s) => ({
+                sifra_dobavljaca: s.sifra_dobavljaca,
+                datum_racuna: s.datum_racuna,
+                opis: s.opis,
+                broj_racuna: s.broj_racuna,
+                iskazani_pdv: s.iskazani_pdv,
+                ulazni_pdv: s.ulazni_pdv,
+                ukupno: s.ukupno,
+              })),
+            }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || !d.success) {
+            throw new Error(d.message || d.error || "Greška pri unosu isplata");
+          }
+          setObrada(
+            (o) =>
+              o && {
+                ...o,
+                isplate: "ok",
+                isplatePoruka:
+                  d.prvaSifra != null
+                    ? `Sačuvano isplata: ${d.broj ?? zaIsplate.length} (šifre ${d.prvaSifra}–${d.posljednjaSifra}) — blagajna #${d.sifraBlagajne ?? sifraBlagajne}`
+                    : `Sačuvano isplata: ${d.broj ?? zaIsplate.length} — blagajna #${d.sifraBlagajne ?? sifraBlagajne}`,
+              },
+          );
+          setIsplate((prev) => prev.filter((s) => !poslaneIsp.has(s.kljuc)));
+          void ucitajSacuvane();
+          void osvjeziStanje();
+        } catch (e: unknown) {
+          setObrada(
+            (o) =>
+              o && {
+                ...o,
+                isplate: "greska",
+                isplatePoruka:
+                  e instanceof Error ? e.message : "Greška pri unosu isplata",
+              },
+          );
+        }
+      }
+      await azurirajPlacenost(racuniZaPlacenost);
+    }
     setSlanje(false);
   };
 
@@ -601,7 +1003,7 @@ export function BlagajnaUnos() {
 
   const pocetno = Number(stanje.pocetak_gotovine) || 0;
   const uplate = stanje.tekuce_uplate ?? 0;
-  const isplate = stanje.tekuce_isplate ?? 0;
+  const tekuceIsplate = stanje.tekuce_isplate ?? 0;
 
   return (
     <div className="space-y-4">
@@ -610,10 +1012,10 @@ export function BlagajnaUnos() {
         {[
           { naziv: "Početno stanje", v: pocetno, boja: undefined },
           { naziv: "Uplate", v: uplate, boja: ACCENT },
-          { naziv: "Isplate", v: isplate, boja: "#ef4444" },
+          { naziv: "Isplate", v: tekuceIsplate, boja: "#ef4444" },
           {
             naziv: "Obračunato stanje",
-            v: stanje.tekuci_obracun ?? pocetno + uplate - isplate,
+            v: stanje.tekuci_obracun ?? pocetno + uplate - tekuceIsplate,
             boja: PRIMARY,
           },
         ].map((s) => (
@@ -647,7 +1049,13 @@ export function BlagajnaUnos() {
       {/* Lijevo neplaćeni računi (širina po tabeli), desno od njih forma */}
       <div className="flex flex-wrap lg:flex-nowrap items-start gap-4">
         {/* Forma — u prikazu ide DRUGA (order-2) */}
-        <div className="order-2 w-full max-w-[374px] lg:w-[374px] flex-shrink-0 bg-[#f4effa] dark:bg-[#2c2444] rounded-2xl border-2 border-[#785E9E55] shadow-md overflow-hidden">
+        <div
+          className={`order-2 w-full max-w-[374px] lg:w-[374px] flex-shrink-0 rounded-2xl border-2 shadow-md overflow-hidden transition-colors ${
+            jeIsplataDob
+              ? "bg-[#fdf0ee] dark:bg-[#3a2430] border-[#ef444455]"
+              : "bg-[#f4effa] dark:bg-[#2c2444] border-[#785E9E55]"
+          }`}
+        >
           <div
             className="px-4 py-2.5 text-xs font-extrabold tracking-widest uppercase text-center text-white"
             style={{ background: PRIMARY }}
@@ -664,6 +1072,7 @@ export function BlagajnaUnos() {
                 onChange={(e) => {
                   setVrsta(Number(e.target.value));
                   odveziRacun();
+                  setGreskaForme(null);
                 }}
                 className={inputCls}
               >
@@ -687,6 +1096,97 @@ export function BlagajnaUnos() {
               </span>
             </div>
 
+            {jeIsplataDob ? (
+              <>
+                {/* Dobavljač — bira se iz liste lijevo */}
+                <div className="col-span-2">
+                  <label className={labelCls}>Dobavljač</label>
+                  {dobavljac ? (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#785E9E] bg-[#785E9E0a]">
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-gray-800 dark:text-[#ede9f6] truncate">
+                          {dobavljac.naziv_dobavljaca}
+                        </span>
+                        {dobavljac.JIB && (
+                          <span className="block text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            JIB {dobavljac.JIB}
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDobavljac(null)}
+                        title="Promijeni dobavljača"
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2 rounded-xl border border-dashed border-gray-200 dark:border-[#3a3158] text-xs text-gray-400 dark:text-[#5f5878]">
+                      Kliknite dobavljača u listi lijevo.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className={labelCls}>Broj računa</label>
+                  <input
+                    type="text"
+                    value={brojRacuna}
+                    onChange={(e) => setBrojRacuna(e.target.value)}
+                    maxLength={50}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Datum računa</label>
+                  <DatumPolje value={datumRacuna} onChange={setDatumRacuna} />
+                </div>
+
+                <div className="col-span-2">
+                  <label className={labelCls}>Ukupno (KM)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={ukupnoIsp}
+                    onChange={(e) => setUkupnoIsp(e.target.value)}
+                    placeholder="0,00"
+                    className={`${inputCls} text-right font-bold`}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelCls}>Iskazani PDV</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={iskazaniPdv}
+                    onChange={(e) => setIskazaniPdv(e.target.value)}
+                    placeholder="0,00"
+                    className={`${inputCls} text-right`}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Ulazni PDV</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={ulazniPdv}
+                    onChange={(e) => setUlazniPdv(e.target.value)}
+                    placeholder="0,00"
+                    className={`${inputCls} text-right`}
+                  />
+                </div>
+                {upozorenjePdv && (
+                  <div className="col-span-2 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                    <AlertCircle size={12} />
+                    {upozorenjePdv}
+                  </div>
+                )}
+              </>
+            ) : (
+            <>
             {/* Partner */}
             <div className="col-span-2" ref={pretragaRef}>
               <label className={labelCls}>Partner</label>
@@ -832,21 +1332,47 @@ export function BlagajnaUnos() {
                 }`}
               />
             </div>
+            </>
+            )}
 
-            {/* Opis */}
+            {/* Opis — kod isplata nudi često korištene troškove */}
             <div className="col-span-2">
-              <label className={labelCls}>Opis</label>
-              <input
-                type="text"
-                value={opis}
-                onChange={(e) => setOpis(e.target.value)}
-                maxLength={254}
-                placeholder="npr. Uplata kupca"
-                className={inputCls}
-              />
+              <label className={labelCls}>
+                {jeIsplataDob ? "Opis računa" : "Opis"}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={opis}
+                  onChange={(e) => setOpis(e.target.value)}
+                  maxLength={254}
+                  placeholder={
+                    jeIsplataDob
+                      ? "Upišite opis ili izaberite trošak"
+                      : "npr. Uplata kupca"
+                  }
+                  className={inputCls}
+                />
+                {jeIsplataDob && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPretragaTroska("");
+                      setPokaziTroskove(true);
+                    }}
+                    title="Izaberi iz često korištenih troškova"
+                    className="flex-shrink-0 flex items-center gap-1 px-3 rounded-xl text-xs font-bold text-white hover:brightness-110"
+                    style={{ background: PRIMARY }}
+                  >
+                    <Search size={13} />
+                    Troškovi
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Napomena */}
+            {!jeIsplataDob && (
             <div className="col-span-2">
               <label className={labelCls}>Napomena</label>
               <input
@@ -857,6 +1383,7 @@ export function BlagajnaUnos() {
                 className={inputCls}
               />
             </div>
+            )}
 
             <div className="col-span-2 flex flex-wrap items-center gap-3 pt-1">
               {greskaForme && (
@@ -867,7 +1394,7 @@ export function BlagajnaUnos() {
               )}
               <button
                 type="button"
-                onClick={dodajStavku}
+                onClick={jeIsplataDob ? dodajIsplatu : dodajStavku}
                 className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110"
                 style={{ background: PRIMARY }}
               >
@@ -878,8 +1405,119 @@ export function BlagajnaUnos() {
           </div>
         </div>
 
-        {/* Neplaćeni gotovinski računi — u prikazu PRVI (lijevo), širok koliko tabela */}
-        <div className="order-1 w-fit max-w-full flex-shrink-0 bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+        {/* Vrsta 3: umjesto računa lijevo je lista registrovanih dobavljača.
+            Oba panela su uvijek u istoj ćeliji grida (neaktivni je nevidljiv),
+            pa lijevi objekat ima istu širinu za 1 i za 3. */}
+        <div className="order-1 grid max-w-full flex-shrink-0">
+        <div
+          aria-hidden={!jeIsplataDob}
+          className={`[grid-area:1/1] self-start ${jeIsplataDob ? "" : "invisible"} max-w-full bg-[#fdf0ee] dark:bg-[#3a2430] rounded-2xl border-2 border-[#ef444455] shadow-md overflow-hidden`}
+        >
+          <div
+            className="px-4 py-2 flex flex-wrap items-center gap-3"
+            style={{ background: PRIMARY }}
+          >
+            <span className="flex-1 text-xs font-extrabold tracking-widest uppercase text-white">
+              Registrovani dobavljači ({filtriraniDobavljaci.length})
+            </span>
+            <div className="relative w-64">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+              />
+              <input
+                type="text"
+                value={pretragaDob}
+                onChange={(e) => setPretragaDob(e.target.value)}
+                placeholder="Naziv, JIB ili adresa..."
+                className={`${inputCls} pl-8`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setNoviDob({ naziv: pretragaDob.trim(), adresa: "", jib: "" });
+                setNoviDobGreska(null);
+              }}
+              title="Unos novog dobavljača"
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold bg-white/15 text-white hover:bg-white/25"
+            >
+              <Plus size={14} />
+              Novi
+            </button>
+          </div>
+          {dobavljaciLoading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-400 dark:text-[#5f5878]">
+              <Loader2 size={18} className="animate-spin" style={{ color: PRIMARY }} />
+              Učitavanje dobavljača...
+            </div>
+          ) : dobavljaciGreska ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-16 text-sm text-red-500">
+              <AlertCircle size={15} />
+              {dobavljaciGreska}
+            </div>
+          ) : filtriraniDobavljaci.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]">
+              {dobavljaci.length === 0
+                ? "Nema registrovanih dobavljača."
+                : "Nema dobavljača za tu pretragu."}
+            </div>
+          ) : (
+            <div className="max-h-[calc(100vh-230px)] overflow-auto">
+              <table className="table-auto w-full text-sm">
+                <thead>
+                  <tr>
+                    <TH usko>Dobavljač</TH>
+                    <TH usko>JIB</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtriraniDobavljaci.map((d) => {
+                    const izabran =
+                      dobavljac && String(dobavljac.sifra) === String(d.sifra);
+                    return (
+                      <tr
+                        key={d.sifra}
+                        onClick={() => izaberiDobavljaca(d)}
+                        className={`border-b border-gray-200 dark:border-[#3a3158] cursor-pointer transition-colors ${
+                          izabran
+                            ? "bg-[#e3d9f7] dark:bg-[#3d3163]"
+                            : "hover:bg-purple-50 dark:hover:bg-[#2d2648]"
+                        }`}
+                      >
+                        <td className="px-1.5 py-1 font-bold text-gray-800 dark:text-[#ede9f6]">
+                          <span
+                            className="block truncate max-w-[260px]"
+                            title={d.naziv_dobavljaca ?? undefined}
+                          >
+                            {d.naziv_dobavljaca ?? `Dobavljač #${d.sifra}`}
+                          </span>
+                          {d.Adresa_dobavljaca && (
+                            <span
+                              className="block text-[10px] font-normal text-gray-400 dark:text-[#5f5878] truncate max-w-[260px]"
+                              title={d.Adresa_dobavljaca}
+                            >
+                              {d.Adresa_dobavljaca}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-1.5 py-1 whitespace-nowrap text-gray-600 dark:text-[#c5bfd8] tabular-nums">
+                          {d.JIB || "–"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Neplaćeni gotovinski računi */}
+        <div
+          aria-hidden={jeIsplataDob}
+          className={`[grid-area:1/1] self-start ${jeIsplataDob ? "invisible" : ""} max-w-full bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden`}
+        >
           <div
             className="px-4 py-2 flex flex-wrap items-center gap-3"
             style={{ background: PRIMARY }}
@@ -996,17 +1634,19 @@ export function BlagajnaUnos() {
             </div>
           )}
         </div>
+        </div>
 
       {/* Stavke blagajne (desno od forme): nesačuvane na vrhu, pa sačuvane */}
-      <div className="order-3 flex-1 min-w-[300px] lg:min-w-0 max-w-fullbg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
+      <div className="order-3 flex-1 min-w-[300px] lg:min-w-0 max-w-full bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">
         <div
           className="px-4 py-2.5 flex items-center gap-3 text-xs font-extrabold tracking-widest uppercase text-white"
           style={{ background: PRIMARY }}
         >
           <span className="flex-1">
-            Stavke blagajne ({sacuvaneBlagajne.length + stavke.length})
+            Stavke blagajne (
+            {sacuvaneBlagajne.length + sacuvaneIsplateBlagajne.length + brojNovih})
           </span>
-          {stavke.length > 0 && (
+          {brojNovih > 0 && (
             <>
               <span className="text-green-200">+ {formatKM(sumaNovihUplata)}</span>
               <span className="text-red-200">− {formatKM(sumaNovihIsplata)}</span>
@@ -1018,7 +1658,7 @@ export function BlagajnaUnos() {
           <button
             type="button"
             onClick={() => void spremi()}
-            disabled={slanje || stavke.length === 0}
+            disabled={slanje || brojNovih === 0}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: ACCENT }}
           >
@@ -1028,12 +1668,15 @@ export function BlagajnaUnos() {
               <Save size={14} />
             )}
             Sačuvaj unos
-            {stavke.length > 0 && ` (${stavke.length})`}
+            {brojNovih > 0 && ` (${brojNovih})`}
           </button>
-          {stavke.length > 0 && (
+          {brojNovih > 0 && (
             <button
               type="button"
-              onClick={() => setStavke([])}
+              onClick={() => {
+                setStavke([]);
+                setIsplate([]);
+              }}
               disabled={slanje}
               className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
             >
@@ -1041,13 +1684,15 @@ export function BlagajnaUnos() {
             </button>
           )}
           <span className="text-[11px] text-gray-400 dark:text-[#5f5878]">
-            {stavke.length === 0
+            {brojNovih === 0
               ? "Nema nesačuvanih stavki."
-              : `Nesačuvanih stavki: ${stavke.length}`}
+              : `Nesačuvanih stavki: ${brojNovih}`}
           </span>
         </div>
 
-        {stavke.length === 0 && sacuvaneBlagajne.length === 0 ? (
+        {brojNovih === 0 &&
+        sacuvaneBlagajne.length === 0 &&
+        sacuvaneIsplateBlagajne.length === 0 ? (
           <div className="px-3 py-8 text-center text-sm text-gray-400 dark:text-[#5f5878]">
             Na blagajni još nema stavki
           </div>
@@ -1129,6 +1774,95 @@ export function BlagajnaUnos() {
                   );
                 })}
 
+                {isplate.map((s) => (
+                  <Fragment key={`NI-${s.kljuc}`}>
+                    <tr className="bg-amber-50/70 dark:bg-amber-900/15">
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <span className="mr-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 dark:bg-amber-800/60 dark:text-amber-200">
+                          NOVO
+                        </span>
+                        <span className="text-[15px] font-bold text-gray-900 dark:text-white">
+                          {s.naziv_dobavljaca}
+                        </span>
+                        <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                          Račun {s.broj_racuna}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1 whitespace-nowrap text-xs font-medium text-red-500">
+                        Isplate
+                      </td>
+                      <td className="px-3 py-1 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
+                        {isoUPrikaz(s.datum_racuna)}
+                      </td>
+                      <td className="px-3 py-1 text-right font-bold whitespace-nowrap text-red-500">
+                        − {formatKM(s.ukupno)}
+                      </td>
+                      <td className="px-3 py-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => ukloniIsplatu(s.kljuc)}
+                          disabled={slanje}
+                          title="Ukloni isplatu"
+                          className="text-gray-400 hover:text-red-500 disabled:opacity-40"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-200 dark:border-[#3a3158] bg-amber-50/70 dark:bg-amber-900/15">
+                      <td
+                        colSpan={5}
+                        className="px-3 pb-1 pt-0 text-xs text-gray-600 dark:text-[#c5bfd8]"
+                      >
+                        {s.opis || "–"}
+                        <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                          Isk. PDV {formatKM(s.iskazani_pdv)} · Ul. PDV{" "}
+                          {formatKM(s.ulazni_pdv)}
+                        </span>
+                      </td>
+                    </tr>
+                  </Fragment>
+                ))}
+
+                {sacuvaneIsplateBlagajne.map((i) => (
+                  <Fragment key={`I-${i.sifra}`}>
+                    <tr className="bg-[#f3eefa] dark:bg-[#2c2444]">
+                      <td className="px-3 py-1 whitespace-nowrap">
+                        <span className="text-[15px] font-bold text-gray-900 dark:text-white">
+                          {i.naziv_dobavljaca ?? `Dobavljač #${i.sifra_dobavljaca}`}
+                        </span>
+                        {i.broj_racuna && (
+                          <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            Račun {i.broj_racuna}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1 whitespace-nowrap text-xs font-medium text-red-500">
+                        Isplate
+                      </td>
+                      <td className="px-3 py-1 whitespace-nowrap text-gray-500 dark:text-[#a99fc2]">
+                        {formatDatum(i.datum_racuna)}
+                      </td>
+                      <td className="px-3 py-1 text-right font-semibold whitespace-nowrap text-red-500">
+                        − {formatKM(i.ukupno)}
+                      </td>
+                      <td className="px-3 py-1" />
+                    </tr>
+                    <tr className="border-b border-gray-200 dark:border-[#3a3158] bg-[#f3eefa] dark:bg-[#2c2444]">
+                      <td
+                        colSpan={5}
+                        className="px-3 pb-1 pt-0 text-xs text-gray-600 dark:text-[#c5bfd8]"
+                      >
+                        {i.opis || "–"}
+                        <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                          Isk. PDV {formatKM(i.iskazani_pdv)} · Ul. PDV{" "}
+                          {formatKM(i.ulazni_pdv)}
+                        </span>
+                      </td>
+                    </tr>
+                  </Fragment>
+                ))}
+
                 {sacuvaneBlagajne.map((u) => {
                   const v = vrstaPoKodu(u.vrsta_uplate);
                   const boja = v.tip === "isplata" ? "#ef4444" : ACCENT;
@@ -1175,6 +1909,167 @@ export function BlagajnaUnos() {
       </div>
       </div>
 
+      {/* Izbor troška za opis računa */}
+      {pokaziTroskove && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPokaziTroskove(false);
+          }}
+        >
+          <div className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-2xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden">
+            <div
+              className="px-4 py-2.5 flex items-center gap-3"
+              style={{ background: PRIMARY }}
+            >
+              <span className="flex-1 text-xs font-extrabold tracking-widest uppercase text-white">
+                Često korišteni troškovi ({filtriraniTroskovi.length})
+              </span>
+              <button
+                type="button"
+                onClick={() => setPokaziTroskove(false)}
+                className="text-white/80 hover:text-white"
+                title="Zatvori"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 border-b border-gray-100 dark:border-[#2d2648]">
+              <div className="relative">
+                <Search
+                  size={15}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+                />
+                <input
+                  type="text"
+                  value={pretragaTroska}
+                  onChange={(e) => setPretragaTroska(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setPokaziTroskove(false);
+                    if (e.key === "Enter" && filtriraniTroskovi.length === 1) {
+                      izaberiTrosak(filtriraniTroskovi[0]);
+                    }
+                  }}
+                  autoFocus
+                  placeholder="Pretraga troškova..."
+                  className={`${inputCls} pl-9 !text-base`}
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {filtriraniTroskovi.length === 0 ? (
+                <div className="py-10 text-center text-sm text-gray-400 dark:text-[#5f5878]">
+                  {troskovi.length === 0
+                    ? "Nema unesenih troškova."
+                    : "Nema troškova za tu pretragu."}
+                </div>
+              ) : (
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {filtriraniTroskovi.map((t) => (
+                    <button
+                      key={t.sifra}
+                      type="button"
+                      onClick={() => izaberiTrosak(t)}
+                      className={`px-4 py-3 rounded-xl text-left text-[15px] font-semibold border transition-colors ${
+                        opis === t.naziv_troska
+                          ? "border-[#785E9E] bg-[#e3d9f7] dark:bg-[#3d3163] text-gray-900 dark:text-white"
+                          : "border-gray-200 dark:border-[#3a3158] text-gray-800 dark:text-[#ede9f6] hover:bg-purple-50 hover:border-[#785E9E] dark:hover:bg-[#2d2648]"
+                      }`}
+                    >
+                      {t.naziv_troska}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Novi dobavljač */}
+      {noviDob && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-[#3a3158] bg-white dark:bg-[#261f38] shadow-2xl overflow-hidden">
+            <div
+              className="px-4 py-2.5 text-xs font-extrabold tracking-widest uppercase text-white"
+              style={{ background: PRIMARY }}
+            >
+              Novi dobavljač
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className={labelCls}>Naziv dobavljača *</label>
+                <input
+                  type="text"
+                  value={noviDob.naziv}
+                  onChange={(e) =>
+                    setNoviDob((n) => n && { ...n, naziv: e.target.value })
+                  }
+                  maxLength={150}
+                  autoFocus
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Adresa</label>
+                <input
+                  type="text"
+                  value={noviDob.adresa}
+                  onChange={(e) =>
+                    setNoviDob((n) => n && { ...n, adresa: e.target.value })
+                  }
+                  maxLength={150}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>JIB</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={noviDob.jib}
+                  onChange={(e) =>
+                    setNoviDob((n) => n && { ...n, jib: e.target.value })
+                  }
+                  maxLength={13}
+                  className={inputCls}
+                />
+              </div>
+              {noviDobGreska && (
+                <p className="flex items-center gap-1.5 text-xs text-red-500">
+                  <AlertCircle size={13} />
+                  {noviDobGreska}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setNoviDob(null)}
+                  disabled={noviDobSlanje}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] disabled:opacity-50"
+                >
+                  Odustani
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sacuvajNovogDobavljaca()}
+                  disabled={noviDobSlanje}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white hover:brightness-110 disabled:opacity-50"
+                  style={{ background: PRIMARY }}
+                >
+                  {noviDobSlanje ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Save size={13} />
+                  )}
+                  Sačuvaj dobavljača
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tok čuvanja: unos stavki, pa ažuriranje plaćenosti računa */}
       {obrada && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 px-4">
@@ -1185,8 +2080,13 @@ export function BlagajnaUnos() {
             <div className="space-y-4">
               <KorakObrade
                 status={obrada.unos}
-                naslov="Unos uplata/isplata u blagajnu"
+                naslov="Unos uplata u blagajnu"
                 poruka={obrada.unosPoruka}
+              />
+              <KorakObrade
+                status={obrada.isplate}
+                naslov="Unos isplata dobavljačima"
+                poruka={obrada.isplatePoruka}
               />
               <KorakObrade
                 status={obrada.placenost}
@@ -1199,6 +2099,12 @@ export function BlagajnaUnos() {
               <p className="mt-4 text-xs text-gray-500 dark:text-[#7d7498]">
                 Ništa nije sačuvano. Stavke su ostale u listi.
               </p>
+            )}
+            {obrada.isplate === "greska" && (
+              <div className="mt-4 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400">
+                Isplate NISU sačuvane i ostale su u listi — ispravite pa ponovo
+                kliknite Sačuvaj unos.
+              </div>
             )}
             {obrada.placenost === "greska" && (
               <div className="mt-4 px-3 py-2 rounded-xl text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400">
