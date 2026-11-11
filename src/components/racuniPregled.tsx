@@ -1280,9 +1280,12 @@ export function RacuniPregled() {
           .toUpperCase() === "DA";
       const odgovaraPlaceno =
         odabranoPlaceno === "" || (odabranoPlaceno === "DA") === placeno;
+      // "Račun usluga" (5) obuhvata i račune čija je vrsta_racuna_pod 20–30 (uključivo).
+      const pod = Number(red.vrsta_racuna_pod);
       const odgovaraVrsti =
         odabranaVrstaRacuna === null ||
-        Number(red.vrsta_racuna_novi) === odabranaVrstaRacuna;
+        Number(red.vrsta_racuna_novi) === odabranaVrstaRacuna ||
+        (odabranaVrstaRacuna === 5 && pod >= 20 && pod <= 30);
       return (
         odgovaraPretrazi &&
         odgovaraPodgrupi &&
