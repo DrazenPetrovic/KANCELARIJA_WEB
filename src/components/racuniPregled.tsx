@@ -1,6 +1,7 @@
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -282,6 +283,16 @@ const PAROVI_CELIJA: Record<string, string> = {
   vrednost: "rab1",
   osnova_za_obracun_pdv: "pdv",
 };
+// Kolone glavne liste čija je labela u zaglavlju centrirana.
+const PREGLED_ZAGLAVLJE_CENTAR = new Set([
+  "br_fiskalnog",
+  "vrednost",
+  "vp1",
+  "vp2",
+  "osnova_za_obracun_pdv",
+  "rabat_km",
+  "ukupno",
+]);
 // Kolone kod kojih je razmak prema susjednoj koloni sveden na 5px (5+5=10px
 // ukupno), da bi niz Broj računa..Osnova za PDV bio vizuelno zbijen.
 const TIJESAN_RAZMAK_LIJEVO = new Set([
@@ -321,6 +332,8 @@ const PREGLED_SIRINA_KARAKTERA: Record<string, number> = {
 const PREGLED_MIN_SIRINA_NAPOMENA_PX = 180;
 const PREGLED_MIN_SIRINA_PARTNER_PX = 220;
 const PREGLED_MIN_SIRINA_BR_FISKALNOG_PX = 170;
+// Vertikalna linija na desnom kraju kolone Br. fiskalnog / Datum fiskalnog.
+const LINIJA_BR_FISKALNOG = "1px solid rgba(120, 94, 158, 0.45)";
 // Štampa (akcije) kolona — fiksna širina u pikselima (nije tekstualna kolona).
 const PREGLED_SIRINA_STAMPA_PX = 48;
 // Stavke tabela: numeričke kolone od "Količina" do "MPV" — sveden razmak
@@ -406,11 +419,9 @@ const REKAP_POLJA: { kljuc: string; naziv: string; istaknuto?: boolean }[] = [
   { kljuc: "rab1", naziv: "Rab 1" },
   { kljuc: "vp1", naziv: "VP 1" },
   { kljuc: "rab2", naziv: "Rab 2" },
-  { kljuc: "vp2", naziv: "VP 2" },
-  { kljuc: "rab3", naziv: "Rab 3" },
-  { kljuc: "osnova_za_obracun_pdv", naziv: "Osnova" },
-  { kljuc: "pdv", naziv: "PDV" },
-  { kljuc: "rabat_km", naziv: "Rabat KM" },
+  { kljuc: "rabat_km", naziv: "Rab1+Rab2" },
+  { kljuc: "osnova_za_obracun_pdv", naziv: "Osnova", istaknuto: true },
+  { kljuc: "pdv", naziv: "PDV", istaknuto: true },
   { kljuc: "ukupno", naziv: "Ukupno", istaknuto: true },
 ];
 
@@ -571,6 +582,30 @@ function GenericnaTabela({
   const jeVirtualizovano =
     !jeStavke && redovi.length > PRAG_VIRTUALIZACIJE;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Br. fiskalnog nema fiksnu širinu — kao i Partner, dijeli preostali prostor
+  // (table-layout: fixed dijeli ga ravnopravno). Mjeri se širina Partner kolone
+  // (= "prirodna" širina Br. fiskalnog), pa Br. fiskalnog dobija 90% te širine,
+  // a preostalih 10% se dodaje koloni UKUPNO. Partner time ne mijenja širinu.
+  const partnerThRef = useRef<HTMLTableCellElement>(null);
+  const [sirinaAutoKolone, setSirinaAutoKolone] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (jeStavke) return;
+    const el = partnerThRef.current;
+    if (!el) return;
+    const izmjeri = () => {
+      const w = el.getBoundingClientRect().width;
+      setSirinaAutoKolone((stara) =>
+        stara !== null && Math.abs(stara - w) < 0.5 ? stara : w,
+      );
+    };
+    izmjeri();
+    const ro = new ResizeObserver(izmjeri);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [jeStavke, imaPartnera]);
+  const dodatakUkupnoPx =
+    sirinaAutoKolone !== null ? sirinaAutoKolone * 0.1 : 0;
   const [scrollTop, setScrollTop] = useState(0);
   const [visinaKontejnera, setVisinaKontejnera] = useState(600);
 
@@ -657,6 +692,7 @@ function GenericnaTabela({
           >
             {imaPartnera && (
               <th
+                ref={partnerThRef}
                 className={`text-left pl-3 pr-[5px] py-2 font-bold whitespace-nowrap border-b ${
                   jeStavke
                     ? "border-[#8FC74A]/40 dark:border-[#8FC74A]/30"
@@ -687,7 +723,9 @@ function GenericnaTabela({
                       ? "text-center px-1.5"
                       : jeZbijena
                         ? `text-center ${stavkeRazmak(k)}`
-                        : "text-left px-3"
+                        : !jeStavke && PREGLED_ZAGLAVLJE_CENTAR.has(k)
+                          ? "text-center px-3"
+                          : "text-left px-3"
                   } ${
                     jeStavke
                       ? "border-[#8FC74A]/40 dark:border-[#8FC74A]/30"
@@ -696,6 +734,9 @@ function GenericnaTabela({
                   style={{
                     ...(!jeStavke && jePrvaCelija
                       ? { borderLeft: "4px solid #8FC74A" }
+                      : undefined),
+                    ...(!jeStavke && k === "br_fiskalnog"
+                      ? { borderRight: LINIJA_BR_FISKALNOG }
                       : undefined),
                     ...(jeStavke && k === "naziv_proizvoda"
                       ? { minWidth: "260px" }
@@ -706,7 +747,12 @@ function GenericnaTabela({
                           maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
                         }
                       : undefined),
-                    ...(!jeStavke && PREGLED_SIRINA_KARAKTERA[k]
+                    ...(!jeStavke && k === "ukupno" && dodatakUkupnoPx > 0
+                      ? {
+                          width: `calc(${PREGLED_SIRINA_KARAKTERA[k]}ch + ${dodatakUkupnoPx}px)`,
+                          maxWidth: `calc(${PREGLED_SIRINA_KARAKTERA[k]}ch + ${dodatakUkupnoPx}px)`,
+                        }
+                      : !jeStavke && PREGLED_SIRINA_KARAKTERA[k]
                       ? {
                           width: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
                           maxWidth: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
@@ -714,7 +760,9 @@ function GenericnaTabela({
                       : !jeStavke && k === "napomena"
                         ? { minWidth: `${PREGLED_MIN_SIRINA_NAPOMENA_PX}px` }
                         : !jeStavke && k === "br_fiskalnog"
-                          ? { minWidth: `${PREGLED_MIN_SIRINA_BR_FISKALNOG_PX}px` }
+                          ? sirinaAutoKolone !== null
+                            ? { width: `${sirinaAutoKolone * 0.9}px` }
+                            : { minWidth: `${PREGLED_MIN_SIRINA_BR_FISKALNOG_PX}px` }
                           : undefined),
                   }}
                 >
@@ -876,6 +924,9 @@ function GenericnaTabela({
                             key={k}
                             className={`${padding} py-1.5 whitespace-nowrap overflow-hidden text-gray-700 dark:text-[#c5bfd8] ${onDesniKlikFiskalni ? "cursor-context-menu" : ""}`}
                             style={{
+                              ...(!jeStavke
+                                ? { borderRight: LINIJA_BR_FISKALNOG }
+                                : undefined),
                               ...obrubCelije(k),
                               ...(sirinaPara
                                 ? { width: `${sirinaPara}ch`, maxWidth: `${sirinaPara}ch` }
@@ -893,7 +944,7 @@ function GenericnaTabela({
                             {imaFiskalni ? (
                               <>
                                 <div
-                                  className="flex items-center gap-1 font-semibold min-w-0"
+                                  className="flex items-center justify-center gap-1 font-semibold min-w-0"
                                   style={{ color: PRIMARY }}
                                 >
                                   <CheckCircle2
@@ -904,7 +955,7 @@ function GenericnaTabela({
                                     {formatirajVrijednost(red[k], k)}
                                   </span>
                                 </div>
-                                <div className="text-[10px] text-gray-400 dark:text-[#5f5878] truncate">
+                                <div className="text-[10px] text-center text-gray-400 dark:text-[#5f5878] truncate">
                                   {formatirajVrijednost(
                                     red[donjiKljuc],
                                     donjiKljuc,
@@ -985,7 +1036,7 @@ function GenericnaTabela({
                             : k === "ukupno" || k === "prodajna_vrednost"
                               ? "font-bold text-sm"
                               : "text-gray-700 dark:text-[#c5bfd8]"
-                        }`}
+                        } ${!jeStavke && k === "ukupno" ? "text-right tabular-nums" : ""}`}
                         style={{
                           ...(k === "vrsta_racuna_novi" ||
                           k === "ukupno" ||
@@ -1001,7 +1052,12 @@ function GenericnaTabela({
                                 maxWidth: `${STAVKE_SIRINA_KARAKTERA[k]}ch`,
                               }
                             : undefined),
-                          ...(!jeStavke && PREGLED_SIRINA_KARAKTERA[k]
+                          ...(!jeStavke && k === "ukupno" && dodatakUkupnoPx > 0
+                            ? {
+                                width: `calc(${PREGLED_SIRINA_KARAKTERA[k]}ch + ${dodatakUkupnoPx}px)`,
+                                maxWidth: `calc(${PREGLED_SIRINA_KARAKTERA[k]}ch + ${dodatakUkupnoPx}px)`,
+                              }
+                            : !jeStavke && PREGLED_SIRINA_KARAKTERA[k]
                             ? {
                                 width: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
                                 maxWidth: `${PREGLED_SIRINA_KARAKTERA[k]}ch`,
@@ -2167,7 +2223,7 @@ export function RacuniPregled() {
                 return (
                   <div
                     key={p.kljuc}
-                    className="flex-1 min-w-[115px] px-3 py-2 rounded-xl bg-white dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] shadow-sm"
+                    className="min-w-[122px] px-[18px] py-2 rounded-xl bg-white dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] shadow-sm"
                     style={{
                       borderLeft: `4px solid ${jeRabat ? ACCENT : PRIMARY}`,
                     }}
@@ -2186,6 +2242,7 @@ export function RacuniPregled() {
                   </div>
                 );
               })}
+              <div className="ml-auto flex flex-wrap items-stretch gap-2">
               {REKAP_POLJA.filter((p) => p.istaknuto).map((p) => {
                 const iznos = rekapitulacija[p.kljuc] ?? 0;
                 return (
@@ -2208,6 +2265,7 @@ export function RacuniPregled() {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         )}
