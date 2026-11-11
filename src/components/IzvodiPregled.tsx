@@ -139,6 +139,17 @@ export function stavkaInfo(u: UplataRed) {
 }
 
 // Redoslijed u tabeli: uplate, isplate, pa transferi (prijem, skidanje).
+// Stavka sa nepoznatim partnerom (sifra_partnera = -1) — kasnije se mijenja
+// stvarnim partnerom. Transferi se ne računaju (nemaju partnera).
+export function nepoznatPartner(u: UplataRed) {
+  return (
+    String(u.tip_stavke ?? "").toUpperCase() !== "TRANSFER" &&
+    Number(u.sifra_partnera) === -1
+  );
+}
+
+const BOJA_NEPOZNAT = "#f59e0b";
+
 export function redoslijedStavke(u: UplataRed) {
   const s = stavkaInfo(u);
   return (s.transfer ? 2 : 0) + (s.tip === "isplata" ? 1 : 0);
@@ -234,6 +245,7 @@ export function IzvodiPregled() {
   const [prosireno, setProsireno] = useState<Set<number>>(new Set());
   const [banke, setBanke] = useState<BankaRed[]>([]);
   const [filterBanka, setFilterBanka] = useState<string>("");
+  const [samoNepoznati, setSamoNepoznati] = useState(false);
 
   const ucitaj = () => {
     setLoading(true);
@@ -311,12 +323,25 @@ export function IzvodiPregled() {
     return map;
   }, [uplate]);
 
+  // redni_broj izvoda -> broj stavki sa nepoznatim partnerom (-1).
+  const nepoznatiPoIzvodu = useMemo(() => {
+    const map = new Map<string, number>();
+    uplate.forEach((u) => {
+      if (!nepoznatPartner(u)) return;
+      const kljuc = String(u.sifra_blagajne);
+      map.set(kljuc, (map.get(kljuc) ?? 0) + 1);
+    });
+    return map;
+  }, [uplate]);
+
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
     return izvodi.filter((i) => {
       const odgovaraBanci =
         !filterBanka || String(i.sifra_banke) === filterBanka;
       if (!odgovaraBanci) return false;
+      if (samoNepoznati && !nepoznatiPoIzvodu.has(String(i.redni_broj)))
+        return false;
       if (!q) return true;
       return (
         String(i.sifra_izvoda).includes(q) ||
@@ -324,7 +349,7 @@ export function IzvodiPregled() {
         (i.naziv_banke ?? "").toLowerCase().includes(q)
       );
     });
-  }, [izvodi, pretraga, filterBanka]);
+  }, [izvodi, pretraga, filterBanka, samoNepoznati, nepoznatiPoIzvodu]);
 
   const sortirani = useMemo(
     () => [...filtrirani].sort((a, b) => b.redni_broj - a.redni_broj),
@@ -398,29 +423,6 @@ export function IzvodiPregled() {
   return (
     <div className="space-y-4 w-[90%] mx-auto">
       {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Landmark size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Pregled izvoda
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Bankovni izvodi i uplate po izvodu
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={ucitaj}
-          disabled={loading}
-          title="Osvježi"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
-        >
-          <RefreshCcw size={13} className={loading ? "animate-spin" : ""} />
-          Osvježi
-        </button>
-      </div>
 
       {/* Statistika */}
       {!loading && !greska && (
@@ -494,6 +496,27 @@ export function IzvodiPregled() {
             )}
             {sveProsireno ? "Skupi sve" : "Proširi sve"}
           </button>
+
+          <label className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-400 cursor-pointer select-none hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all">
+            <input
+              type="checkbox"
+              checked={samoNepoznati}
+              onChange={(e) => setSamoNepoznati(e.target.checked)}
+              className="accent-amber-500"
+            />
+            Samo sa nepoznatim partnerom ({nepoznatiPoIzvodu.size})
+          </label>
+
+          <button
+            type="button"
+            onClick={ucitaj}
+            disabled={loading}
+            title="Osvježi"
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
+          >
+            <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+            Osvježi
+          </button>
         </div>
 
         {!loading && !greska && (
@@ -563,16 +586,25 @@ export function IzvodiPregled() {
             const neslaganjeKontinuiteta = neusaglasenKontinuitet.has(
               izvod.redni_broj,
             );
+            const brojNepoznatih =
+              nepoznatiPoIzvodu.get(String(izvod.redni_broj)) ?? 0;
+            const imaNepoznatih = brojNepoznatih > 0;
 
             return (
               <div
                 key={izvod.redni_broj}
                 className={`border-b last:border-b-0 ${
-                  otvoreno
+                  otvoreno || imaNepoznatih
                     ? "border-l-4 border-gray-100 dark:border-[#2d2648]"
                     : `border-gray-100 dark:border-[#2d2648] ${i % 2 === 1 ? "bg-[#faf9fc] dark:bg-[#221c34]" : ""}`
-                }`}
-                style={otvoreno ? { borderLeftColor: PRIMARY } : undefined}
+                } ${!otvoreno && imaNepoznatih ? "bg-amber-50 dark:bg-amber-900/15" : ""}`}
+                style={
+                  imaNepoznatih
+                    ? { borderLeftColor: BOJA_NEPOZNAT }
+                    : otvoreno
+                      ? { borderLeftColor: PRIMARY }
+                      : undefined
+                }
               >
                 <button
                   type="button"
@@ -580,7 +612,9 @@ export function IzvodiPregled() {
                   className={`relative w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                     otvoreno
                       ? "bg-[#e3d9f7] dark:bg-[#3d3163] hover:bg-[#dbcdf3] dark:hover:bg-[#463a70]"
-                      : "hover:bg-purple-50/60 dark:hover:bg-[#271f40]/60"
+                      : imaNepoznatih
+                        ? "hover:bg-amber-100/70 dark:hover:bg-amber-900/25"
+                        : "hover:bg-purple-50/60 dark:hover:bg-[#271f40]/60"
                   }`}
                 >
                   <ChevronRight
@@ -684,6 +718,15 @@ export function IzvodiPregled() {
                     </div>
                   </div>
                   <div className="ml-auto flex items-center gap-3 flex-shrink-0">
+                    {imaNepoznatih && (
+                      <span
+                        title="Izvod ima stavke sa nepoznatim partnerom (šifra -1)"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                      >
+                        <AlertTriangle size={12} />
+                        Nepoznat partner: {brojNepoznatih}
+                      </span>
+                    )}
                     <div className="hidden lg:flex flex-col items-end leading-tight text-[10px]">
                       <span className="text-green-600 dark:text-green-400">
                         Otvoren: {formatDatumVrijeme(izvod.izvod_unos_otvoren)}
@@ -761,7 +804,14 @@ export function IzvodiPregled() {
                                 }`}
                               >
                                 <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                                  {nazivPartnera(u)}
+                                  {nepoznatPartner(u) ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold bg-amber-200 text-amber-800 dark:bg-amber-800/50 dark:text-amber-200">
+                                      <AlertTriangle size={12} />
+                                      {u.naziv_partnera || "Nepoznat partner"} (-1)
+                                    </span>
+                                  ) : (
+                                    nazivPartnera(u)
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
                                   {formatDatum(u.datum_uplate ?? izvod.datum_izvoda)}
