@@ -399,6 +399,27 @@ const VRSTE_RACUNA_NOVI: { vrijednost: number; naziv: string }[] = [
   { vrijednost: 6, naziv: "Storno usluga" },
 ];
 
+// Polja glavne liste koja se sabiraju u rekapitulaciji u zaglavlju (redoslijed
+// prati redoslijed kolona u tabeli).
+const REKAP_POLJA: { kljuc: string; naziv: string; istaknuto?: boolean }[] = [
+  { kljuc: "vrednost", naziv: "Vrednost" },
+  { kljuc: "rab1", naziv: "Rab 1" },
+  { kljuc: "vp1", naziv: "VP 1" },
+  { kljuc: "rab2", naziv: "Rab 2" },
+  { kljuc: "vp2", naziv: "VP 2" },
+  { kljuc: "rab3", naziv: "Rab 3" },
+  { kljuc: "osnova_za_obracun_pdv", naziv: "Osnova" },
+  { kljuc: "pdv", naziv: "PDV" },
+  { kljuc: "rabat_km", naziv: "Rabat KM" },
+  { kljuc: "ukupno", naziv: "Ukupno", istaknuto: true },
+];
+
+const formatIznos = (n: number) =>
+  n.toLocaleString("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
 const nadjiSifruTabele = (red: RacunRed): string | number | null => {
   for (const kljuc of KLJUC_SIFRE) {
     if (red[kljuc] !== undefined && red[kljuc] !== null)
@@ -1271,6 +1292,20 @@ export function RacuniPregled() {
     });
   }, [racuni, pretraga, odabranaPodgrupa, odabranoPlaceno, odabranaVrstaRacuna]);
 
+  // Rekapitulacija (sume) numeričkih polja nad trenutno filtriranim računima —
+  // prikazuje se u zaglavlju i automatski prati promjenu filtera/pretrage.
+  const rekapitulacija = useMemo(() => {
+    const sume: Record<string, number> = {};
+    for (const p of REKAP_POLJA) sume[p.kljuc] = 0;
+    for (const red of filtrirani) {
+      for (const p of REKAP_POLJA) {
+        const n = Number(red[p.kljuc]);
+        if (!isNaN(n)) sume[p.kljuc] += n;
+      }
+    }
+    return sume;
+  }, [filtrirani]);
+
   const handleKlikRacun = async (red: RacunRed) => {
     const sifraTabele = nadjiSifruTabele(red);
     if (sifraTabele === null) return;
@@ -2119,6 +2154,60 @@ export function RacuniPregled() {
             </option>
           ))}
         </select>
+
+        {!loading && !greska && (
+          <div className="w-full pt-3 border-t border-gray-100 dark:border-[#2d2648]">
+            <div className="flex flex-wrap items-stretch gap-2">
+              {REKAP_POLJA.filter((p) => !p.istaknuto).map((p) => {
+                const jeRabat = p.kljuc.startsWith("rab");
+                const iznos = rekapitulacija[p.kljuc] ?? 0;
+                return (
+                  <div
+                    key={p.kljuc}
+                    className="flex-1 min-w-[115px] px-3 py-2 rounded-xl bg-white dark:bg-[#1e1a2d] border border-gray-200 dark:border-[#3a3158] shadow-sm"
+                    style={{
+                      borderLeft: `4px solid ${jeRabat ? ACCENT : PRIMARY}`,
+                    }}
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-[#7d7498] whitespace-nowrap">
+                      {p.naziv}
+                    </div>
+                    <div
+                      className="text-right whitespace-nowrap font-extrabold text-sm tabular-nums"
+                      style={{
+                        color: iznos < 0 ? BOJA_STORNIRANO : jeRabat ? ACCENT : PRIMARY,
+                      }}
+                    >
+                      {formatIznos(iznos)}
+                    </div>
+                  </div>
+                );
+              })}
+              {REKAP_POLJA.filter((p) => p.istaknuto).map((p) => {
+                const iznos = rekapitulacija[p.kljuc] ?? 0;
+                return (
+                  <div
+                    key={p.kljuc}
+                    className="min-w-[180px] px-4 py-2 rounded-xl shadow-md text-white flex flex-col justify-center"
+                    style={{
+                      background:
+                        iznos < 0
+                          ? `linear-gradient(135deg, ${BOJA_STORNIRANO}, #b91c1c)`
+                          : `linear-gradient(135deg, ${PRIMARY}, #5b4a7d)`,
+                    }}
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-white/80 whitespace-nowrap">
+                      {p.naziv} KM
+                    </div>
+                    <div className="text-right whitespace-nowrap font-extrabold text-lg tabular-nums leading-tight">
+                      {formatIznos(iznos)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden">

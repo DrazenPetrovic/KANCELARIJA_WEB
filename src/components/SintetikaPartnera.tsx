@@ -1085,13 +1085,14 @@ export function SintetikaPartnera() {
                     </td>
                   </tr>
                 ))}
-                {/* Razlika = saldo kupaca − saldo dobavljača. */}
+                {/* Razlika = saldo kupaca + saldo dobavljača, sa predznakom
+                    (minus = kupci nama duguju više). */}
                 <tr className="border-t border-gray-200 dark:border-[#3a3158] text-gray-800 dark:text-[#ede9f6]">
                   <td className="px-3 pt-1 font-bold">Razlika</td>
                   <td className="px-3 pt-1">{""}</td>
                   <td className="px-3 pt-1 text-right font-bold whitespace-nowrap">
                     {formatIznos(
-                      (rekapitulacija[0]?.saldo ?? 0) -
+                      (rekapitulacija[0]?.saldo ?? 0) +
                         (rekapitulacija[1]?.saldo ?? 0),
                     )}
                   </td>
