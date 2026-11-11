@@ -25,6 +25,20 @@ const IZOSTAVLJENI_PARTNER_ID = 300;
 // Šifra vrste prometa "početno stanje" (vidi SintetikaPartnera.tsx).
 const VRSTA_PROMETA_POCETNO_STANJE = 4;
 
+// Dugmad Kupac/Dobavljač — i neaktivno mora jasno izgledati kao dugme
+// (obojena ivica i pozadina), da operater zna da može kliknuti.
+const STIL_AKTIVNE_VRSTE: React.CSSProperties = {
+  background: PRIMARY,
+  borderColor: PRIMARY,
+  color: "white",
+  boxShadow: `0 4px 12px ${PRIMARY}55`,
+};
+const STIL_NEAKTIVNE_VRSTE: React.CSSProperties = {
+  background: `${PRIMARY}14`,
+  borderColor: `${PRIMARY}80`,
+  color: PRIMARY,
+};
+
 interface Partner {
   partner_id: number;
   naziv: string;
@@ -221,7 +235,11 @@ function StatTile({
   );
 }
 
-export function KarticaPartnera() {
+export function KarticaPartnera({
+  initialSifraPartnera,
+}: {
+  initialSifraPartnera?: string | null;
+} = {}) {
   const [partneri, setPartneri] = useState<Partner[]>([]);
   const [partneriLoading, setPartneriLoading] = useState(true);
 
@@ -277,6 +295,21 @@ export function KarticaPartnera() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Otvaranje u novom tabu (npr. iz pregleda partnera) šalje šifru partnera
+  // koju treba odmah odabrati čim se lista partnera učita.
+  const initialSifraPrimijenjena = useRef(false);
+  useEffect(() => {
+    if (initialSifraPrimijenjena.current) return;
+    if (!initialSifraPartnera || partneri.length === 0) return;
+    const partner = partneri.find(
+      (p) => String(p.partner_id) === initialSifraPartnera,
+    );
+    if (partner) {
+      initialSifraPrimijenjena.current = true;
+      odaberiPartnera(partner);
+    }
+  }, [partneri, initialSifraPartnera]);
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
@@ -621,11 +654,11 @@ export function KarticaPartnera() {
                         <button
                           type="button"
                           onClick={() => setAktivnaVrsta("kupac")}
-                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold uppercase tracking-wide cursor-pointer transition-all border-2 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:brightness-105"
                           style={
                             aktivnaVrsta === "kupac"
-                              ? { background: PRIMARY, color: "white" }
-                              : { color: PRIMARY }
+                              ? STIL_AKTIVNE_VRSTE
+                              : STIL_NEAKTIVNE_VRSTE
                           }
                         >
                           <Users size={14} />
@@ -644,11 +677,11 @@ export function KarticaPartnera() {
                         <button
                           type="button"
                           onClick={() => setAktivnaVrsta("dobavljac")}
-                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-[#3a3158]"
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold uppercase tracking-wide cursor-pointer transition-all border-2 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:brightness-105"
                           style={
                             aktivnaVrsta === "dobavljac"
-                              ? { background: PRIMARY, color: "white" }
-                              : { color: PRIMARY }
+                              ? STIL_AKTIVNE_VRSTE
+                              : STIL_NEAKTIVNE_VRSTE
                           }
                         >
                           <Truck size={14} />

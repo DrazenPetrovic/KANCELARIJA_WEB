@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   Building2,
   CheckCircle2,
+  CreditCard,
   IdCard,
   Loader2,
   MapPin,
@@ -110,8 +111,8 @@ const TH = ({
   width?: string;
 }) => (
   <th
-    className={`px-2 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340] ${center ? "text-center" : "text-left"}`}
-    style={{ color: PRIMARY, width }}
+    className={`px-3 py-3 text-xs font-bold uppercase tracking-wider text-white ${center ? "text-center" : "text-left"}`}
+    style={{ backgroundColor: PRIMARY, width }}
   >
     {children}
   </th>
@@ -134,8 +135,8 @@ const SortableTH = ({
 }) => (
   <th
     onClick={onClick}
-    className="px-2 py-2 text-xs font-bold uppercase tracking-wider bg-[#f4f1f9] dark:bg-[#2a2340] text-left cursor-pointer select-none hover:bg-[#ede8f5] dark:hover:bg-[#312a50] transition-colors"
-    style={{ color: PRIMARY, width }}
+    className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-white text-left cursor-pointer select-none hover:brightness-110 transition-all"
+    style={{ backgroundColor: PRIMARY, width }}
   >
     <span className="inline-flex items-center gap-1">
       {children}
@@ -518,6 +519,14 @@ export function PartneriPregled() {
     opis: "",
     aktivan: tel.aktivan === 1,
   });
+
+  // Otvara Karticu partnera u novom tabu, sa unaprijed odabranim partnerom.
+  // Aplikacija nema URL rutiranje — stanje ekrana (aktivna sekcija, izabrani
+  // partner) se čita iz query stringa pri pokretanju (vidi Dashboard.tsx).
+  const otvoriKarticuNovomTabu = (partner: Partner) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL}?section=partneri-kartica&sifra=${encodeURIComponent(partner.partner_id)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const otvoriIzmjenu = (partner: Partner) => {
     const drzavaPodudaranje = drzave.find(
@@ -1108,7 +1117,7 @@ export function PartneriPregled() {
                   <TH center width="6rem">
                     Status
                   </TH>
-                  <TH center width="4rem">
+                  <TH center width="5.5rem">
                     Akcije
                   </TH>
                 </tr>
@@ -1206,18 +1215,32 @@ export function PartneriPregled() {
                       )}
                     </TD>
                     <TD center>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          otvoriIzmjenu(p);
-                        }}
-                        title="Izmijeni partnera"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
-                        style={{ color: PRIMARY }}
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            otvoriIzmjenu(p);
+                          }}
+                          title="Izmijeni partnera"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                          style={{ color: PRIMARY }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            otvoriKarticuNovomTabu(p);
+                          }}
+                          title="Otvori karticu partnera u novom tabu"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-[#ede8f5] dark:hover:bg-[#312a50]"
+                          style={{ color: PRIMARY }}
+                        >
+                          <CreditCard size={14} />
+                        </button>
+                      </div>
                     </TD>
                   </tr>
                 ))}

@@ -318,9 +318,9 @@ export function Dashboard({
   } | null>(null);
   const [showPrinterSavedModal, setShowPrinterSavedModal] = useState(false);
   // Nema URL rutiranja u aplikaciji — ovo je jedini izuzetak: dugme "otvori u
-  // novom tabu" (npr. kod pregleda artikala) šalje ?section=...&sifra=... da
-  // novi tab odmah otvori taj ekran sa unaprijed odabranim proizvodom. Query
-  // string se čita samo jednom pri pokretanju i odmah briše iz adresne trake.
+  // novom tabu" (npr. kod pregleda artikala/partnera) šalje ?section=...&sifra=...
+  // da novi tab odmah otvori taj ekran sa unaprijed odabranim proizvodom/partnerom.
+  // Query string se čita samo jednom pri pokretanju i odmah briše iz adresne trake.
   const [initSifraKartica] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("sifra"),
   );
@@ -328,7 +328,9 @@ export function Dashboard({
     const section = new URLSearchParams(window.location.search).get(
       "section",
     );
-    return section === "artikli-kartica" ? "artikli-kartica" : null;
+    return section === "artikli-kartica" || section === "partneri-kartica"
+      ? section
+      : null;
   });
 
   useEffect(() => {
@@ -3475,7 +3477,9 @@ export function Dashboard({
 
           {activeSection === "partneri-razni" && <PartneriRazniPregled />}
 
-          {activeSection === "partneri-kartica" && <KarticaPartnera />}
+          {activeSection === "partneri-kartica" && (
+            <KarticaPartnera initialSifraPartnera={initSifraKartica} />
+          )}
 
           {activeSection === "partneri-sintetika" && <SintetikaPartnera />}
 
