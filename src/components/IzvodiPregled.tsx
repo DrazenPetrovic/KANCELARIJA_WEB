@@ -235,6 +235,256 @@ function StatTile({
   );
 }
 
+interface PartnerLista {
+  partner_id: number;
+  naziv: string;
+  skraceni_naziv: string | null;
+}
+
+// Zamjena nepoznatog partnera (-1) na stavci izvoda — korak 1 izbor partnera,
+// korak 2 potvrda operatera. Procedura erp.izvodi_uplate_partneri_promjena
+// dodatno odbija izmjenu ako partner u bazi više nije -1.
+function PromjenaPartneraModal({
+  uplata,
+  sifraIzvoda,
+  onZatvori,
+  onSacuvano,
+}: {
+  uplata: UplataRed;
+  sifraIzvoda: number | string;
+  onZatvori: () => void;
+  onSacuvano: () => void;
+}) {
+  const [partneri, setPartneri] = useState<PartnerLista[]>([]);
+  const [partneriLoading, setPartneriLoading] = useState(true);
+  const [pretraga, setPretraga] = useState("");
+  const [izabran, setIzabran] = useState<PartnerLista | null>(null);
+  const [potvrda, setPotvrda] = useState(false);
+  const [snimanje, setSnimanje] = useState(false);
+  const [greska, setGreska] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/partneri/lista-sve`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((json) => setPartneri(json.data ?? json ?? []))
+      .catch(() => setPartneri([]))
+      .finally(() => setPartneriLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !snimanje) onZatvori();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onZatvori, snimanje]);
+
+  const filtrirani = useMemo(() => {
+    const q = pretraga.trim().toLowerCase();
+    const validni = partneri.filter((p) => Number(p.partner_id) > 0);
+    if (!q) return validni.slice(0, 50);
+    return validni
+      .filter(
+        (p) =>
+          p.naziv.toLowerCase().includes(q) ||
+          (p.skraceni_naziv ?? "").toLowerCase().includes(q) ||
+          String(p.partner_id) === q,
+      )
+      .slice(0, 50);
+  }, [partneri, pretraga]);
+
+  const vrsta = stavkaInfo(uplata);
+
+  const sacuvaj = async () => {
+    if (!izabran) return;
+    if (Number(uplata.sifra_partnera) !== -1) {
+      setGreska("Partner na ovoj uplati nije -1 — izmjena nije dozvoljena.");
+      return;
+    }
+    setSnimanje(true);
+    setGreska(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/izvodi/uplate-promjena-partnera`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sifraUplate: uplata.sifra_uplate,
+            sifraPartnera: izabran.partner_id,
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Greška pri promjeni partnera");
+      }
+      onSacuvano();
+    } catch (err) {
+      setGreska(err instanceof Error ? err.message : "Nepoznata greška");
+      setPotvrda(false);
+    } finally {
+      setSnimanje(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !snimanje) onZatvori();
+      }}
+    >
+      <div className="w-full max-w-lg bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-xl p-5 space-y-4">
+        <div>
+          <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
+            Zamjena nepoznatog partnera
+          </h3>
+          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
+            Izvod #{sifraIzvoda} · uplata #{uplata.sifra_uplate}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm space-y-0.5">
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500 dark:text-[#a99fc2]">Vrsta</span>
+            <span className="font-medium text-gray-800 dark:text-[#ede9f6]">
+              {vrsta.naziv}
+            </span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500 dark:text-[#a99fc2]">Iznos</span>
+            <span
+              className="font-semibold"
+              style={{ color: vrsta.tip === "isplata" ? "#ef4444" : ACCENT }}
+            >
+              {formatKM(uplata.uplaceno)}
+            </span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500 dark:text-[#a99fc2]">Opis</span>
+            <span className="text-gray-700 dark:text-[#c5bfd8] text-right">
+              {uplata.opis || "–"}
+            </span>
+          </div>
+        </div>
+
+        {!potvrda ? (
+          <>
+            {izabran ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-[#3a3158]">
+                <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-[#ede9f6]">
+                  {izabran.naziv}
+                </span>
+                <span className="text-xs text-gray-400">#{izabran.partner_id}</span>
+                <button
+                  type="button"
+                  onClick={() => setIzabran(null)}
+                  className="text-xs font-semibold px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-[#2d2648]"
+                  style={{ color: PRIMARY }}
+                >
+                  Promijeni
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[#5f5878]"
+                  />
+                  <input
+                    autoFocus
+                    type="text"
+                    value={pretraga}
+                    onChange={(e) => setPretraga(e.target.value)}
+                    placeholder={
+                      partneriLoading
+                        ? "Učitavanje partnera..."
+                        : "Pretraga partnera po nazivu ili šifri..."
+                    }
+                    disabled={partneriLoading}
+                    className="pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-[#3a3158] rounded-xl w-full focus:outline-none focus:border-[#785E9E] bg-white dark:bg-[#1e1a2d] text-gray-800 dark:text-[#ede9f6]"
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100 dark:border-[#2d2648]">
+                  {filtrirani.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-center text-gray-400">
+                      {partneriLoading ? "Učitavanje..." : "Nema partnera"}
+                    </div>
+                  ) : (
+                    filtrirani.map((p) => (
+                      <button
+                        key={p.partner_id}
+                        type="button"
+                        onClick={() => setIzabran(p)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-purple-50 dark:hover:bg-[#2d2648] text-gray-700 dark:text-[#c5bfd8]"
+                      >
+                        <span className="flex-1 truncate">{p.naziv}</span>
+                        <span className="text-xs text-gray-400">#{p.partner_id}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/25 px-3 py-3 text-sm text-gray-800 dark:text-[#ede9f6]">
+            Da li ste sigurni da želite na uplati #{uplata.sifra_uplate} (
+            {formatKM(uplata.uplaceno)}) zamijeniti{" "}
+            <b>Nepoznat partner (-1)</b> partnerom{" "}
+            <b>
+              {izabran?.naziv} (#{izabran?.partner_id})
+            </b>
+            ?
+          </div>
+        )}
+
+        {greska && (
+          <p className="text-sm text-red-500 dark:text-red-400">{greska}</p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={potvrda ? () => setPotvrda(false) : onZatvori}
+            disabled={snimanje}
+            className="px-3 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] disabled:opacity-50"
+          >
+            {potvrda ? "Nazad" : "Otkaži"}
+          </button>
+          {!potvrda ? (
+            <button
+              type="button"
+              onClick={() => {
+                setGreska(null);
+                setPotvrda(true);
+              }}
+              disabled={!izabran}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: PRIMARY }}
+            >
+              Dalje
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={sacuvaj}
+              disabled={snimanje}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50"
+            >
+              {snimanje && <Loader2 size={14} className="animate-spin" />}
+              Potvrdi izmjenu
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function IzvodiPregled() {
   const [izvodi, setIzvodi] = useState<IzvodRed[]>([]);
   const [uplate, setUplate] = useState<UplataRed[]>([]);
@@ -246,6 +496,10 @@ export function IzvodiPregled() {
   const [banke, setBanke] = useState<BankaRed[]>([]);
   const [filterBanka, setFilterBanka] = useState<string>("");
   const [samoNepoznati, setSamoNepoznati] = useState(false);
+  const [zaPromjenu, setZaPromjenu] = useState<{
+    uplata: UplataRed;
+    sifraIzvoda: number | string;
+  } | null>(null);
 
   const ucitaj = () => {
     setLoading(true);
@@ -805,10 +1059,23 @@ export function IzvodiPregled() {
                               >
                                 <td className="px-3 py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
                                   {nepoznatPartner(u) ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold bg-amber-200 text-amber-800 dark:bg-amber-800/50 dark:text-amber-200">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setZaPromjenu({
+                                          uplata: u,
+                                          sifraIzvoda: izvod.sifra_izvoda,
+                                        })
+                                      }
+                                      title="Klikni za zamjenu nepoznatog partnera"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold bg-amber-200 text-amber-800 hover:bg-amber-300 dark:bg-amber-800/50 dark:text-amber-200 dark:hover:bg-amber-800/70 transition-colors"
+                                    >
                                       <AlertTriangle size={12} />
                                       {u.naziv_partnera || "Nepoznat partner"} (-1)
-                                    </span>
+                                      <span className="ml-1 text-[10px] underline">
+                                        Zamijeni
+                                      </span>
+                                    </button>
                                   ) : (
                                     nazivPartnera(u)
                                   )}
@@ -843,6 +1110,18 @@ export function IzvodiPregled() {
             );
           })}
       </div>
+
+      {zaPromjenu && (
+        <PromjenaPartneraModal
+          uplata={zaPromjenu.uplata}
+          sifraIzvoda={zaPromjenu.sifraIzvoda}
+          onZatvori={() => setZaPromjenu(null)}
+          onSacuvano={() => {
+            setZaPromjenu(null);
+            ucitaj();
+          }}
+        />
+      )}
     </div>
   );
 }

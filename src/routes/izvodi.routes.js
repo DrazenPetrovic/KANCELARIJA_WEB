@@ -17,6 +17,11 @@ router.post(
   verifyToken,
   IzvodiController.azuriranjePlacenosti,
 );
+router.post(
+  "/uplate-promjena-partnera",
+  verifyToken,
+  IzvodiController.promjenaPartneraUplate,
+);
 router.get("/uplata-pojedinacna", IzvodiController.getUplataPojedinacna);
 router.get("/kuf-pojedinacni", IzvodiController.getKufPojedinacni);
 

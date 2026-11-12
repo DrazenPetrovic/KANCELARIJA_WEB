@@ -148,6 +148,28 @@ export const azuriranjePlacenosti = async (req, res) => {
   }
 };
 
+export const promjenaPartneraUplate = async (req, res) => {
+  const { sifraUplate, sifraPartnera } = req.body ?? {};
+  if (!sifraUplate || !sifraPartnera) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Uplata i partner su obavezni" });
+  }
+  try {
+    const rezultat = await IzvodiService.promjenaPartneraUplate({
+      sifraUplate,
+      sifraPartnera,
+    });
+    return res.json({ success: true, ...rezultat });
+  } catch (error) {
+    console.error("promjenaPartneraUplate error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Greška pri promjeni partnera",
+    });
+  }
+};
+
 export const getIzvodiPreglediSaUplatama = async (req, res) => {
   try {
     const { izvodi, uplate } =

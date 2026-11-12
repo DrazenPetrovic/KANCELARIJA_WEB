@@ -409,6 +409,43 @@ export const azuriranjePlacenosti = async ({ dokumenti }) => {
   });
 };
 
+// Zamjena nepoznatog partnera (-1) na uplati izvoda stvarnim partnerom —
+// erp.izvodi_uplate_partneri_promjena(p_json), JSON: { sifra_uplate, sifra_partnera }.
+// Procedura sama odbija izmjenu ako trenutni partner nije -1 (SIGNAL).
+export const promjenaPartneraUplate = async ({ sifraUplate, sifraPartnera }) => {
+  const uplata = Number(sifraUplate);
+  const partner = Number(sifraPartnera);
+  if (!Number.isInteger(uplata) || uplata <= 0) {
+    throw new Error("Neispravna šifra uplate");
+  }
+  if (!Number.isInteger(partner) || partner <= 0) {
+    throw new Error("Partner nije izabran");
+  }
+
+  return withConnection(async (connection) => {
+    let rows;
+    try {
+      [rows] = await connection.execute(
+        "CALL erp.izvodi_uplate_partneri_promjena(?)",
+        [JSON.stringify({ sifra_uplate: uplata, sifra_partnera: partner })],
+      );
+    } catch (error) {
+      throw new Error(
+        error.sqlMessage || error.message || "Greška pri promjeni partnera",
+      );
+    }
+    const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
+    if (!rezultat) {
+      throw new Error("Promjena partnera nije uspjela");
+    }
+    return {
+      poruka: rezultat.poruka,
+      sifra_uplate: rezultat.sifra_uplate,
+      sifra_partnera: rezultat.sifra_partnera,
+    };
+  });
+};
+
 // Zatvaranje izvoda — erp.izvodi_zatvaranje_izvoda(p_json).
 // JSON: { redni_broj, ukupno_uplata, ukupno_isplata, krajnje_stanje }.
 // Procedura te iznose samo upisuje (UPDATE po redni_broj), pa ih server
