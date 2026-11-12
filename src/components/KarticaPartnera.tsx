@@ -62,6 +62,8 @@ interface KarticaStavka {
   potrazuje: number;
   saldo: number;
   izvor_id: number | null;
+  // Datum fakture dobavljača (kalkulacija / KUF) — null za ostale stavke.
+  datum_fakture?: string | null;
   vrsta_prometa: number;
   vrsta_prometa_opis: string;
   vrsta_uplate: number | null;
@@ -172,7 +174,9 @@ function formatIznos(v: number | null | undefined) {
 
 function formatDatum(v: string) {
   if (!v) return "–";
-  const d = new Date(v);
+  // "YYYY-MM-DD HH:mm:ss" (sa razmakom) nije standardni ISO format — neki
+  // pregledači (stariji Firefox) ga ne parsiraju, pa se razmak mijenja u "T".
+  const d = new Date(v.replace(" ", "T"));
   if (isNaN(d.getTime())) return v;
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -427,12 +431,6 @@ export function KarticaPartnera({
   const imaKupca = !!kartica?.kupac;
   const imaDobavljaca = !!kartica?.dobavljac;
   const aktivnaKartica = kartica ? kartica[aktivnaVrsta] : null;
-  // Procedura vraća stavke hronološki (početno stanje prvo) — u prikazu ide
-  // obrnuto, najnovije prvo, sa početnim stanjem na dnu liste.
-  const stavke = useMemo(
-    () => [...(aktivnaKartica?.stavke ?? [])].reverse(),
-    [aktivnaKartica],
-  );
 
   // Prva stavka (hronološki) je uvijek početno stanje — vidi
   // erp.kartica_partnera_pregled. Njen saldo je preneseno stanje, a njegov
@@ -452,6 +450,161 @@ export function KarticaPartnera({
     (aktivnaKartica?.ukupno_duguje ?? 0) - (pocetnaStavka?.duguje ?? 0);
   const stvarnoRazduzenje =
     (aktivnaKartica?.ukupno_potrazuje ?? 0) - (pocetnaStavka?.potrazuje ?? 0);
+
+  // Tabela jedne kartice. Renderuju se obje (kupac i dobavljač) u istoj
+  // grid ćeliji, a neaktivna je nevidljiva i bez visine — tako je širina
+  // kartice uvijek jednaka široj od dvije tabele, pa se pri prebacivanju
+  // Kupac/Dobavljač širina ne mijenja.
+  const renderTabela = (vrsta: "kupac" | "dobavljac") => {
+    // Procedura vraća stavke hronološki (početno stanje prvo) — u prikazu ide
+    // obrnuto, najnovije prvo, sa početnim stanjem na dnu liste.
+    const stavkeV = [...(kartica?.[vrsta]?.stavke ?? [])].reverse();
+    const jeDob = vrsta === "dobavljac";
+    return (
+      <>
+                {stavkeV.length === 0 && (
+                  <div className="flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
+                    <CreditCard size={28} />
+                    <p className="text-sm text-gray-400 dark:text-[#5f5878]">
+                      Nema stavki od početka godine.
+                    </p>
+                  </div>
+                )}
+
+                {stavkeV.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="table-auto">
+                      <thead>
+                        <tr style={{ background: PRIMARY }}>
+                          <th
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Rb
+                          </th>
+                          <th
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            {jeDob ? "Datum unosa" : "Datum"}
+                          </th>
+                          <th
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            {jeDob ? "Vrsta" : "Vrsta prometa"}
+                          </th>
+                          <th
+                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Opis
+                          </th>
+                          {jeDob && (
+                            <th
+                              className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                            >
+                              Datum fakture
+                            </th>
+                          )}
+                          <th
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Ref.
+                          </th>
+                          <th
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Duguje
+                          </th>
+                          <th
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Potražuje
+                          </th>
+                          <th
+                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
+                          >
+                            Saldo
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stavkeV.map((s) => {
+                          const referenca = referencaZaStavku(s);
+                          return (
+                          <tr
+                            key={s.rb}
+                            onClick={() =>
+                              referenca &&
+                              otvoriStavku(referenca, s.izvor_id as number)
+                            }
+                            title={
+                              referenca
+                                ? `Prikaži detalje ${NASLOV_REFERENCE[referenca]}`
+                                : undefined
+                            }
+                            className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
+                              referenca ? "cursor-pointer" : ""
+                            } ${
+                              s.rb % 2 === 0
+                                ? "bg-[#faf9fc] dark:bg-[#221c34]"
+                                : "bg-white dark:bg-[#261f38]"
+                            }`}
+                          >
+                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                              {s.rb}
+                            </td>
+                            <td className="px-[18px] py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                              {formatDatum(s.datum)}
+                            </td>
+                            <td className="px-[18px] py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                              {s.vrsta_prometa_opis}
+                              {s.vrsta_uplate_opis && (
+                                <div
+                                  className="text-xs font-medium"
+                                  style={{ color: bojaVrsteUplate(s.vrsta_uplate) }}
+                                >
+                                  {s.vrsta_uplate_opis}
+                                </div>
+                              )}
+                            </td>
+                            <td
+                              className={`px-[18px] py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] ${
+                                jeDob ? "max-w-[160px] break-words" : ""
+                              }`}
+                            >
+                              {s.opis ?? "–"}
+                            </td>
+                            {jeDob && (
+                              <td className="px-[18px] py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
+                                {s.datum_fakture ? formatDatum(s.datum_fakture) : "–"}
+                              </td>
+                            )}
+                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                              {s.izvor_id ?? "–"}
+                            </td>
+                            <td className="px-[18px] py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
+                              {s.duguje ? formatIznos(s.duguje) : "–"}
+                            </td>
+                            <td
+                              className="px-[18px] py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
+                              style={{ color: ACCENT }}
+                            >
+                              {s.potrazuje ? formatIznos(s.potrazuje) : "–"}
+                            </td>
+                            <td
+                              className="px-[18px] py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
+                              style={{ color: PRIMARY }}
+                            >
+                              {formatIznos(s.saldo)}
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -645,9 +798,11 @@ export function KarticaPartnera({
               {/* Statistika — vertikalno sa lijeve strane. Apsolutno pozicionirana
                   (na lg) da NE rezerviše prostor u flex redu — inače bi tabela
                   (flex-1 mx-auto) bila centrirana samo u preostalom prostoru,
-                  a ne na cijelom ekranu. */}
+                  a ne na cijelom ekranu. Tabela zato ima simetričan padding
+                  (lg:px-[250px]) da se nikad ne podvuče pod rekapitulaciju —
+                  bez toga je u Firefoxu (šire renderovan font) ulazila u nju. */}
               {aktivnaKartica && (
-                <div className="flex flex-col w-full lg:w-64 lg:absolute lg:left-[5%] lg:top-[10px]">
+                <div className="flex flex-col w-full lg:w-[230px] lg:absolute lg:left-[10px] lg:top-[10px]">
                   {imaKupca && imaDobavljaca && (
                     <div className="flex flex-col gap-2">
                       <div>
@@ -729,132 +884,26 @@ export function KarticaPartnera({
               )}
 
               {/* Tabela — širina prati sadržaj (bez razvlačenja kolona), centrirano u preostalom prostoru */}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 w-full lg:px-[250px]">
               <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto origin-top scale-105">
-                {stavke.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 py-20 text-gray-300 dark:text-[#3a3158]">
-                    <CreditCard size={28} />
-                    <p className="text-sm text-gray-400 dark:text-[#5f5878]">
-                      Nema stavki od početka godine.
-                    </p>
-                  </div>
-                )}
-
-                {stavke.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="table-auto">
-                      <thead>
-                        <tr style={{ background: PRIMARY }}>
-                          <th
-                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Rb
-                          </th>
-                          <th
-                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Datum
-                          </th>
-                          <th
-                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Vrsta prometa
-                          </th>
-                          <th
-                            className="text-left px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Opis
-                          </th>
-                          <th
-                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Ref.
-                          </th>
-                          <th
-                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Duguje
-                          </th>
-                          <th
-                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Potražuje
-                          </th>
-                          <th
-                            className="text-right px-[18px] py-3 text-[13px] font-bold uppercase tracking-wider text-white"
-                          >
-                            Saldo
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stavke.map((s) => {
-                          const referenca = referencaZaStavku(s);
-                          return (
-                          <tr
-                            key={s.rb}
-                            onClick={() =>
-                              referenca &&
-                              otvoriStavku(referenca, s.izvor_id as number)
-                            }
-                            title={
-                              referenca
-                                ? `Prikaži detalje ${NASLOV_REFERENCE[referenca]}`
-                                : undefined
-                            }
-                            className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
-                              referenca ? "cursor-pointer" : ""
-                            } ${
-                              s.rb % 2 === 0
-                                ? "bg-[#faf9fc] dark:bg-[#221c34]"
-                                : "bg-white dark:bg-[#261f38]"
-                            }`}
-                          >
-                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
-                              {s.rb}
-                            </td>
-                            <td className="px-[18px] py-2 text-sm text-gray-600 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                              {formatDatum(s.datum)}
-                            </td>
-                            <td className="px-[18px] py-2 text-sm text-gray-700 dark:text-[#c5bfd8] border-t border-gray-50 dark:border-[#2d2648]">
-                              {s.vrsta_prometa_opis}
-                              {s.vrsta_uplate_opis && (
-                                <div
-                                  className="text-xs font-medium"
-                                  style={{ color: bojaVrsteUplate(s.vrsta_uplate) }}
-                                >
-                                  {s.vrsta_uplate_opis}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-[18px] py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648]">
-                              {s.opis ?? "–"}
-                            </td>
-                            <td className="px-[18px] py-2 text-sm text-right text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
-                              {s.izvor_id ?? "–"}
-                            </td>
-                            <td className="px-[18px] py-2 text-sm text-right font-semibold text-red-500 dark:text-red-400 border-t border-gray-50 dark:border-[#2d2648]">
-                              {s.duguje ? formatIznos(s.duguje) : "–"}
-                            </td>
-                            <td
-                              className="px-[18px] py-2 text-sm text-right font-semibold border-t border-gray-50 dark:border-[#2d2648]"
-                              style={{ color: ACCENT }}
-                            >
-                              {s.potrazuje ? formatIznos(s.potrazuje) : "–"}
-                            </td>
-                            <td
-                              className="px-[18px] py-2 text-sm text-right font-bold border-t border-gray-50 dark:border-[#2d2648]"
-                              style={{ color: PRIMARY }}
-                            >
-                              {formatIznos(s.saldo)}
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <div className="grid">
+                  {(["kupac", "dobavljac"] as const)
+                    .filter((v) => kartica?.[v])
+                    .map((v) => (
+                      <div
+                        key={v}
+                        style={{ gridArea: "1 / 1" }}
+                        aria-hidden={v !== aktivnaVrsta}
+                        className={
+                          v === aktivnaVrsta
+                            ? ""
+                            : "invisible h-0 overflow-hidden pointer-events-none"
+                        }
+                      >
+                        {renderTabela(v)}
+                      </div>
+                    ))}
+                </div>
               </div>
               </div>
             </div>
