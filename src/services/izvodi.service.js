@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { withConnection } from "./db.service.js";
 import { getBankePregled } from "./banke.service.js";
 
@@ -409,10 +411,37 @@ export const azuriranjePlacenosti = async ({ dokumenti }) => {
   });
 };
 
-// Zamjena nepoznatog partnera (-1) na uplati izvoda stvarnim partnerom —
+// Lokalni log izmjena partnera na uplatama kad stari partner NIJE -1
+// (preventivno praćenje). JSON po liniji, folder logs/ je u .gitignore.
+const LOG_PROMJENA_PARTNERA = path.resolve(
+  process.cwd(),
+  "logs",
+  "izvodi_promjena_partnera.log",
+);
+
+const upisiLogPromjenePartnera = async (zapis) => {
+  try {
+    await fs.mkdir(path.dirname(LOG_PROMJENA_PARTNERA), { recursive: true });
+    await fs.appendFile(
+      LOG_PROMJENA_PARTNERA,
+      JSON.stringify(zapis) + "\n",
+      "utf8",
+    );
+  } catch (error) {
+    // Log ne smije oboriti izmjenu koja je već upisana u bazu.
+    console.error("Upis loga promjene partnera nije uspio:", error);
+  }
+};
+
+// Zamjena partnera na uplati izvoda —
 // erp.izvodi_uplate_partneri_promjena(p_json), JSON: { sifra_uplate, sifra_partnera }.
-// Procedura sama odbija izmjenu ako trenutni partner nije -1 (SIGNAL).
-export const promjenaPartneraUplate = async ({ sifraUplate, sifraPartnera }) => {
+// Dozvoljena za bilo kojeg partnera; ako stari partner nije -1, izmjena se
+// upisuje u lokalni log (ko, kad, uplata, stari -> novi partner).
+export const promjenaPartneraUplate = async ({
+  sifraUplate,
+  sifraPartnera,
+  operater,
+}) => {
   const uplata = Number(sifraUplate);
   const partner = Number(sifraPartnera);
   if (!Number.isInteger(uplata) || uplata <= 0) {
@@ -423,6 +452,28 @@ export const promjenaPartneraUplate = async ({ sifraUplate, sifraPartnera }) => 
   }
 
   return withConnection(async (connection) => {
+    const [trenutni] = await connection.execute(
+      `SELECT u.sifra_partnera, u.uplaceno, u.vrsta_uplate, u.sifra_blagajne,
+              p.naziv_partnera
+         FROM ziralni.uplate AS u
+         LEFT JOIN ziralni.partneri AS p ON p.sifra_partnera = u.sifra_partnera
+        WHERE u.sifra_uplate = ?
+        LIMIT 1`,
+      [uplata],
+    );
+    const stara = trenutni[0];
+    if (!stara) throw new Error(`Uplata ${uplata} ne postoji`);
+    const stariPartner = Number(stara.sifra_partnera);
+    if (stariPartner === partner) {
+      throw new Error("Izabrani partner je isti kao trenutni");
+    }
+
+    const [noviRed] = await connection.execute(
+      "SELECT naziv_partnera FROM ziralni.partneri WHERE sifra_partnera = ? LIMIT 1",
+      [partner],
+    );
+    if (!noviRed[0]) throw new Error(`Partner ${partner} ne postoji`);
+
     let rows;
     try {
       [rows] = await connection.execute(
@@ -437,6 +488,21 @@ export const promjenaPartneraUplate = async ({ sifraUplate, sifraPartnera }) => 
     const rezultat = Array.isArray(rows?.[0]) ? rows[0][0] : null;
     if (!rezultat) {
       throw new Error("Promjena partnera nije uspjela");
+    }
+    if (stariPartner !== -1) {
+      await upisiLogPromjenePartnera({
+        vrijeme: sadaLokalno(),
+        sifra_radnika: operater?.sifraRadnika ?? null,
+        korisnik: operater?.username ?? null,
+        sifra_uplate: uplata,
+        izvod_redni_broj: stara.sifra_blagajne,
+        vrsta_uplate: stara.vrsta_uplate,
+        uplaceno: Number(stara.uplaceno),
+        stari_partner: stariPartner,
+        stari_partner_naziv: stara.naziv_partnera ?? null,
+        novi_partner: partner,
+        novi_partner_naziv: noviRed[0].naziv_partnera ?? null,
+      });
     }
     return {
       poruka: rezultat.poruka,

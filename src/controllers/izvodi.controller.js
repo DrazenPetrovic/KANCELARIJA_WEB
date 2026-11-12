@@ -159,6 +159,7 @@ export const promjenaPartneraUplate = async (req, res) => {
     const rezultat = await IzvodiService.promjenaPartneraUplate({
       sifraUplate,
       sifraPartnera,
+      operater: req.user,
     });
     return res.json({ success: true, ...rezultat });
   } catch (error) {

@@ -294,11 +294,16 @@ function PromjenaPartneraModal({
   }, [partneri, pretraga]);
 
   const vrsta = stavkaInfo(uplata);
+  const nepoznat = nepoznatPartner(uplata);
+  const trenutniNaziv = nepoznat
+    ? "Nepoznat partner (-1)"
+    : `${uplata.naziv_partnera ?? "Partner"} (#${uplata.sifra_partnera})`;
 
   const sacuvaj = async () => {
     if (!izabran) return;
-    if (Number(uplata.sifra_partnera) !== -1) {
-      setGreska("Partner na ovoj uplati nije -1 — izmjena nije dozvoljena.");
+    if (Number(izabran.partner_id) === Number(uplata.sifra_partnera)) {
+      setGreska("Izabrani partner je isti kao trenutni.");
+      setPotvrda(false);
       return;
     }
     setSnimanje(true);
@@ -339,7 +344,7 @@ function PromjenaPartneraModal({
       <div className="w-full max-w-lg bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-xl p-5 space-y-4">
         <div>
           <h3 className="text-base font-bold text-gray-800 dark:text-[#ede9f6]">
-            Zamjena nepoznatog partnera
+            {nepoznat ? "Zamjena nepoznatog partnera" : "Promjena partnera"}
           </h3>
           <p className="text-xs text-gray-400 dark:text-[#5f5878]">
             Izvod #{sifraIzvoda} · uplata #{uplata.sifra_uplate}
@@ -347,6 +352,12 @@ function PromjenaPartneraModal({
         </div>
 
         <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm space-y-0.5">
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500 dark:text-[#a99fc2]">Trenutni partner</span>
+            <span className="font-semibold text-gray-800 dark:text-[#ede9f6] text-right">
+              {trenutniNaziv}
+            </span>
+          </div>
           <div className="flex justify-between gap-3">
             <span className="text-gray-500 dark:text-[#a99fc2]">Vrsta</span>
             <span className="font-medium text-gray-800 dark:text-[#ede9f6]">
@@ -431,14 +442,23 @@ function PromjenaPartneraModal({
             )}
           </>
         ) : (
-          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/25 px-3 py-3 text-sm text-gray-800 dark:text-[#ede9f6]">
-            Da li ste sigurni da želite na uplati #{uplata.sifra_uplate} (
-            {formatKM(uplata.uplaceno)}) zamijeniti{" "}
-            <b>Nepoznat partner (-1)</b> partnerom{" "}
-            <b>
-              {izabran?.naziv} (#{izabran?.partner_id})
-            </b>
-            ?
+          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/25 px-3 py-3 text-sm text-gray-800 dark:text-[#ede9f6] space-y-2">
+            <div>
+              Da li ste sigurni da želite na uplati #{uplata.sifra_uplate} (
+              {formatKM(uplata.uplaceno)}) zamijeniti <b>{trenutniNaziv}</b>{" "}
+              partnerom{" "}
+              <b>
+                {izabran?.naziv} (#{izabran?.partner_id})
+              </b>
+              ?
+            </div>
+            {!nepoznat && (
+              <div className="flex items-start gap-1.5 text-red-600 dark:text-red-400 font-semibold">
+                <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                Uplata već ima dodijeljenog partnera — izmjena će biti
+                zabilježena u log.
+              </div>
+            )}
           </div>
         )}
 
@@ -1076,8 +1096,26 @@ export function IzvodiPregled() {
                                         Zamijeni
                                       </span>
                                     </button>
-                                  ) : (
+                                  ) : vrsta.transfer ? (
                                     nazivPartnera(u)
+                                  ) : (
+                                    <span className="group inline-flex items-center gap-1.5">
+                                      {nazivPartnera(u)}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setZaPromjenu({
+                                            uplata: u,
+                                            sifraIzvoda: izvod.sifra_izvoda,
+                                          })
+                                        }
+                                        title="Promijeni partnera"
+                                        className="opacity-0 group-hover:opacity-100 text-[10px] font-semibold underline transition-opacity"
+                                        style={{ color: PRIMARY }}
+                                      >
+                                        Promijeni
+                                      </button>
+                                    </span>
                                   )}
                                 </td>
                                 <td className="px-3 py-2 text-sm text-gray-500 dark:text-[#a99fc2] border-t border-gray-50 dark:border-[#2d2648] whitespace-nowrap">
