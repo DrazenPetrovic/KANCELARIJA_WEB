@@ -730,6 +730,26 @@ export function ArtikliPregled() {
     sortSmjer,
   ]);
 
+  const nabavnaVrijednostZaliha = useMemo(
+    () =>
+      filtrirani.reduce(
+        (zbir, a) =>
+          zbir +
+          izracunajNabavnuVrijednost(a.kolicina_proizvoda, a.nabavna_cijena),
+        0,
+      ),
+    [filtrirani],
+  );
+
+  const vpVrijednostZaliha = useMemo(
+    () =>
+      filtrirani.reduce(
+        (zbir, a) => zbir + izracunajVpVrijednost(a.kolicina_proizvoda, a.vpc),
+        0,
+      ),
+    [filtrirani],
+  );
+
   // Boja pozadine po grupi — dodjeljuje se redom kojim se grupe pojavljuju u
   // listi grupa sa servera (stabilan redoslijed, neovisan o filterima).
   const grupaBojaMap = useMemo(() => {
@@ -856,7 +876,34 @@ export function ArtikliPregled() {
 
           <div />
 
-          <div />
+          {!loading && !error ? (
+            <div className="flex items-start gap-4 justify-self-end">
+              <div className="flex flex-col items-end">
+                <span
+                  className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: PRIMARY }}
+                >
+                  Nab vrijednost
+                </span>
+                <span className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
+                  {formatBroj(nabavnaVrijednostZaliha)}
+                </span>
+              </div>
+              <div className="flex flex-col items-end">
+                <span
+                  className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: PRIMARY }}
+                >
+                  VP vrijednost
+                </span>
+                <span className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
+                  {formatBroj(vpVrijednostZaliha)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div />
+          )}
         </div>
       </div>
 
