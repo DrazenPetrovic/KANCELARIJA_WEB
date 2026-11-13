@@ -145,6 +145,42 @@ export const upisiDogovoreneCijene = async (stavke) => {
   });
 };
 
+// Paralelni upis u novu tabelu erp.partneri_dogovoreni_rabati — procedura sama
+// računa rabat iz (vpc, dogovorena_cijena_vpc) i preskače negativne/nulte.
+// Za sada se samo puni; cijene na računu se i dalje vuku iz stare tabele.
+// Vidi docs/sql/artikli_dogovoreni_rabati_unos.sql.
+export const upisiDogovoreneRabate = async (stavke) => {
+  return withConnection(async (connection) => {
+    const json = JSON.stringify({ stavke });
+    const [rows] = await connection.query(
+      "CALL erp.artikli_dogovoreni_rabati_unos(?)",
+      [json],
+    );
+    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+    return Array.isArray(rezultatSet) && rezultatSet.length > 0
+      ? rezultatSet[0]
+      : { uspjesno: true };
+  });
+};
+
+// Pregled nove tabele rabata za jednog partnera (samo čitanje) — dugme
+// "Rabati" na žiralnom računu. Nazive i trenutni VPC dopunjava frontend
+// iz već učitane liste artikala.
+export const getDogovoreniRabatiPartnera = async (partnerId) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      `SELECT sifra_tbl, partner_id, proizvod_id, rabat_1_proc,
+              orijentaciona_cijena_vpc, vpc_pri_dogovoru, aktivno,
+              vreme_kreiranja, vreme_izmjene
+         FROM erp.partneri_dogovoreni_rabati
+        WHERE partner_id = ?
+        ORDER BY vreme_izmjene DESC`,
+      [partnerId],
+    );
+    return rows;
+  });
+};
+
 const normalizujKljuc = (kljuc) =>
   String(kljuc)
     .toLowerCase()

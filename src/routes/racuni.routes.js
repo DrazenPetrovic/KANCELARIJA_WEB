@@ -17,6 +17,7 @@ router.get(
 );
 router.get("/pregled-stavke", RacuniController.getRacunPoPregled);
 router.get("/pojedinacni", RacuniController.getRacunPojedinacni);
+router.get("/dogovoreni-rabati", RacuniController.getDogovoreniRabati);
 router.post(
   "/dogovorene-cijene",
   RacuniController.unosDogovorenihCijena,

@@ -194,6 +194,18 @@ export const getDogovoreneCijenePotpun = async (req, res) => {
   }
 };
 
+export const getDogovoreniRabati = async (req, res) => {
+  try {
+    const data = await ArtikliService.getDogovoreniRabatiPregled();
+    return res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    console.error("Pregled dogovorenih rabata error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju rabata" });
+  }
+};
+
 export const deaktivirajDogovoreneCijene = async (req, res) => {
   try {
     const partnerId = Number(req.body?.partner_id);

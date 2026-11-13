@@ -16,6 +16,7 @@ router.get(
   "/dogovorene-cijene-potpun",
   ArtikliController.getDogovoreneCijenePotpun,
 );
+router.get("/dogovoreni-rabati", ArtikliController.getDogovoreniRabati);
 router.post(
   "/dogovorene-cijene/deaktiviraj",
   ArtikliController.deaktivirajDogovoreneCijene,

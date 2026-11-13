@@ -155,12 +155,39 @@ export const unosDogovorenihCijena = async (req, res) => {
         .json({ success: false, error: "Stavke su obavezne" });
     }
     const data = await RacuniService.upisiDogovoreneCijene(stavke);
+
+    // Paralelno punjenje nove tabele rabata — best-effort, greška ovdje ne
+    // smije oboriti upis u staru tabelu (koja se i dalje koristi za cijene).
+    try {
+      await RacuniService.upisiDogovoreneRabate(stavke);
+    } catch (rabatError) {
+      console.error("Upis dogovorenih rabata (nova tabela) error:", rabatError);
+    }
+
     return res.json({ success: true, data });
   } catch (error) {
     console.error("Upis ugovorenih cijena error:", error);
     return res
       .status(500)
       .json({ success: false, error: "Greška pri upisu ugovorenih cijena" });
+  }
+};
+
+export const getDogovoreniRabati = async (req, res) => {
+  try {
+    const partnerId = Number(req.query.partner_id);
+    if (!Number.isInteger(partnerId) || partnerId < 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "partner_id je obavezan" });
+    }
+    const data = await RacuniService.getDogovoreniRabatiPartnera(partnerId);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Pregled dogovorenih rabata error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju rabata" });
   }
 };
 

@@ -325,6 +325,27 @@ interface PoslovnicaApi {
 // pregled sa nazivima/JM/rabatom). Učitava se u cjelosti pri otvaranju forme
 // (odvojeno, ne blokira prikaz) i uparuje po (partner_id, proizvod_id) kad se
 // artikal dodaje na žiralni račun.
+// Red iz nove tabele erp.partneri_dogovoreni_rabati (pregled dugmetom "Rabati").
+interface DogovoreniRabat {
+  sifra_tbl: number;
+  partner_id: number;
+  proizvod_id: number;
+  rabat_1_proc: number | string;
+  orijentaciona_cijena_vpc: number | string | null;
+  vpc_pri_dogovoru: number | string | null;
+  aktivno: number;
+  vreme_kreiranja: string;
+  vreme_izmjene: string;
+}
+
+// "YYYY-MM-DD HH:MM:SS" -> "dd.MM.yyyy. HH:MM"
+const formatDatumVrijeme = (s: string | null | undefined): string => {
+  if (!s) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(s);
+  if (!m) return s;
+  return `${m[3]}.${m[2]}.${m[1]}.${m[4] ? ` ${m[4]}:${m[5]}` : ""}`;
+};
+
 interface DogovorenaCijena {
   sifra_tbl: number;
   partner_id: number;
@@ -525,6 +546,11 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [dogovorenaCijenaGreska, setDogovorenaCijenaGreska] = useState<
     string | null
   >(null);
+  // Pregled nove tabele rabata za izabranog partnera (dugme "Rabati").
+  const [rabatiModal, setRabatiModal] = useState(false);
+  const [rabatiPartnera, setRabatiPartnera] = useState<DogovoreniRabat[]>([]);
+  const [rabatiLoading, setRabatiLoading] = useState(false);
+  const [rabatiGreska, setRabatiGreska] = useState<string | null>(null);
   // Upozorenje nakon uvoza sa terena — proizvodi kod kojih se predložena
   // "tražena cijena" (prijedlog komercijaliste) razlikuje od cijene koja je
   // stvarno stavljena na račun (dogovorena ili kataloški VPC). Samo informativno,
@@ -1077,6 +1103,31 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     void primeniOdabirPartnera(p);
     setPretraga("");
     setPokazuiDropdown(false);
+  };
+
+  const otvoriRabatiPartnera = async () => {
+    if (!odabraniPartner) return;
+    setRabatiModal(true);
+    setRabatiLoading(true);
+    setRabatiGreska(null);
+    setRabatiPartnera([]);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/racuni/dogovoreni-rabati?partner_id=${encodeURIComponent(
+          String(odabraniPartner.sifra_partnera),
+        )}`,
+        { credentials: "include" },
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      setRabatiPartnera(json.data ?? []);
+    } catch (e) {
+      setRabatiGreska(e instanceof Error ? e.message : "Greška pri učitavanju");
+    } finally {
+      setRabatiLoading(false);
+    }
   };
 
   const handleKlikArtikl = (a: Artikal) => {
@@ -1817,6 +1868,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   dogovorena_cijena_mpc:
                     Math.round(s.vpc1 * (1 + STOPA_PDV) * 100) / 100,
                   rabat_1_proc: Math.round(s.rab1 * 100) / 100,
+                  // Kataloški VPC — za novu tabelu rabata (rabat se računa u bazi).
+                  vpc: s.vpc,
                 })),
               }),
             },
@@ -2835,6 +2888,14 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                 >
                   Dogovoreni
                 </button>
+                <button
+                  onClick={() => void otvoriRabatiPartnera()}
+                  disabled={!odabraniPartner}
+                  title="Rabati upisani u novu tabelu za izabranog partnera"
+                  className="px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all text-gray-500 dark:text-[#7d7498] enabled:hover:text-gray-700 dark:enabled:hover:text-[#c5bfd8] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Rabati
+                </button>
               </div>
               )}
             </div>
@@ -3664,6 +3725,128 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   </>
                 );
               })()}
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Pregled nove tabele rabata (erp.partneri_dogovoreni_rabati) za
+          izabranog partnera — samo informativno, cijene na računu se i dalje
+          vuku iz stare tabele dogovorenih cijena. */}
+      {rabatiModal &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setRabatiModal(false);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-fit max-w-[95vw] max-h-[85vh] flex flex-col overflow-hidden">
+              <div
+                className="px-5 py-3 flex items-center gap-3 flex-shrink-0"
+                style={{ background: PRIMARY }}
+              >
+                <Percent size={18} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base">
+                  Rabati — {odabraniPartner?.naziv_partnera ?? ""}
+                </span>
+                <button
+                  onClick={() => setRabatiModal(false)}
+                  className="ml-auto text-white/80 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-4 overflow-auto">
+                {rabatiLoading ? (
+                  <div className="px-3 py-8 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin" /> Učitavanje...
+                  </div>
+                ) : rabatiGreska ? (
+                  <div className="px-3 py-8 text-center text-sm text-red-500">
+                    {rabatiGreska}
+                  </div>
+                ) : rabatiPartnera.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-sm text-gray-400">
+                    Nema upisanih rabata za ovog partnera.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
+                    <table className="table-auto text-sm">
+                      <thead>
+                        <tr>
+                          {[
+                            ["Proizvod", false],
+                            ["Rabat %", true],
+                            ["VPC pri dogovoru", true],
+                            ["Orijent. cijena", true],
+                            ["Trenutni VPC", true],
+                            ["Cijena po rabatu", true],
+                            ["Izmijenjeno", false],
+                          ].map(([naslov, desno]) => (
+                            <th
+                              key={naslov as string}
+                              className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${desno ? "text-right" : "text-left"}`}
+                              style={{ background: PRIMARY }}
+                            >
+                              {naslov}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rabatiPartnera.map((r) => {
+                          const artikal = artikli.find(
+                            (a) => String(a.sifra_proizvoda) === String(r.proizvod_id),
+                          );
+                          const rabat = Number(r.rabat_1_proc) || 0;
+                          const vpcTrenutni = artikal
+                            ? Number(artikal.vpc) || 0
+                            : null;
+                          const cijenaPoRabatu =
+                            vpcTrenutni != null
+                              ? Math.round(vpcTrenutni * (1 - rabat / 100) * 100) / 100
+                              : null;
+                          const broj = (v: number | string | null | undefined) =>
+                            v == null || v === "" ? "—" : Number(v).toFixed(2);
+                          return (
+                            <tr
+                              key={r.sifra_tbl}
+                              className={`border-b border-gray-200 dark:border-[#3a3158] [&>td]:py-1 ${r.aktivno ? "" : "opacity-50"}`}
+                            >
+                              <td className="px-3 whitespace-nowrap text-left text-gray-600 dark:text-[#c5bfd8]">
+                                {artikal?.naziv_proizvoda ?? "(nepoznat)"}
+                                <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                                  {r.proizvod_id}
+                                </span>
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-right font-bold text-gray-800 dark:text-[#ede9f6]">
+                                {rabat.toFixed(2)}%
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
+                                {broj(r.vpc_pri_dogovoru)}
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
+                                {broj(r.orijentaciona_cijena_vpc)}
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
+                                {broj(vpcTrenutni)}
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-right font-bold text-gray-800 dark:text-[#ede9f6]">
+                                {broj(cijenaPoRabatu)}
+                              </td>
+                              <td className="px-3 whitespace-nowrap text-left text-gray-600 dark:text-[#c5bfd8]">
+                                {formatDatumVrijeme(r.vreme_izmjene)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>,
           document.body,

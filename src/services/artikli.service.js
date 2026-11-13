@@ -167,6 +167,26 @@ export const getDogovoreneCijenePregledPotpun = async () => {
   });
 };
 
+// Pregled nove tabele rabata (erp.partneri_dogovoreni_rabati) — samo aktivni,
+// sa nazivom partnera/proizvoda i trenutnim VPC-om (ziralni.proizvodi.VPC),
+// za prikaz "Rabati" na ekranu Ugovorene cijene. Samo čitanje.
+export const getDogovoreniRabatiPregled = async () => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      `SELECT r.sifra_tbl, r.partner_id, p.naziv AS naziv_partnera,
+              r.proizvod_id, pr.naziv_proizvoda, pr.jm,
+              r.rabat_1_proc, r.orijentaciona_cijena_vpc, r.vpc_pri_dogovoru,
+              pr.VPC AS trenutni_vpc, r.sinhronizovano, r.vreme_izmjene
+         FROM erp.partneri_dogovoreni_rabati r
+         LEFT JOIN erp.partneri p ON p.partner_id = r.partner_id
+         LEFT JOIN ziralni.proizvodi pr ON pr.sifra_proizvoda = r.proizvod_id
+        WHERE r.aktivno = 1
+        ORDER BY p.naziv, pr.naziv_proizvoda`,
+    );
+    return rows;
+  });
+};
+
 // Deaktivacija ugovorene(ih) cijene partner-proizvod, za jedan ili više
 // proizvoda istog partnera odjednom. erp.artikli_dogovorene_cijene_deaktiviraj
 // prima JSON oblika { partner_id, proizvodi: [{ proizvod_id }, ...] }.

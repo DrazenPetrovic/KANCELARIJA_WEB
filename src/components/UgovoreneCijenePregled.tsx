@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   Loader2,
   Package,
+  Percent,
   RefreshCcw,
   Search,
   Tags,
@@ -44,7 +45,15 @@ interface UgovorenaCijenaRed {
   rabat_1_proc: number | null;
   sinhronizovano: number | null;
   vreme_izmjene: string | null;
+  // Samo u prikazu "Rabati" (nova tabela erp.partneri_dogovoreni_rabati).
+  orijentaciona_cijena_vpc?: number | null;
+  vpc_pri_dogovoru?: number | null;
+  trenutni_vpc?: number | null;
 }
+
+// "partner"/"proizvod" = stara tabela dogovorenih cijena, "rabati" = nova
+// tabela rabata (grupisano po partneru, samo pregled).
+type Rezim = "partner" | "proizvod" | "rabati";
 
 interface Grupa {
   kljuc: number;
@@ -134,6 +143,7 @@ function GrupaRed({
   index,
   style,
   grupisiPoProizvodu,
+  rabati,
   otvoreno,
   brisanjeUToku,
   onPrekidacProsirenja,
@@ -144,6 +154,7 @@ function GrupaRed({
   index: number;
   style: CSSProperties;
   grupisiPoProizvodu: boolean;
+  rabati: boolean;
   otvoreno: boolean;
   brisanjeUToku: Set<number>;
   onPrekidacProsirenja: (kljuc: number) => void;
@@ -199,7 +210,7 @@ function GrupaRed({
         >
           {g.stavke.length} {grupisiPoProizvodu ? "partnera" : "proizvoda"}
         </span>
-        {!grupisiPoProizvodu && (
+        {!grupisiPoProizvodu && !rabati && (
           <button
             type="button"
             onClick={() => onObrisiGrupu(g)}
@@ -216,7 +227,93 @@ function GrupaRed({
         )}
       </div>
 
-      {otvoreno && (
+      {otvoreno && rabati && (
+        <div className="overflow-x-auto px-4 pb-3">
+          <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr style={{ background: `${PRIMARY}1f` }}>
+                  {[
+                    ["Proizvod", "text-left"],
+                    ["JM", "text-left"],
+                    ["Rabat 1", "text-right"],
+                    ["VPC pri dogovoru", "text-right"],
+                    ["Orijent. cijena", "text-right"],
+                    ["Trenutni VPC", "text-right"],
+                    ["Cijena po rabatu", "text-right"],
+                    ["Status", "text-center"],
+                    ["Izmijenjeno", "text-right"],
+                  ].map(([naslov, poravnanje]) => (
+                    <th
+                      key={naslov}
+                      className={`${poravnanje} px-3 py-2 text-xs font-bold uppercase tracking-wide whitespace-nowrap`}
+                      style={{ color: PRIMARY }}
+                    >
+                      {naslov}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {g.stavke.map((s, idx) => {
+                  const sinh = Number(s.sinhronizovano) === 1;
+                  const rabat = Number(s.rabat_1_proc) || 0;
+                  const cijenaPoRabatu =
+                    s.trenutni_vpc != null
+                      ? Math.round(Number(s.trenutni_vpc) * (1 - rabat / 100) * 100) / 100
+                      : null;
+                  const td = "px-3 py-2 text-sm border-t border-gray-50 dark:border-[#2d2648]";
+                  return (
+                    <tr
+                      key={s.sifra_tbl}
+                      className={`transition-colors hover:bg-purple-50/60 dark:hover:bg-[#271f40]/50 ${
+                        sinh
+                          ? idx % 2 === 1
+                            ? "bg-[#f4f1f9]/60 dark:bg-[#241d3a]/40"
+                            : ""
+                          : "bg-amber-50/70 dark:bg-amber-500/[0.07]"
+                      }`}
+                    >
+                      <td
+                        className={`${td} text-gray-700 dark:text-[#c5bfd8]`}
+                        style={{ borderLeft: `3px solid ${sinh ? ACCENT : "#f59e0b"}` }}
+                      >
+                        {s.naziv_proizvoda ?? `Proizvod #${s.proizvod_id}`}
+                      </td>
+                      <td className={`${td} text-gray-500 dark:text-[#a99fc2]`}>
+                        {s.jm ?? "–"}
+                      </td>
+                      <td className={`${td} text-right font-semibold`} style={{ color: PRIMARY }}>
+                        {formatProcenat(s.rabat_1_proc)}
+                      </td>
+                      <td className={`${td} text-right whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]`}>
+                        {formatCijena(s.vpc_pri_dogovoru ?? null)}
+                      </td>
+                      <td className={`${td} text-right whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]`}>
+                        {formatCijena(s.orijentaciona_cijena_vpc ?? null)}
+                      </td>
+                      <td className={`${td} text-right whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]`}>
+                        {formatCijena(s.trenutni_vpc ?? null)}
+                      </td>
+                      <td className={`${td} text-right whitespace-nowrap font-semibold text-gray-800 dark:text-[#ede9f6]`}>
+                        {formatCijena(cijenaPoRabatu)}
+                      </td>
+                      <td className="px-3 py-2 text-center border-t border-gray-50 dark:border-[#2d2648]">
+                        <SinhBadge v={s.sinhronizovano} />
+                      </td>
+                      <td className="px-3 py-2 text-xs text-right whitespace-nowrap text-gray-400 dark:text-[#5f5878] border-t border-gray-50 dark:border-[#2d2648]">
+                        {formatVrijeme(s.vreme_izmjene)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {otvoreno && !rabati && (
         <div className="overflow-x-auto px-4 pb-3">
           <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-hidden">
             <table className="w-full">
@@ -353,14 +450,23 @@ function GrupaRed({
 }
 
 export function UgovoreneCijenePregled() {
-  const [redovi, setRedovi] = useState<UgovorenaCijenaRed[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [greska, setGreska] = useState<string | null>(null);
+  const [redoviCijene, setRedovi] = useState<UgovorenaCijenaRed[]>([]);
+  const [redoviRabati, setRedoviRabati] = useState<UgovorenaCijenaRed[]>([]);
+  const [loadingCijene, setLoadingCijene] = useState(true);
+  const [loadingRabati, setLoadingRabati] = useState(true);
+  const [greskaCijene, setGreskaCijene] = useState<string | null>(null);
+  const [greskaRabati, setGreskaRabati] = useState<string | null>(null);
 
   const [pretraga, setPretraga] = useState("");
-  // Podrazumijevano grupisano po partneru (partner -> lista proizvoda). Kad se
-  // uključi, ista logika se samo okrene: proizvod -> lista partnera i cijena.
-  const [grupisiPoProizvodu, setGrupisiPoProizvodu] = useState(false);
+  // Podrazumijevano grupisano po partneru (partner -> lista proizvoda).
+  // "proizvod" okreće logiku: proizvod -> lista partnera i cijena.
+  // "rabati" prikazuje novu tabelu rabata, grupisano po partneru.
+  const [rezim, setRezim] = useState<Rezim>("partner");
+  const grupisiPoProizvodu = rezim === "proizvod";
+  const rabati = rezim === "rabati";
+  const redovi = rabati ? redoviRabati : redoviCijene;
+  const loading = rabati ? loadingRabati : loadingCijene;
+  const greska = rabati ? greskaRabati : greskaCijene;
   const [prosireno, setProsireno] = useState<Set<number>>(new Set());
   const [brisanjeUToku, setBrisanjeUToku] = useState<Set<number>>(new Set());
 
@@ -373,9 +479,11 @@ export function UgovoreneCijenePregled() {
     onPotvrdi?: () => void;
   } | null>(null);
 
+  // Stara tabela (cijene) i nova (rabati) se učitavaju nezavisno — greška u
+  // jednoj ne obara prikaz druge.
   const ucitaj = () => {
-    setLoading(true);
-    setGreska(null);
+    setLoadingCijene(true);
+    setGreskaCijene(null);
     fetch(`${API_URL}/api/artikli/dogovorene-cijene-potpun`, {
       credentials: "include",
     })
@@ -385,9 +493,24 @@ export function UgovoreneCijenePregled() {
       })
       .then((json) => setRedovi(json.data ?? []))
       .catch((err) =>
-        setGreska(err instanceof Error ? err.message : "Nepoznata greška"),
+        setGreskaCijene(err instanceof Error ? err.message : "Nepoznata greška"),
       )
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingCijene(false));
+
+    setLoadingRabati(true);
+    setGreskaRabati(null);
+    fetch(`${API_URL}/api/artikli/dogovoreni-rabati`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Greška pri učitavanju rabata");
+        return res.json();
+      })
+      .then((json) => setRedoviRabati(json.data ?? []))
+      .catch((err) =>
+        setGreskaRabati(err instanceof Error ? err.message : "Nepoznata greška"),
+      )
+      .finally(() => setLoadingRabati(false));
   };
 
   useEffect(ucitaj, []);
@@ -395,7 +518,7 @@ export function UgovoreneCijenePregled() {
   // Prebacivanje prikaza resetuje koje je grupe operater ručno proširio.
   useEffect(() => {
     setProsireno(new Set());
-  }, [grupisiPoProizvodu]);
+  }, [rezim]);
 
   const filtrirani = useMemo(() => {
     const q = pretraga.trim().toLowerCase();
@@ -579,60 +702,50 @@ export function UgovoreneCijenePregled() {
 
   return (
     <div className="space-y-4">
-      {/* Naslov */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#ede8f5] dark:bg-[#312a50]">
-          <Tags size={20} style={{ color: PRIMARY }} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-[#ede9f6]">
-            Ugovorene cijene
-          </h2>
-          <p className="text-xs text-gray-400 dark:text-[#5f5878]">
-            Posebne cijene dogovorene po partneru i proizvodu
-          </p>
-        </div>
+      {/* Statistika (rekapitulacija) + Osvježi */}
+      <div className="flex flex-wrap items-center gap-3">
+        {!loading && !greska && (
+          <>
+            <StatTile
+              icon={<Users size={16} />}
+              vrijednost={brojPartnera}
+              naziv={rabati ? "Partnera sa rabatom" : "Partnera sa ugovorenom cijenom"}
+              boja={PRIMARY}
+            />
+            <StatTile
+              icon={<Package size={16} />}
+              vrijednost={brojProizvoda}
+              naziv={rabati ? "Proizvoda sa rabatom" : "Proizvoda sa ugovorenom cijenom"}
+              boja={PRIMARY}
+            />
+            <StatTile
+              icon={rabati ? <Percent size={16} /> : <Tags size={16} />}
+              vrijednost={redovi.length}
+              naziv={rabati ? "Rabata ukupno" : "Ugovorenih cijena ukupno"}
+              boja={ACCENT}
+            />
+            <StatTile
+              icon={<RefreshCcw size={16} />}
+              vrijednost={brojNesinhronizovanih}
+              naziv="Nije sinhronizovano"
+              boja={brojNesinhronizovanih > 0 ? "#f59e0b" : "#9ca3af"}
+            />
+          </>
+        )}
         <button
           type="button"
           onClick={ucitaj}
-          disabled={loading}
+          disabled={loadingCijene || loadingRabati}
           title="Osvježi"
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 dark:border-[#3a3158] text-gray-600 dark:text-[#c5bfd8] hover:bg-gray-50 dark:hover:bg-[#2d2648] transition-all disabled:opacity-50"
         >
-          <RefreshCcw size={13} className={loading ? "animate-spin" : ""} />
+          <RefreshCcw
+            size={13}
+            className={loadingCijene || loadingRabati ? "animate-spin" : ""}
+          />
           Osvježi
         </button>
       </div>
-
-      {/* Statistika */}
-      {!loading && !greska && (
-        <div className="flex flex-wrap gap-3">
-          <StatTile
-            icon={<Users size={16} />}
-            vrijednost={brojPartnera}
-            naziv="Partnera sa ugovorenom cijenom"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Package size={16} />}
-            vrijednost={brojProizvoda}
-            naziv="Proizvoda sa ugovorenom cijenom"
-            boja={PRIMARY}
-          />
-          <StatTile
-            icon={<Tags size={16} />}
-            vrijednost={redovi.length}
-            naziv="Ugovorenih cijena ukupno"
-            boja={ACCENT}
-          />
-          <StatTile
-            icon={<RefreshCcw size={16} />}
-            vrijednost={brojNesinhronizovanih}
-            naziv="Nije sinhronizovano"
-            boja={brojNesinhronizovanih > 0 ? "#f59e0b" : "#9ca3af"}
-          />
-        </div>
-      )}
 
       {/* Filteri */}
       <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
@@ -671,10 +784,10 @@ export function UgovoreneCijenePregled() {
           <div className="ml-auto flex items-center rounded-xl border border-gray-200 dark:border-[#3a3158] overflow-hidden">
             <button
               type="button"
-              onClick={() => setGrupisiPoProizvodu(false)}
+              onClick={() => setRezim("partner")}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors"
               style={
-                !grupisiPoProizvodu
+                rezim === "partner"
                   ? { background: PRIMARY, color: "white" }
                   : { color: "#785E9E" }
               }
@@ -684,16 +797,30 @@ export function UgovoreneCijenePregled() {
             </button>
             <button
               type="button"
-              onClick={() => setGrupisiPoProizvodu(true)}
+              onClick={() => setRezim("proizvod")}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors border-l border-gray-200 dark:border-[#3a3158]"
               style={
-                grupisiPoProizvodu
+                rezim === "proizvod"
                   ? { background: PRIMARY, color: "white" }
                   : { color: "#785E9E" }
               }
             >
               <Package size={13} />
               Po proizvodu
+            </button>
+            <button
+              type="button"
+              onClick={() => setRezim("rabati")}
+              title="Nova tabela rabata (erp.partneri_dogovoreni_rabati), po partneru"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors border-l border-gray-200 dark:border-[#3a3158]"
+              style={
+                rabati
+                  ? { background: PRIMARY, color: "white" }
+                  : { color: "#785E9E" }
+              }
+            >
+              <Percent size={13} />
+              Rabati
             </button>
           </div>
         </div>
@@ -702,7 +829,7 @@ export function UgovoreneCijenePregled() {
           <p className="mt-3 text-xs text-gray-400 dark:text-[#5f5878]">
             Prikazano {grupe.length}{" "}
             {grupisiPoProizvodu ? "proizvoda" : "partnera"} · {filtrirani.length}
-            {" "}/ {redovi.length} ugovorenih cijena
+            {" "}/ {redovi.length} {rabati ? "rabata" : "ugovorenih cijena"}
           </p>
         )}
       </div>
@@ -738,7 +865,9 @@ export function UgovoreneCijenePregled() {
             <p className="text-sm text-gray-400 dark:text-[#5f5878]">
               {pretraga.trim()
                 ? "Nema rezultata za tu pretragu."
-                : "Nema ugovorenih cijena za prikaz."}
+                : rabati
+                  ? "Nema upisanih rabata za prikaz."
+                  : "Nema ugovorenih cijena za prikaz."}
             </p>
           </div>
         )}
@@ -759,6 +888,7 @@ export function UgovoreneCijenePregled() {
                 index={index}
                 style={style}
                 grupisiPoProizvodu={grupisiPoProizvodu}
+                rabati={rabati}
                 otvoreno={prosireno.has(grupe[index].kljuc)}
                 brisanjeUToku={brisanjeUToku}
                 onPrekidacProsirenja={prekidacProsirenja}
