@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
+  EyeOff,
   FlaskConical,
   Link2,
   Loader2,
@@ -237,8 +238,8 @@ const izracunajMarzu = (
   return ((v - n) / n) * 100;
 };
 
-// Fin. vrijednost artikla na stanju = količina * VPC.
-const izracunajFinVrijednost = (
+// VP vrijednost artikla na stanju = količina * VPC.
+const izracunajVpVrijednost = (
   kolicina: number | string | undefined,
   vpc: number | string | undefined,
 ) => {
@@ -246,6 +247,17 @@ const izracunajFinVrijednost = (
   const v = Number(vpc);
   if (!Number.isFinite(k) || !Number.isFinite(v)) return 0;
   return k * v;
+};
+
+// Nabavna vrijednost artikla na stanju = količina * nabavna cijena.
+const izracunajNabavnuVrijednost = (
+  kolicina: number | string | undefined,
+  nabavna: number | string | undefined,
+) => {
+  const k = Number(kolicina);
+  const n = Number(nabavna);
+  if (!Number.isFinite(k) || !Number.isFinite(n)) return 0;
+  return k * n;
 };
 
 export function ArtikliPregled() {
@@ -718,15 +730,6 @@ export function ArtikliPregled() {
     sortSmjer,
   ]);
 
-  const finVrijednostZaliha = useMemo(
-    () =>
-      filtrirani.reduce(
-        (zbir, a) => zbir + izracunajFinVrijednost(a.kolicina_proizvoda, a.vpc),
-        0,
-      ),
-    [filtrirani],
-  );
-
   // Boja pozadine po grupi — dodjeljuje se redom kojim se grupe pojavljuju u
   // listi grupa sa servera (stabilan redoslijed, neovisan o filterima).
   const grupaBojaMap = useMemo(() => {
@@ -815,45 +818,45 @@ export function ArtikliPregled() {
             </select>
 
             <div className="flex flex-col gap-1">
-              <label className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+              <label
+                className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none"
+                title="Sakrij artikle bez stanja"
+              >
                 <input
                   type="checkbox"
                   checked={sakrijBezStanja}
                   onChange={(e) => setSakrijBezStanja(e.target.checked)}
                   className="w-4 h-4 rounded accent-[#785E9E]"
                 />
-                Sakrij artikle bez stanja
+                <EyeOff
+                  size={14}
+                  style={{ color: PRIMARY }}
+                  aria-label="Sakrij artikle bez stanja"
+                />
               </label>
 
-              <label className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none">
+              <label
+                className="flex items-center gap-2 px-3 py-1 text-sm font-medium text-gray-700 dark:text-[#c5bfd8] cursor-pointer select-none"
+                title="Samo proizvodi sa normativom"
+              >
                 <input
                   type="checkbox"
                   checked={samoSaNormativom}
                   onChange={(e) => setSamoSaNormativom(e.target.checked)}
                   className="w-4 h-4 rounded accent-[#785E9E]"
                 />
-                Samo proizvodi sa normativom
+                <FlaskConical
+                  size={14}
+                  style={{ color: "#2563eb" }}
+                  aria-label="Samo proizvodi sa normativom"
+                />
               </label>
             </div>
           </div>
 
           <div />
 
-          {!loading && !error ? (
-            <div className="flex flex-col items-end justify-self-end">
-              <span
-                className="text-xs font-bold uppercase tracking-wider"
-                style={{ color: PRIMARY }}
-              >
-                Fin vrijednost zaliha
-              </span>
-              <span className="text-lg font-bold text-gray-800 dark:text-[#ede9f6]">
-                {formatBroj(finVrijednostZaliha)}
-              </span>
-            </div>
-          ) : (
-            <div />
-          )}
+          <div />
         </div>
       </div>
 
@@ -910,9 +913,11 @@ export function ArtikliPregled() {
                   <TH center>JM</TH>
                   <TH center>Količina</TH>
                   <TH center>Nabavna</TH>
+                  <TH center>Nabavna vrijednost</TH>
                   <TH center>VPC</TH>
+                  <TH center>VP vrijednost</TH>
+                  <TH center>Razlika</TH>
                   <TH center>Marža</TH>
-                  <TH center>Fin. vrijednost</TH>
                   <TH center>MPC</TH>
                   <TH
                     onClick={() => handleSort("grupa")}
@@ -1061,17 +1066,41 @@ export function ArtikliPregled() {
                       )}
                     </TD>
                     <TD center>{formatBroj(a.nabavna_cijena, 5)}</TD>
+                    <TD center>
+                      {formatBroj(
+                        izracunajNabavnuVrijednost(
+                          a.kolicina_proizvoda,
+                          a.nabavna_cijena,
+                        ),
+                      )}
+                    </TD>
                     <TD center>{formatBroj(a.vpc)}</TD>
                     <TD center>
+                      {formatBroj(
+                        izracunajVpVrijednost(a.kolicina_proizvoda, a.vpc),
+                      )}
+                    </TD>
+                    <TD center>
+                      {Number(a.sirovina) === 1 && !(Number(a.vpc) > 0)
+                        ? formatBroj(0)
+                        : formatBroj(
+                            izracunajVpVrijednost(a.kolicina_proizvoda, a.vpc) -
+                              izracunajNabavnuVrijednost(
+                                a.kolicina_proizvoda,
+                                a.nabavna_cijena,
+                              ),
+                          )}
+                    </TD>
+                    <TD center>
                       {(() => {
+                        if (Number(a.sirovina) === 1 && !(Number(a.vpc) > 0)) {
+                          return `${formatBroj(0)}%`;
+                        }
                         const marza = izracunajMarzu(a.nabavna_cijena, a.vpc);
                         return marza === null
                           ? "–"
                           : `${formatBroj(marza)}%`;
                       })()}
-                    </TD>
-                    <TD center>
-                      {formatBroj(izracunajFinVrijednost(a.kolicina_proizvoda, a.vpc))}
                     </TD>
                     <TD center>{formatBroj(a.mpc)}</TD>
                     <TD>
@@ -1120,7 +1149,7 @@ export function ArtikliPregled() {
                     return (
                     <tr>
                       <td
-                        colSpan={13}
+                        colSpan={15}
                         style={{
                           padding: 0,
                           border: "none",
@@ -1229,7 +1258,7 @@ export function ArtikliPregled() {
                     return (
                     <tr>
                       <td
-                        colSpan={13}
+                        colSpan={15}
                         style={{
                           padding: 0,
                           border: "none",
