@@ -338,6 +338,37 @@ interface DogovoreniRabat {
   vreme_izmjene: string;
 }
 
+// Red iz erp.racuni_gl_istorija_artikli_pregled — jedna stavka ranijeg računa
+// partnera. Za filter "Istorija" se sabira po artiklu (vidi istorijaPoArtiklu).
+interface IstorijaStavka {
+  sifra_proizvoda: number | string;
+  vpc_bez_rabata: number | string | null;
+  VPC: number | string | null;
+  rabat_proc: number | string | null;
+  kolicina: number | string | null;
+  datum_racuna: string;
+  sifra_racuna: number;
+  broj_racuna: number | string;
+  vrsta_racuna_novi: number | string | null;
+}
+
+// Sažetak istorije po artiklu — zadnja kupovina + ukupno.
+interface IstorijaArtikla {
+  zadnjiDatum: string;
+  zadnjaSifraRacuna: number;
+  zadnjaCijena: number;
+  zadnjiRabat: number;
+  ukupnaKolicina: number;
+  brojRacuna: number;
+}
+
+// "YYYY-MM-DD..." -> "dd.MM.yyyy"
+const datumDMY = (s: string | null | undefined): string => {
+  if (!s) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+};
+
 // Upozorenje nakon uvoza sa terena — artikal ima dogovorenu cijenu u STAROJ
 // tabeli (erp.partneri_dogovorene_cijene), a u novoj tabeli rabata nema rabata
 // ili rabat daje drugačiju cijenu. Cijena na računu uvijek ide po novoj tabeli.
@@ -559,6 +590,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     aktivno: boolean;
   } | null>(null);
   const [rabatCuvanje, setRabatCuvanje] = useState(false);
+  // Stavke ranijih računa izabranog partnera (filter "Istorija").
+  const [istorijaStavke, setIstorijaStavke] = useState<IstorijaStavka[]>([]);
   // Za kojeg partnera su rabati učitani — uvoz sa terena čeka da stignu.
   const [rabatiUcitaniZa, setRabatiUcitaniZa] = useState<number | null>(null);
   const [uvozRazlikeRabata, setUvozRazlikeRabata] = useState<
@@ -973,20 +1006,44 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     return false;
   };
 
-  // Šifre artikala sa dogovorenom cijenom za izabranog partnera — filter
-  // "Dogovoreni" u listi artikala.
-  const dogovoreniArtikliPartnera = useMemo(() => {
-    if (!odabraniPartner) return new Set<string>();
-    return new Set(
-      dogovoreneCijene
-        .filter(
-          (d) =>
-            String(d.partner_id) === String(odabraniPartner.sifra_partnera) &&
-            d.dogovorena_cijena_vpc != null,
-        )
-        .map((d) => String(d.proizvod_id)),
-    );
-  }, [dogovoreneCijene, odabraniPartner]);
+  // Istorija po artiklu za izabranog partnera — zadnja kupovina (datum, cijena,
+  // rabat) i ukupno (količina, broj računa). Filter "Istorija" u listi artikala.
+  const istorijaPoArtiklu = useMemo(() => {
+    const mapa = new Map<string, IstorijaArtikla>();
+    const racuniPoArtiklu = new Map<string, Set<number>>();
+    for (const st of istorijaStavke) {
+      const kljuc = String(st.sifra_proizvoda);
+      const datum = String(st.datum_racuna ?? "");
+      const sifraRacuna = Number(st.sifra_racuna) || 0;
+      const kol = Number(st.kolicina) || 0;
+      const racuni = racuniPoArtiklu.get(kljuc) ?? new Set<number>();
+      racuni.add(sifraRacuna);
+      racuniPoArtiklu.set(kljuc, racuni);
+      const postojeci = mapa.get(kljuc);
+      const noviji =
+        !postojeci ||
+        datum > postojeci.zadnjiDatum ||
+        (datum === postojeci.zadnjiDatum &&
+          sifraRacuna > postojeci.zadnjaSifraRacuna);
+      mapa.set(kljuc, {
+        zadnjiDatum: noviji ? datum : postojeci!.zadnjiDatum,
+        zadnjaSifraRacuna: noviji ? sifraRacuna : postojeci!.zadnjaSifraRacuna,
+        zadnjaCijena: noviji ? Number(st.VPC) || 0 : postojeci!.zadnjaCijena,
+        zadnjiRabat: noviji
+          ? Number(st.rabat_proc) || 0
+          : postojeci!.zadnjiRabat,
+        ukupnaKolicina: (postojeci?.ukupnaKolicina ?? 0) + kol,
+        brojRacuna: racuni.size,
+      });
+    }
+    return mapa;
+  }, [istorijaStavke]);
+
+  // Šifre artikala koje je izabrani partner ranije uzimao — filter "Istorija".
+  const dogovoreniArtikliPartnera = useMemo(
+    () => new Set(istorijaPoArtiklu.keys()),
+    [istorijaPoArtiklu],
+  );
 
   const imaDogovorenihArtikala = useMemo(
     () =>
@@ -1021,6 +1078,28 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       }
       if (!otkazano) setRabatiUcitaniZa(Number(sifraOdabranogPartnera));
     })();
+    return () => {
+      otkazano = true;
+    };
+  }, [sifraOdabranogPartnera]);
+
+  // Stavke ranijih računa partnera — učitavaju se pri svakom izboru partnera.
+  // Best-effort: bez njih je filter "Istorija" prazan.
+  useEffect(() => {
+    setIstorijaStavke([]);
+    if (sifraOdabranogPartnera == null) return;
+    let otkazano = false;
+    fetch(
+      `${API_URL}/api/racuni/istorija-artikli?partner_id=${encodeURIComponent(
+        String(sifraOdabranogPartnera),
+      )}`,
+      { credentials: "include" },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!otkazano && json?.success) setIstorijaStavke(json.data ?? []);
+      })
+      .catch(() => {});
     return () => {
       otkazano = true;
     };
@@ -1083,6 +1162,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
   // Kolona "Rabat" u listi artikala prikazuje se samo uz filter "Rabati".
   const prikaziRabat = filterArtikala === "rabati" && !rezimUsluga;
+  // Kolone zadnje kupovine prikazuju se samo uz filter "Istorija".
+  const prikaziIstoriju = filterArtikala === "dogovoreni" && !rezimUsluga;
 
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
@@ -3112,10 +3193,23 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   Naziv artikla
                 </span>
                 <span
-                  className={`w-20 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide ${prikaziRabat ? "" : "mr-12"}`}
+                  className={`w-20 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide ${prikaziRabat || prikaziIstoriju ? "" : "mr-12"}`}
                 >
                   Količina
                 </span>
+                {prikaziIstoriju && (
+                  <>
+                    <span className="w-20 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                      Zadnji put
+                    </span>
+                    <span className="w-16 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                      Zad. cij.
+                    </span>
+                    <span className="w-12 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                      Rabat
+                    </span>
+                  </>
+                )}
                 {prikaziRabat && (
                   <>
                     <span className="w-16 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
@@ -3150,6 +3244,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   const nivelacija = nivelacijeMap.get(
                     String(a.sifra_proizvoda),
                   );
+                  // Uz filter "Istorija": zadnja kupovina ovog artikla.
+                  const istorijaArtikla =
+                    istorijaPoArtiklu.get(String(a.sifra_proizvoda)) ?? null;
                   // Uz filter "Rabati": aktuelni VPC, rabat kupca i VPC po rabatu.
                   const vpcKatalogArtikla = Number(a.vpc) || 0;
                   const rabatArtikla =
@@ -3212,11 +3309,37 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                           </div>
                         </div>
                         <div
-                          className={`w-20 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap ${prikaziRabat ? "" : "mr-12"}`}
+                          className={`w-20 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap ${prikaziRabat || prikaziIstoriju ? "" : "mr-12"}`}
                           style={{ color: nemaStanje ? undefined : ACCENT }}
                         >
                           {Number(a.kolicina_proizvoda).toFixed(3)}
                         </div>
+                        {prikaziIstoriju && (
+                          <>
+                            <div
+                              className="w-20 flex-shrink-0 text-right text-[13px] whitespace-nowrap text-gray-600 dark:text-[#c5bfd8]"
+                              title={
+                                istorijaArtikla
+                                  ? `Ukupno uzeto: ${istorijaArtikla.ukupnaKolicina.toFixed(3)} ${a.jm} na ${istorijaArtikla.brojRacuna} račun(a)`
+                                  : undefined
+                              }
+                            >
+                              {istorijaArtikla
+                                ? datumDMY(istorijaArtikla.zadnjiDatum)
+                                : ""}
+                            </div>
+                            <div className="w-16 flex-shrink-0 text-right text-sm font-bold whitespace-nowrap text-gray-700 dark:text-[#c5bfd8]">
+                              {istorijaArtikla
+                                ? istorijaArtikla.zadnjaCijena.toFixed(2)
+                                : ""}
+                            </div>
+                            <div className="w-12 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap text-red-500">
+                              {istorijaArtikla
+                                ? `${istorijaArtikla.zadnjiRabat.toFixed(2)}%`
+                                : ""}
+                            </div>
+                          </>
+                        )}
                         {prikaziRabat && (
                           <>
                             <div className="w-16 flex-shrink-0 text-right text-sm font-bold whitespace-nowrap text-gray-500 dark:text-[#7d7498]">

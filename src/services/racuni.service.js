@@ -10,6 +10,19 @@ export const getIstorijaRacuna = async (sifraPartnera) => {
   });
 };
 
+// Sve stavke ranijih računa partnera (red po stavci) — filter "Istorija" na
+// žiralnom računu (šta je partner ranije uzimao). Vidi
+// erp.racuni_gl_istorija_artikli_pregled.
+export const getIstorijaArtikalaPartnera = async (partnerId) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.execute(
+      "CALL erp.racuni_gl_istorija_artikli_pregled(?)",
+      [partnerId],
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
+  });
+};
+
 // Svi neplaćeni računi, bez storniranih i bez storno dokumenata.
 export const getRacuniNeplaceni = async () => {
   return withConnection(async (connection) => {

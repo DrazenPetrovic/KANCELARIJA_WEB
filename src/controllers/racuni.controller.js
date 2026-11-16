@@ -166,6 +166,24 @@ export const unosDogovorenihCijena = async (req, res) => {
   }
 };
 
+export const getIstorijaArtikala = async (req, res) => {
+  try {
+    const partnerId = Number(req.query.partner_id);
+    if (!Number.isInteger(partnerId) || partnerId <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "partner_id je obavezan" });
+    }
+    const data = await RacuniService.getIstorijaArtikalaPartnera(partnerId);
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("Istorija artikala partnera error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri učitavanju istorije artikala" });
+  }
+};
+
 export const getDogovoreniRabati = async (req, res) => {
   try {
     const partnerId = Number(req.query.partner_id);

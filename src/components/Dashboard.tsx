@@ -3335,6 +3335,8 @@ export function Dashboard({
               ? "pt-[10px] pb-0"
               : activeSection === "ulazi-kalkulacija-unos"
                 ? "pt-[10px] pb-8"
+                : activeSection === "racuni-virmanski"
+                ? "pt-[5px] pb-0"
                 : activeSection === "pregled-kalkulacija"
                   ? "pt-[5px] pb-8"
                   : activeSection === "artikli-pregled" ||
