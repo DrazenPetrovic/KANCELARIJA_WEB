@@ -29,6 +29,7 @@ import kalkulacijeRoutes from "./routes/kalkulacije.routes.js";
 import trgovackeKnjigeRoutes from "./routes/trgovackeKnjige.routes.js";
 import backupRoutes from "./routes/backup.routes.js";
 import poslovanjeRoutes from "./routes/poslovanje.routes.js";
+import radniNalogRoutes from "./routes/radniNalog.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +73,7 @@ export const createApp = () => {
   app.use("/api/trgovacke-knjige", trgovackeKnjigeRoutes);
   app.use("/api/backup", backupRoutes);
   app.use("/api/poslovanje", poslovanjeRoutes);
+  app.use("/api/radni-nalog", radniNalogRoutes);
 
   // Serviranje frontenda u produkciji
   if (env.NODE_ENV === "production") {

@@ -3,6 +3,7 @@ import { KlisePregled } from "./KlisePregled";
 import { KliseNaplataOdKupca } from "./KliseNaplataOdKupca";
 import { KliseUnosNovog } from "./KliseUnosNovog";
 import { KliseUnosZaDobavljaca } from "./KliseUnosZaDobavljaca";
+import { RadniNalog } from "./RadniNalog";
 import { OrdersList } from "./OrdersList.tsx";
 import { NarudzbeUnosTeren } from "./NarudzbeUnosTeren";
 import { NarudzbeUnosLokalno } from "./NarudzbeUnosLokalno";
@@ -3568,6 +3569,8 @@ export function Dashboard({
           {activeSection === "klise-dobavljac" && <KliseUnosZaDobavljaca />}
 
           {activeSection === "klise-pregled" && <KlisePregled />}
+
+          {activeSection === "proizvodnja-radni-nalog" && <RadniNalog />}
 
           {activeSection === "racuni-gotovinski" && (
             <GotovinskiRacuni
