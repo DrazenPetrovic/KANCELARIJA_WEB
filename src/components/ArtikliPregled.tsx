@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -407,6 +407,11 @@ export function ArtikliPregled() {
     }
   };
 
+  // Mjerenje stvarne širine tabele (table-auto je intrinzično širok) se vrši
+  // niže, poslije definicije `filtrirani` (vidi useEffect sa ResizeObserver-om).
+  const tabelaRef = useRef<HTMLDivElement>(null);
+  const [tabelaSirina, setTabelaSirina] = useState<number | null>(null);
+
   const otvoriIzmjenu = (a: Artikal) => {
     setArtikalZaIzmjenu(a);
     setNazivIzmjena(a.naziv_proizvoda);
@@ -730,6 +735,26 @@ export function ArtikliPregled() {
     sortSmjer,
   ]);
 
+  // Mjerenje stvarne širine tabele (table-auto je intrinzično širok), da bi
+  // filter kartica iznad mogla da preuzme tačno istu širinu preko inline style-a.
+  useEffect(() => {
+    const element = tabelaRef.current;
+    if (!element) {
+      setTabelaSirina(null);
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setTabelaSirina(entry.contentRect.width);
+      }
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [loading, error, filtrirani.length]);
+
   const nabavnaVrijednostZaliha = useMemo(
     () =>
       filtrirani.reduce(
@@ -779,8 +804,11 @@ export function ArtikliPregled() {
 
   return (
     <div className="space-y-4">
-      {/* Filteri */}
-      <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4">
+      {/* Filteri — tačno iste širine kao tabela ispod (mjereno preko ref-a) */}
+      <div
+        className="mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm p-4"
+        style={tabelaSirina ? { width: tabelaSirina } : undefined}
+      >
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <div className="flex flex-nowrap items-center gap-3">
             <div className="relative w-[346px]">
@@ -934,7 +962,10 @@ export function ArtikliPregled() {
       )}
 
       {!loading && !error && filtrirani.length > 0 && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full mx-auto">
+        <div
+          ref={tabelaRef}
+          className="mx-auto bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm overflow-hidden w-fit max-w-full"
+        >
           <div className="overflow-x-auto">
             <table className="table-auto border-collapse">
               <thead>

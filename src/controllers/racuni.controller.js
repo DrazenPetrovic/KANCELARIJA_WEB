@@ -154,16 +154,9 @@ export const unosDogovorenihCijena = async (req, res) => {
         .status(400)
         .json({ success: false, error: "Stavke su obavezne" });
     }
-    const data = await RacuniService.upisiDogovoreneCijene(stavke);
-
-    // Paralelno punjenje nove tabele rabata — best-effort, greška ovdje ne
-    // smije oboriti upis u staru tabelu (koja se i dalje koristi za cijene).
-    try {
-      await RacuniService.upisiDogovoreneRabate(stavke);
-    } catch (rabatError) {
-      console.error("Upis dogovorenih rabata (nova tabela) error:", rabatError);
-    }
-
+    // Upis samo u novu tabelu rabata (stara erp.partneri_dogovorene_cijene
+    // se više ne puni).
+    const data = await RacuniService.upisiDogovoreneRabate(stavke);
     return res.json({ success: true, data });
   } catch (error) {
     console.error("Upis ugovorenih cijena error:", error);
@@ -188,6 +181,49 @@ export const getDogovoreniRabati = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, error: "Greška pri učitavanju rabata" });
+  }
+};
+
+export const izmijeniDogovoreniRabat = async (req, res) => {
+  try {
+    const partnerId = Number(req.body?.partner_id);
+    const proizvodId = Number(req.body?.proizvod_id);
+    const rabat = Number(req.body?.rabat_1_proc);
+    const vpc = Number(req.body?.vpc) || 0;
+    const aktivno = Number(req.body?.aktivno) === 0 ? 0 : 1;
+    if (
+      !Number.isInteger(partnerId) ||
+      partnerId <= 0 ||
+      !Number.isInteger(proizvodId) ||
+      proizvodId <= 0
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, error: "partner_id i proizvod_id su obavezni" });
+    }
+    if (!Number.isFinite(rabat) || rabat <= 0 || rabat >= 100) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Rabat mora biti veći od 0 i manji od 100" });
+    }
+    const izmijenjeno = await RacuniService.izmijeniDogovoreniRabat({
+      partnerId,
+      proizvodId,
+      rabat: Math.round(rabat * 100) / 100,
+      vpc,
+      aktivno,
+    });
+    if (izmijenjeno === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Rabat nije pronađen" });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Izmjena dogovorenog rabata error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Greška pri izmjeni rabata" });
   }
 };
 

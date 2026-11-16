@@ -127,27 +127,9 @@ export const getRacunPoPregled = async (sifraTabele) => {
   });
 };
 
-// Upis/ažuriranje dogovorenih (posebnih) cijena partner-proizvod — poziva se
-// nakon čuvanja žiralnog računa, za stavke gdje je operater ručno promijenio
-// VPC1 (drugačiji od kataloškog VPC-a), da se ta cijena kasnije tretira kao
-// ugovorena. Vidi erp.artikli_dogovorene_cijene_unos.
-export const upisiDogovoreneCijene = async (stavke) => {
-  return withConnection(async (connection) => {
-    const json = JSON.stringify({ stavke });
-    const [rows] = await connection.query(
-      "CALL erp.artikli_dogovorene_cijene_unos(?)",
-      [json],
-    );
-    const rezultatSet = Array.isArray(rows) && rows.length > 0 ? rows[0] : [];
-    return Array.isArray(rezultatSet) && rezultatSet.length > 0
-      ? rezultatSet[0]
-      : { uspjesno: true };
-  });
-};
-
-// Paralelni upis u novu tabelu erp.partneri_dogovoreni_rabati — procedura sama
+// Upis u tabelu rabata erp.partneri_dogovoreni_rabati nakon čuvanja žiralnog
+// računa, za stavke gdje je operater ručno promijenio VPC1 — procedura sama
 // računa rabat iz (vpc, dogovorena_cijena_vpc) i preskače negativne/nulte.
-// Za sada se samo puni; cijene na računu se i dalje vuku iz stare tabele.
 // Vidi docs/sql/artikli_dogovoreni_rabati_unos.sql.
 export const upisiDogovoreneRabate = async (stavke) => {
   return withConnection(async (connection) => {
@@ -178,6 +160,37 @@ export const getDogovoreniRabatiPartnera = async (partnerId) => {
       [partnerId],
     );
     return rows;
+  });
+};
+
+// Ručna izmjena jednog rabata (desni klik na artikal uz filter "Rabati").
+// Promjena procenta osvježava i informativne vpc_pri_dogovoru /
+// orijentaciona_cijena_vpc prema trenutnom VPC-u. aktivno = 0 gasi rabat.
+export const izmijeniDogovoreniRabat = async ({
+  partnerId,
+  proizvodId,
+  rabat,
+  vpc,
+  aktivno,
+}) => {
+  return withConnection(async (connection) => {
+    const [res] = await connection.execute(
+      `UPDATE erp.partneri_dogovoreni_rabati
+          SET orijentaciona_cijena_vpc = IF(rabat_1_proc <> ? AND ? > 0, ROUND(? * (1 - ? / 100), 3), orijentaciona_cijena_vpc),
+              vpc_pri_dogovoru         = IF(rabat_1_proc <> ? AND ? > 0, ?, vpc_pri_dogovoru),
+              aktivno                  = ?,
+              sinhronizovano           = 0,
+              rabat_1_proc             = ?
+        WHERE partner_id = ? AND proizvod_id = ?`,
+      [
+        rabat, vpc, vpc, rabat,
+        rabat, vpc, vpc,
+        aktivno,
+        rabat,
+        partnerId, proizvodId,
+      ],
+    );
+    return res.affectedRows;
   });
 };
 

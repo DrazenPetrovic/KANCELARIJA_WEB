@@ -325,7 +325,7 @@ interface PoslovnicaApi {
 // pregled sa nazivima/JM/rabatom). Učitava se u cjelosti pri otvaranju forme
 // (odvojeno, ne blokira prikaz) i uparuje po (partner_id, proizvod_id) kad se
 // artikal dodaje na žiralni račun.
-// Red iz nove tabele erp.partneri_dogovoreni_rabati (pregled dugmetom "Rabati").
+// Red iz nove tabele erp.partneri_dogovoreni_rabati (filter "Rabati").
 interface DogovoreniRabat {
   sifra_tbl: number;
   partner_id: number;
@@ -338,13 +338,17 @@ interface DogovoreniRabat {
   vreme_izmjene: string;
 }
 
-// "YYYY-MM-DD HH:MM:SS" -> "dd.MM.yyyy. HH:MM"
-const formatDatumVrijeme = (s: string | null | undefined): string => {
-  if (!s) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(s);
-  if (!m) return s;
-  return `${m[3]}.${m[2]}.${m[1]}.${m[4] ? ` ${m[4]}:${m[5]}` : ""}`;
-};
+// Upozorenje nakon uvoza sa terena — artikal ima dogovorenu cijenu u STAROJ
+// tabeli (erp.partneri_dogovorene_cijene), a u novoj tabeli rabata nema rabata
+// ili rabat daje drugačiju cijenu. Cijena na računu uvijek ide po novoj tabeli.
+interface UvozRazlikaRabata {
+  sifra_proizvoda: string | number;
+  naziv_proizvoda: string;
+  vpc: number;
+  staraCijena: number;
+  rabat: number | null;
+  novaCijena: number | null;
+}
 
 interface DogovorenaCijena {
   sifra_tbl: number;
@@ -448,7 +452,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [pretragaArtikala, setPretragaArtikala] = useState("");
   const [odabranaGrupa, setOdabranaGrupa] = useState<string | null>(null);
   const [filterArtikala, setFilterArtikala] = useState<
-    "svi" | "naStanju" | "dogovoreni"
+    "svi" | "naStanju" | "dogovoreni" | "rabati"
   >("naStanju");
   const [nivelacijeAktivne, setNivelacijeAktivne] = useState<
     NivelacijaAktivna[]
@@ -546,11 +550,21 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
   const [dogovorenaCijenaGreska, setDogovorenaCijenaGreska] = useState<
     string | null
   >(null);
-  // Pregled nove tabele rabata za izabranog partnera (dugme "Rabati").
-  const [rabatiModal, setRabatiModal] = useState(false);
+  // Rabati izabranog partnera iz nove tabele (filter "Rabati" u listi artikala).
   const [rabatiPartnera, setRabatiPartnera] = useState<DogovoreniRabat[]>([]);
-  const [rabatiLoading, setRabatiLoading] = useState(false);
-  const [rabatiGreska, setRabatiGreska] = useState<string | null>(null);
+  // Modal za izmjenu/gašenje rabata — desni klik na artikal uz filter "Rabati".
+  const [rabatZaIzmjenu, setRabatZaIzmjenu] = useState<{
+    artikal: Artikal;
+    rabat: string;
+    aktivno: boolean;
+  } | null>(null);
+  const [rabatCuvanje, setRabatCuvanje] = useState(false);
+  // Za kojeg partnera su rabati učitani — uvoz sa terena čeka da stignu.
+  const [rabatiUcitaniZa, setRabatiUcitaniZa] = useState<number | null>(null);
+  const [uvozRazlikeRabata, setUvozRazlikeRabata] = useState<
+    UvozRazlikaRabata[]
+  >([]);
+  const [rabatGreska, setRabatGreska] = useState<string | null>(null);
   // Upozorenje nakon uvoza sa terena — proizvodi kod kojih se predložena
   // "tražena cijena" (prijedlog komercijaliste) razlikuje od cijene koja je
   // stvarno stavljena na račun (dogovorena ili kataloški VPC). Samo informativno,
@@ -918,16 +932,18 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     [dogovoreneCijene],
   );
 
-  // Da li VPC1 već unesene stavke (u korpi) odgovara dogovorenoj cijeni ovog
-  // partnera za taj artikal — za crveno obilježavanje u pregledu stavki, isto
-  // kao u modalu za dodavanje/izmjenu.
+  // Cijena po dogovorenom rabatu: VPC umanjen za rabat, na 2 decimale.
+  const cijenaPoRabatu = (vpc: number, rabat: number) =>
+    Math.round(vpc * (1 - rabat / 100) * 100) / 100;
+
+  // Da li VPC1 već unesene stavke (u korpi) odgovara cijeni po dogovorenom
+  // rabatu ovog partnera (nova tabela) — za crveno obilježavanje u pregledu
+  // stavki, isto kao u modalu za dodavanje/izmjenu.
   const jeDogovorenaCijenaZaStavku = (s: StavkaRacuna): boolean => {
     if (!odabraniPartner) return false;
-    const d = dogovoreneCijeneMap.get(
-      `${String(odabraniPartner.sifra_partnera)}_${String(s.sifra_proizvoda)}`,
-    );
-    if (!d || d.dogovorena_cijena_vpc == null) return false;
-    return Math.abs(s.vpc1 - Number(d.dogovorena_cijena_vpc)) < 0.005;
+    const r = rabatPoArtiklu.get(String(s.sifra_proizvoda));
+    if (r == null) return false;
+    return Math.abs(s.vpc1 - cijenaPoRabatu(s.vpc, r)) < 0.005;
   };
 
   const rezimUsluga = jePodgrupaUsluga(odabranaPodgrupa);
@@ -980,30 +996,93 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     [artikli, dogovoreniArtikliPartnera],
   );
 
-  const imaDogovorenihNaStanju = useMemo(
+  // Rabati izabranog partnera (erp.partneri_dogovoreni_rabati) — učitavaju se
+  // pri svakom izboru partnera. Best-effort: bez njih filter "Rabati" je prazan.
+  const sifraOdabranogPartnera = odabraniPartner?.sifra_partnera ?? null;
+  useEffect(() => {
+    setRabatiPartnera([]);
+    setRabatiUcitaniZa(null);
+    if (sifraOdabranogPartnera == null) return;
+    let otkazano = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/racuni/dogovoreni-rabati?partner_id=${encodeURIComponent(
+            String(sifraOdabranogPartnera),
+          )}`,
+          { credentials: "include" },
+        );
+        const json = await res.json().catch(() => null);
+        if (!otkazano && res.ok && json?.success) {
+          setRabatiPartnera(json.data ?? []);
+        }
+      } catch {
+        // ignorisano — vidi komentar iznad
+      }
+      if (!otkazano) setRabatiUcitaniZa(Number(sifraOdabranogPartnera));
+    })();
+    return () => {
+      otkazano = true;
+    };
+  }, [sifraOdabranogPartnera]);
+
+  // Šifre artikala sa aktivnim rabatom za izabranog partnera — filter "Rabati".
+  const rabatiArtikliPartnera = useMemo(
+    () =>
+      new Set(
+        rabatiPartnera
+          .filter((r) => Number(r.aktivno) === 1 && Number(r.rabat_1_proc) > 0)
+          .map((r) => String(r.proizvod_id)),
+      ),
+    [rabatiPartnera],
+  );
+
+  // proizvod_id -> rabat % (samo aktivni) — prikaz u koloni "Rabat" liste artikala.
+  const rabatPoArtiklu = useMemo(
+    () =>
+      new Map(
+        rabatiPartnera
+          .filter((r) => Number(r.aktivno) === 1 && Number(r.rabat_1_proc) > 0)
+          .map((r) => [String(r.proizvod_id), Number(r.rabat_1_proc)]),
+      ),
+    [rabatiPartnera],
+  );
+
+  const imaRabatArtikala = useMemo(
+    () =>
+      artikli.some((a) => rabatiArtikliPartnera.has(String(a.sifra_proizvoda))),
+    [artikli, rabatiArtikliPartnera],
+  );
+
+  const imaRabatNaStanju = useMemo(
     () =>
       artikli.some(
         (a) =>
-          dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)) &&
+          rabatiArtikliPartnera.has(String(a.sifra_proizvoda)) &&
           Number(a.kolicina_proizvoda) > 0,
       ),
-    [artikli, dogovoreniArtikliPartnera],
+    [artikli, rabatiArtikliPartnera],
   );
 
-  // Pri izboru partnera lista automatski prelazi na "Dogovoreni" ako partner ima
-  // dogovorenih artikala na stanju; inače se sa tog filtera vraća na podrazumijevani.
-  // imaDogovorenihNaStanju je u zavisnostima jer dogovorene cijene i artikli mogu
-  // stići tek nakon izbora partnera. Operater poslije može ručno promijeniti filter.
-  const sifraOdabranogPartnera = odabraniPartner?.sifra_partnera ?? null;
+  // Pri izboru partnera lista automatski prelazi na "Rabati" ako partner ima
+  // artikala sa dogovorenim rabatom na stanju; inače se sa filtera "Rabati" /
+  // "Dogovoreni" vraća na podrazumijevani. imaRabatNaStanju je u zavisnostima
+  // jer rabati i artikli mogu stići tek nakon izbora partnera. Operater poslije
+  // može ručno promijeniti filter.
   useEffect(() => {
-    if (imaDogovorenihNaStanju) {
-      setFilterArtikala("dogovoreni");
+    if (imaRabatNaStanju) {
+      setFilterArtikala("rabati");
       setOdabranaGrupa(null);
       setPretragaArtikala("");
     } else {
-      setFilterArtikala((f) => (f === "dogovoreni" ? "naStanju" : f));
+      setFilterArtikala((f) =>
+        f === "dogovoreni" || f === "rabati" ? "naStanju" : f,
+      );
     }
-  }, [sifraOdabranogPartnera, imaDogovorenihNaStanju]);
+  }, [sifraOdabranogPartnera, imaRabatNaStanju]);
+
+  // Kolona "Rabat" u listi artikala prikazuje se samo uz filter "Rabati".
+  const prikaziRabat = filterArtikala === "rabati" && !rezimUsluga;
 
   const filtriranihArtikli = useMemo(() => {
     const q = pretragaArtikala.toLowerCase().trim();
@@ -1019,7 +1098,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         : filterArtikala === "svi" ||
           (filterArtikala === "naStanju"
             ? Number(a.kolicina_proizvoda) > 0
-            : dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)));
+            : filterArtikala === "rabati"
+              ? rabatiArtikliPartnera.has(String(a.sifra_proizvoda))
+              : dogovoreniArtikliPartnera.has(String(a.sifra_proizvoda)));
       return matchGrupa && matchQ && matchFilter;
     });
   }, [
@@ -1028,6 +1109,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     odabranaGrupa,
     filterArtikala,
     dogovoreniArtikliPartnera,
+    rabatiArtikliPartnera,
     rezimUsluga,
   ]);
 
@@ -1105,28 +1187,50 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     setPokazuiDropdown(false);
   };
 
-  const otvoriRabatiPartnera = async () => {
-    if (!odabraniPartner) return;
-    setRabatiModal(true);
-    setRabatiLoading(true);
-    setRabatiGreska(null);
-    setRabatiPartnera([]);
+  const sacuvajIzmjenuRabata = async () => {
+    if (!rabatZaIzmjenu || !odabraniPartner) return;
+    const rabat = Number(rabatZaIzmjenu.rabat.replace(",", "."));
+    if (!Number.isFinite(rabat) || rabat <= 0 || rabat >= 100) {
+      setRabatGreska("Rabat mora biti veći od 0 i manji od 100.");
+      return;
+    }
+    const proizvodId = Number(rabatZaIzmjenu.artikal.sifra_proizvoda);
+    const aktivno = rabatZaIzmjenu.aktivno ? 1 : 0;
+    const rabatZaokruzen = Math.round(rabat * 100) / 100;
+    setRabatCuvanje(true);
+    setRabatGreska(null);
     try {
       const res = await fetch(
-        `${API_URL}/api/racuni/dogovoreni-rabati?partner_id=${encodeURIComponent(
-          String(odabraniPartner.sifra_partnera),
-        )}`,
-        { credentials: "include" },
+        `${API_URL}/api/racuni/dogovoreni-rabati/izmjena`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            partner_id: odabraniPartner.sifra_partnera,
+            proizvod_id: proizvodId,
+            rabat_1_proc: rabatZaokruzen,
+            vpc: Number(rabatZaIzmjenu.artikal.vpc) || 0,
+            aktivno,
+          }),
+        },
       );
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || `HTTP ${res.status}`);
       }
-      setRabatiPartnera(json.data ?? []);
+      setRabatiPartnera((lista) =>
+        lista.map((r) =>
+          Number(r.proizvod_id) === proizvodId
+            ? { ...r, rabat_1_proc: rabatZaokruzen, aktivno }
+            : r,
+        ),
+      );
+      setRabatZaIzmjenu(null);
     } catch (e) {
-      setRabatiGreska(e instanceof Error ? e.message : "Greška pri učitavanju");
+      setRabatGreska(e instanceof Error ? e.message : "Greška pri čuvanju");
     } finally {
-      setRabatiLoading(false);
+      setRabatCuvanje(false);
     }
   };
 
@@ -1136,24 +1240,19 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     const vpcKatalog =
       typeof a.vpc === "number" ? a.vpc : parseFloat(String(a.vpc)) || 0;
 
-    // Dogovorena (posebna) cijena za ovog partnera i ovaj artikal — ako postoji,
-    // ide u VPC1 umjesto kataloškog VPC-a, a Rabat 1 se računa kao razlika prema
-    // kataloškom VPC-u (isti princip kao ručni unos VPC1 u modalu ispod).
-    const dogovorena = odabraniPartner
-      ? dogovoreneCijeneMap.get(
-          `${String(odabraniPartner.sifra_partnera)}_${String(a.sifra_proizvoda)}`,
-        )
-      : undefined;
-    const dogovorenaVpc =
-      dogovorena?.dogovorena_cijena_vpc != null
-        ? Number(dogovorena.dogovorena_cijena_vpc)
-        : null;
+    // Dogovoreni rabat ovog partnera za ovaj artikal (nova tabela) — ako
+    // postoji, VPC1 = kataloški VPC umanjen za rabat, a Rabat 1 = taj rabat.
+    const rabatKupca = odabraniPartner
+      ? (rabatPoArtiklu.get(String(a.sifra_proizvoda)) ?? null)
+      : null;
+    const imaRabat = rabatKupca != null && vpcKatalog > 0;
 
-    const pocetniVpc1 = dogovorenaVpc ?? vpcKatalog;
-    const pocetniRab1 =
-      dogovorenaVpc != null && vpcKatalog > 0
-        ? (((vpcKatalog - dogovorenaVpc) / vpcKatalog) * 100).toFixed(2)
-        : "0.00";
+    const pocetniVpc1 = imaRabat
+      ? cijenaPoRabatu(vpcKatalog, rabatKupca as number)
+      : vpcKatalog;
+    const pocetniRab1 = imaRabat
+      ? (rabatKupca as number).toFixed(2)
+      : "0.00";
 
     setVpc1(pocetniVpc1.toFixed(2));
     setRab1(pocetniRab1);
@@ -1844,13 +1943,17 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
         setSifreTabeleZaStampano([]);
       }
 
-      // Ako je operater ručno promijenio VPC1 (drugačiji od kataloškog VPC-a) za
-      // neku stavku, ta cijena se pamti kao dogovorena za ovog partnera i taj
-      // proizvod — vidi erp.artikli_dogovorene_cijene_unos. Best-effort,
-      // ne blokira već potvrđeno čuvanje računa. dogovorena_cijena_mpc = VPC1 + 17%
-      // (STOPA_PDV), rabat_1_proc je već izračunati procenat VPC vs VPC1 (s.rab1).
+      // Ako je operater ručno promijenio VPC1 (drugačiji od kataloškog VPC-a i
+      // od cijene po postojećem rabatu) za neku stavku, iz te cijene se računa
+      // rabat i pamti u novoj tabeli rabata — vidi
+      // erp.artikli_dogovoreni_rabati_unos. Best-effort, ne blokira već
+      // potvrđeno čuvanje računa.
       const izmijenjeneCijene = odabraniPartner
-        ? stavke.filter((s) => Math.abs(s.vpc1 - s.vpc) >= 0.005)
+        ? stavke.filter(
+            (s) =>
+              Math.abs(s.vpc1 - s.vpc) >= 0.005 &&
+              !jeDogovorenaCijenaZaStavku(s),
+          )
         : [];
       if (izmijenjeneCijene.length > 0 && odabraniPartner) {
         try {
@@ -1865,10 +1968,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   partner_id: odabraniPartner.sifra_partnera,
                   proizvod_id: Number(s.sifra_proizvoda),
                   dogovorena_cijena_vpc: Math.round(s.vpc1 * 100) / 100,
-                  dogovorena_cijena_mpc:
-                    Math.round(s.vpc1 * (1 + STOPA_PDV) * 100) / 100,
-                  rabat_1_proc: Math.round(s.rab1 * 100) / 100,
-                  // Kataloški VPC — za novu tabelu rabata (rabat se računa u bazi).
+                  // Kataloški VPC — rabat se računa u bazi iz (vpc, VPC1).
                   vpc: s.vpc,
                 })),
               }),
@@ -1888,7 +1988,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             dogovorenaCijenaError,
           );
           setDogovorenaCijenaGreska(
-            `Račun je sačuvan, ali ${izmijenjeneCijene.length} izmijenjena/e (dogovorena/e) cijena nije/su upisana/e: ${
+            `Račun je sačuvan, ali rabati za ${izmijenjeneCijene.length} izmijenjenu/e cijenu/e nisu upisani: ${
               dogovorenaCijenaError instanceof Error
                 ? dogovorenaCijenaError.message
                 : "nepoznata greška"
@@ -2341,7 +2441,10 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     if (!pendingUvozNarudzbe) return;
     const k = pendingUvozNarudzbe;
     if (odabraniPartner?.sifra_partnera !== k.sifra_kupca) return;
+    // Čeka da stignu rabati ovog kupca (nova tabela) — po njima se određuju cijene.
+    if (rabatiUcitaniZa !== Number(k.sifra_kupca)) return;
 
+    const razlikeRabata: UvozRazlikaRabata[] = [];
     const preskoceniProizvodi: string[] = [];
     const ogranicenaKolicina: string[] = [];
     const upozorenjaTrazenaCijena: string[] = [];
@@ -2387,17 +2490,15 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           ? artikal.nabavna_cijena
           : parseFloat(String(artikal.nabavna_cijena)) || 0;
 
-      // Dogovorena (posebna) cijena ovog partnera za ovaj artikal — ako postoji i
-      // validna je (manja od kataloškog VPC-a, ne manja od nabavne cijene), ide u
-      // VPC1 umjesto kataloškog VPC-a, isti princip kao pri ručnom dodavanju
-      // artikla na račun (vidi handleKlikArtikl). Rabat 1 se računa kao razlika
-      // dogovorene cijene prema kataloškom VPC-u.
-      const dogovorena = dogovoreneCijeneMap.get(
-        `${String(k.sifra_kupca)}_${String(p.sifra_proizvoda)}`,
-      );
+      // Dogovoreni rabat ovog kupca za ovaj artikal (nova tabela) — ako postoji
+      // i cijena po rabatu je validna (manja od kataloškog VPC-a, ne manja od
+      // nabavne), VPC1 = VPC umanjen za rabat, Rabat 1 = taj rabat. Inače ide
+      // kataloški VPC. Isti princip kao handleKlikArtikl.
+      const rabatKupca =
+        rabatPoArtiklu.get(String(p.sifra_proizvoda)) ?? null;
       const dogovorenaVpcRaw =
-        dogovorena?.dogovorena_cijena_vpc != null
-          ? Number(dogovorena.dogovorena_cijena_vpc)
+        rabatKupca != null && vpcKatalog > 0
+          ? cijenaPoRabatu(vpcKatalog, rabatKupca)
           : null;
       const dogovorenaVpcValidna =
         dogovorenaVpcRaw != null &&
@@ -2407,13 +2508,33 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       const vpc1 = dogovorenaVpcValidna
         ? (dogovorenaVpcRaw as number)
         : vpcKatalog;
-      const rab1 = dogovorenaVpcValidna
-        ? Math.round(
-            ((vpcKatalog - (dogovorenaVpcRaw as number)) / vpcKatalog) *
-              100 *
-              100,
-          ) / 100
-        : 0;
+      const rab1 = dogovorenaVpcValidna ? (rabatKupca as number) : 0;
+
+      // Samo provjera za operatera: stara tabela dogovorenih cijena se više ne
+      // koristi za cijenu, ali ako artikal tamo ima cijenu, a u novoj nema
+      // rabata ili rabat daje drugu cijenu, operater dobija upozorenje.
+      const stara = dogovoreneCijeneMap.get(
+        `${String(k.sifra_kupca)}_${String(p.sifra_proizvoda)}`,
+      );
+      const staraCijena =
+        stara?.dogovorena_cijena_vpc != null
+          ? Number(stara.dogovorena_cijena_vpc)
+          : null;
+      if (
+        staraCijena != null &&
+        staraCijena > 0 &&
+        (dogovorenaVpcRaw == null ||
+          Math.abs(staraCijena - dogovorenaVpcRaw) >= 0.01)
+      ) {
+        razlikeRabata.push({
+          sifra_proizvoda: artikal.sifra_proizvoda,
+          naziv_proizvoda: artikal.naziv_proizvoda,
+          vpc: vpcKatalog,
+          staraCijena,
+          rabat: rabatKupca,
+          novaCijena: dogovorenaVpcRaw,
+        });
+      }
 
       // Dogovorena ispod nabavne se ne stavlja sama na račun (stavka ide po VPC-u),
       // a kataloški VPC ispod nabavne ostaje — o oba slučaja odlučuje operater.
@@ -2493,6 +2614,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
 
     setStavke(noveStavke);
     setUvozIspodNabavne(ispodNabavne);
+    setUvozRazlikeRabata(razlikeRabata);
     setPendingUvozNarudzbe(null);
     if (preskoceniProizvodi.length > 0) {
       alert(
@@ -2515,6 +2637,8 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
     artikli,
     odabranaPodgrupa,
     dogovoreneCijeneMap,
+    rabatiUcitaniZa,
+    rabatPoArtiklu,
   ]);
 
   return (
@@ -2886,13 +3010,26 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                       : {}
                   }
                 >
-                  Dogovoreni
+                  Istorija
                 </button>
                 <button
-                  onClick={() => void otvoriRabatiPartnera()}
-                  disabled={!odabraniPartner}
-                  title="Rabati upisani u novu tabelu za izabranog partnera"
-                  className="px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all text-gray-500 dark:text-[#7d7498] enabled:hover:text-gray-700 dark:enabled:hover:text-[#c5bfd8] disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    // Cijela lista artikala sa dogovorenim rabatom — bez ranije
+                    // izabrane grupe i teksta pretrage.
+                    setFilterArtikala("rabati");
+                    setOdabranaGrupa(null);
+                    setPretragaArtikala("");
+                  }}
+                  disabled={!imaRabatArtikala}
+                  title="Artikli sa dogovorenim rabatom za izabranog partnera"
+                  className={`px-2 py-0.5 rounded-full text-[9px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    filterArtikala === "rabati"
+                      ? "text-white"
+                      : "text-gray-500 dark:text-[#7d7498] enabled:hover:text-gray-700 dark:enabled:hover:text-[#c5bfd8]"
+                  }`}
+                  style={
+                    filterArtikala === "rabati" ? { background: PRIMARY } : {}
+                  }
                 >
                   Rabati
                 </button>
@@ -2961,7 +3098,9 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
             {/* Lista artikala — filter "Dogovoreni" ima posebnu pozadinu */}
             <div
               className={`flex-1 overflow-y-auto ${
-                filterArtikala === "dogovoreni" && !rezimUsluga
+                (filterArtikala === "dogovoreni" ||
+                  filterArtikala === "rabati") &&
+                !rezimUsluga
                   ? "bg-amber-50 dark:bg-amber-950/20"
                   : ""
               }`}
@@ -2972,9 +3111,21 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                 <span className="min-w-0 flex-1 text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
                   Naziv artikla
                 </span>
-                <span className="w-20 mr-12 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                <span
+                  className={`w-20 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide ${prikaziRabat ? "" : "mr-12"}`}
+                >
                   Količina
                 </span>
+                {prikaziRabat && (
+                  <>
+                    <span className="w-16 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                      Akt. VPC
+                    </span>
+                    <span className="w-12 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
+                      Rabat
+                    </span>
+                  </>
+                )}
                 <span className="w-16 flex-shrink-0 text-right text-[10px] font-semibold text-gray-500 dark:text-[#7d7498] uppercase tracking-wide">
                   VPC
                 </span>
@@ -2999,11 +3150,29 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                   const nivelacija = nivelacijeMap.get(
                     String(a.sifra_proizvoda),
                   );
+                  // Uz filter "Rabati": aktuelni VPC, rabat kupca i VPC po rabatu.
+                  const vpcKatalogArtikla = Number(a.vpc) || 0;
+                  const rabatArtikla =
+                    rabatPoArtiklu.get(String(a.sifra_proizvoda)) ?? null;
+                  const vpcPoRabatu =
+                    Math.round(
+                      vpcKatalogArtikla * (1 - (rabatArtikla ?? 0) / 100) * 100,
+                    ) / 100;
                   return (
                     <div
                       key={a.sifra_proizvoda}
                       onClick={() => !nemaStanje && handleKlikArtikl(a)}
                       onContextMenu={(e) => {
+                        if (prikaziRabat && rabatArtikla != null) {
+                          e.preventDefault();
+                          setRabatGreska(null);
+                          setRabatZaIzmjenu({
+                            artikal: a,
+                            rabat: rabatArtikla.toFixed(2),
+                            aktivno: true,
+                          });
+                          return;
+                        }
                         if (Number(a.kolicina_proizvoda) > 0) {
                           e.preventDefault();
                           setArtikalZaNivelisanje(a);
@@ -3043,19 +3212,33 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
                           </div>
                         </div>
                         <div
-                          className="w-20 mr-12 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap"
+                          className={`w-20 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap ${prikaziRabat ? "" : "mr-12"}`}
                           style={{ color: nemaStanje ? undefined : ACCENT }}
                         >
                           {Number(a.kolicina_proizvoda).toFixed(3)}
                         </div>
+                        {prikaziRabat && (
+                          <>
+                            <div className="w-16 flex-shrink-0 text-right text-sm font-bold whitespace-nowrap text-gray-500 dark:text-[#7d7498]">
+                              {vpcKatalogArtikla.toFixed(2)}
+                            </div>
+                            <div className="w-12 flex-shrink-0 text-right text-[13px] font-bold whitespace-nowrap text-red-500">
+                              {rabatArtikla != null
+                                ? `${rabatArtikla.toFixed(2)}%`
+                                : ""}
+                            </div>
+                          </>
+                        )}
                         <div className="w-16 flex-shrink-0 flex flex-col items-end gap-1">
                           <div
                             className="text-sm font-bold whitespace-nowrap"
                             style={{ color: PRIMARY }}
                           >
-                            {typeof a.vpc === "number"
-                              ? a.vpc.toFixed(2)
-                              : a.vpc}
+                            {prikaziRabat
+                              ? vpcPoRabatu.toFixed(2)
+                              : typeof a.vpc === "number"
+                                ? a.vpc.toFixed(2)
+                                : a.vpc}
                           </div>
                           {nivelacija && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-sky-500 text-white text-[9px] font-bold uppercase tracking-wide shadow-sm animate-pulse">
@@ -3576,6 +3759,132 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
       </div>
       {/* kraj flex-col wrapper */}
 
+      {/* Modal izmjena rabata kupca (desni klik uz filter "Rabati") */}
+      {rabatZaIzmjenu &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !rabatCuvanje)
+                setRabatZaIzmjenu(null);
+            }}
+          >
+            <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-[420px] overflow-hidden">
+              <div
+                className="px-5 py-3 flex items-center gap-3"
+                style={{ background: PRIMARY }}
+              >
+                <Percent size={18} className="text-white flex-shrink-0" />
+                <span className="font-bold text-white text-base truncate">
+                  {rabatZaIzmjenu.artikal.naziv_proizvoda}
+                </span>
+                <button
+                  onClick={() => setRabatZaIzmjenu(null)}
+                  disabled={rabatCuvanje}
+                  className="ml-auto text-white/80 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              {(() => {
+                const vpc = Number(rabatZaIzmjenu.artikal.vpc) || 0;
+                const r = Number(rabatZaIzmjenu.rabat.replace(",", "."));
+                const cijena =
+                  Number.isFinite(r) && r > 0 && r < 100
+                    ? (Math.round(vpc * (1 - r / 100) * 100) / 100).toFixed(2)
+                    : "—";
+                return (
+                  <div className="p-5 flex flex-col gap-3 text-sm">
+                    <div className="text-gray-500 dark:text-[#7d7498]">
+                      {odabraniPartner?.naziv_partnera} · šifra{" "}
+                      {rabatZaIzmjenu.artikal.sifra_proizvoda}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 items-end">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase text-gray-500 dark:text-[#7d7498]">
+                          Akt. VPC
+                        </div>
+                        <div className="font-bold text-gray-800 dark:text-[#ede9f6]">
+                          {vpc.toFixed(2)}
+                        </div>
+                      </div>
+                      <label>
+                        <div className="text-[10px] font-semibold uppercase text-gray-500 dark:text-[#7d7498]">
+                          Rabat (%)
+                        </div>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          autoFocus
+                          value={rabatZaIzmjenu.rabat}
+                          disabled={!rabatZaIzmjenu.aktivno || rabatCuvanje}
+                          onChange={(e) =>
+                            setRabatZaIzmjenu({
+                              ...rabatZaIzmjenu,
+                              rabat: e.target.value,
+                            })
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void sacuvajIzmjenuRabata();
+                          }}
+                          className="w-full px-2 py-1 text-right border border-gray-200 dark:border-[#3a3158] rounded-lg bg-[#faf9fc] dark:bg-[#1c1828] text-gray-800 dark:text-[#ede9f6] focus:outline-none focus:border-purple-400 disabled:opacity-50"
+                        />
+                      </label>
+                      <div className="text-right">
+                        <div className="text-[10px] font-semibold uppercase text-gray-500 dark:text-[#7d7498]">
+                          VPC po rabatu
+                        </div>
+                        <div className="font-bold text-red-500">{cijena}</div>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-gray-700 dark:text-[#c5bfd8]">
+                      <input
+                        type="checkbox"
+                        checked={!rabatZaIzmjenu.aktivno}
+                        disabled={rabatCuvanje}
+                        onChange={(e) =>
+                          setRabatZaIzmjenu({
+                            ...rabatZaIzmjenu,
+                            aktivno: !e.target.checked,
+                          })
+                        }
+                      />
+                      Rabat više nije aktivan
+                    </label>
+                    {rabatGreska && (
+                      <div className="text-red-500 text-xs">{rabatGreska}</div>
+                    )}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => setRabatZaIzmjenu(null)}
+                        disabled={rabatCuvanje}
+                        className="px-4 py-1.5 rounded-lg text-sm font-semibold text-gray-600 dark:text-[#c5bfd8] bg-gray-100 dark:bg-[#2a2340] hover:bg-gray-200 dark:hover:bg-[#2d2648]"
+                      >
+                        Odustani
+                      </button>
+                      <button
+                        onClick={() => void sacuvajIzmjenuRabata()}
+                        disabled={rabatCuvanje}
+                        className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5 disabled:opacity-60"
+                        style={{
+                          background: rabatZaIzmjenu.aktivno ? PRIMARY : "#dc2626",
+                        }}
+                      >
+                        {rabatCuvanje && (
+                          <Loader2 size={14} className="animate-spin" />
+                        )}
+                        {rabatZaIzmjenu.aktivno ? "Sačuvaj" : "Deaktiviraj"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Modal nivelisanje cijena */}
       {artikalZaNivelisanje &&
         ReactDOM.createPortal(
@@ -3730,122 +4039,91 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           document.body,
         )}
 
-      {/* Pregled nove tabele rabata (erp.partneri_dogovoreni_rabati) za
-          izabranog partnera — samo informativno, cijene na računu se i dalje
-          vuku iz stare tabele dogovorenih cijena. */}
-      {rabatiModal &&
+      {/* Upozorenje nakon uvoza sa terena — stara tabela dogovorenih cijena se
+          ne slaže sa novom tabelom rabata (cijena je određena po novoj). */}
+      {uvozRazlikeRabata.length > 0 &&
         ReactDOM.createPortal(
           <div
             className="fixed inset-0 z-[9999] flex items-center justify-center"
             style={{ background: "rgba(0,0,0,0.45)" }}
             onMouseDown={(e) => {
-              if (e.target === e.currentTarget) setRabatiModal(false);
+              if (e.target === e.currentTarget) setUvozRazlikeRabata([]);
             }}
           >
             <div className="bg-white dark:bg-[#261f38] rounded-2xl shadow-2xl border border-gray-100 dark:border-[#2d2648] w-fit max-w-[95vw] max-h-[85vh] flex flex-col overflow-hidden">
               <div
-                className="px-5 py-3 flex items-center gap-3 flex-shrink-0"
-                style={{ background: PRIMARY }}
+                className="px-6 py-4 flex items-center gap-3 flex-shrink-0"
+                style={{ background: "#f59e0b" }}
               >
-                <Percent size={18} className="text-white flex-shrink-0" />
+                <AlertTriangle size={20} className="text-white flex-shrink-0" />
                 <span className="font-bold text-white text-base">
-                  Rabati — {odabraniPartner?.naziv_partnera ?? ""}
+                  Provjerite rabat kupca
                 </span>
-                <button
-                  onClick={() => setRabatiModal(false)}
-                  className="ml-auto text-white/80 hover:text-white"
-                >
-                  <X size={18} />
-                </button>
               </div>
-              <div className="p-4 overflow-auto">
-                {rabatiLoading ? (
-                  <div className="px-3 py-8 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
-                    <Loader2 size={16} className="animate-spin" /> Učitavanje...
-                  </div>
-                ) : rabatiGreska ? (
-                  <div className="px-3 py-8 text-center text-sm text-red-500">
-                    {rabatiGreska}
-                  </div>
-                ) : rabatiPartnera.length === 0 ? (
-                  <div className="px-3 py-8 text-center text-sm text-gray-400">
-                    Nema upisanih rabata za ovog partnera.
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-gray-100 dark:border-[#2d2648] overflow-x-auto">
-                    <table className="table-auto text-sm">
-                      <thead>
-                        <tr>
-                          {[
-                            ["Proizvod", false],
-                            ["Rabat %", true],
-                            ["VPC pri dogovoru", true],
-                            ["Orijent. cijena", true],
-                            ["Trenutni VPC", true],
-                            ["Cijena po rabatu", true],
-                            ["Izmijenjeno", false],
-                          ].map(([naslov, desno]) => (
-                            <th
-                              key={naslov as string}
-                              className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${desno ? "text-right" : "text-left"}`}
-                              style={{ background: PRIMARY }}
-                            >
-                              {naslov}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rabatiPartnera.map((r) => {
-                          const artikal = artikli.find(
-                            (a) => String(a.sifra_proizvoda) === String(r.proizvod_id),
-                          );
-                          const rabat = Number(r.rabat_1_proc) || 0;
-                          const vpcTrenutni = artikal
-                            ? Number(artikal.vpc) || 0
-                            : null;
-                          const cijenaPoRabatu =
-                            vpcTrenutni != null
-                              ? Math.round(vpcTrenutni * (1 - rabat / 100) * 100) / 100
-                              : null;
-                          const broj = (v: number | string | null | undefined) =>
-                            v == null || v === "" ? "—" : Number(v).toFixed(2);
-                          return (
-                            <tr
-                              key={r.sifra_tbl}
-                              className={`border-b border-gray-200 dark:border-[#3a3158] [&>td]:py-1 ${r.aktivno ? "" : "opacity-50"}`}
-                            >
-                              <td className="px-3 whitespace-nowrap text-left text-gray-600 dark:text-[#c5bfd8]">
-                                {artikal?.naziv_proizvoda ?? "(nepoznat)"}
-                                <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
-                                  {r.proizvod_id}
-                                </span>
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-right font-bold text-gray-800 dark:text-[#ede9f6]">
-                                {rabat.toFixed(2)}%
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
-                                {broj(r.vpc_pri_dogovoru)}
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
-                                {broj(r.orijentaciona_cijena_vpc)}
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
-                                {broj(vpcTrenutni)}
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-right font-bold text-gray-800 dark:text-[#ede9f6]">
-                                {broj(cijenaPoRabatu)}
-                              </td>
-                              <td className="px-3 whitespace-nowrap text-left text-gray-600 dark:text-[#c5bfd8]">
-                                {formatDatumVrijeme(r.vreme_izmjene)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+              <div className="px-6 pt-4 text-sm text-gray-700 dark:text-[#c5bfd8] flex-shrink-0">
+                Provjerite da li kupac{" "}
+                <b>{odabraniPartner?.naziv_partnera ?? ""}</b> ima pravo na
+                rabat i da li je zadana cijena dobra. Cijena na računu je
+                određena po novoj tabeli rabata.
+              </div>
+              <div className="px-6 py-4 overflow-auto">
+                <table className="table-auto text-sm">
+                  <thead>
+                    <tr>
+                      {[
+                        ["Artikal", false],
+                        ["Akt. VPC", true],
+                        ["Stara cijena", true],
+                        ["Rabat", true],
+                        ["Cijena na računu", true],
+                      ].map(([naslov, desno]) => (
+                        <th
+                          key={naslov as string}
+                          className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap text-white ${desno ? "text-right" : "text-left"}`}
+                          style={{ background: PRIMARY }}
+                        >
+                          {naslov}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uvozRazlikeRabata.map((r) => (
+                      <tr
+                        key={String(r.sifra_proizvoda)}
+                        className="border-b border-gray-200 dark:border-[#3a3158] [&>td]:py-1"
+                      >
+                        <td className="px-3 whitespace-nowrap text-left text-gray-600 dark:text-[#c5bfd8]">
+                          {r.naziv_proizvoda}
+                          <span className="ml-2 text-[10px] text-gray-400 dark:text-[#5f5878]">
+                            {r.sifra_proizvoda}
+                          </span>
+                        </td>
+                        <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
+                          {r.vpc.toFixed(2)}
+                        </td>
+                        <td className="px-3 whitespace-nowrap text-right text-gray-600 dark:text-[#c5bfd8]">
+                          {r.staraCijena.toFixed(2)}
+                        </td>
+                        <td className="px-3 whitespace-nowrap text-right font-bold text-red-500">
+                          {r.rabat != null ? `${r.rabat.toFixed(2)}%` : "nema"}
+                        </td>
+                        <td className="px-3 whitespace-nowrap text-right font-bold text-gray-800 dark:text-[#ede9f6]">
+                          {(r.novaCijena ?? r.vpc).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-6 pb-5 flex-shrink-0">
+                <button
+                  onClick={() => setUvozRazlikeRabata([])}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:brightness-110"
+                  style={{ background: PRIMARY }}
+                >
+                  Razumijem
+                </button>
               </div>
             </div>
           </div>,
@@ -3869,7 +4147,7 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
               >
                 <AlertTriangle size={20} className="text-white flex-shrink-0" />
                 <span className="font-bold text-white text-base">
-                  Dogovorene cijene nisu sačuvane
+                  Dogovoreni rabati nisu sačuvani
                 </span>
               </div>
               <div className="px-6 py-5">
@@ -4376,15 +4654,13 @@ export function ZiralniRacuni({ javiStatusPina }: ZiralniRacuniProps = {}) {
           // Da li VPC1 trenutno odgovara dogovorenoj (posebnoj) cijeni ovog partnera
           // za ovaj artikal — koristi se samo za vizuelno obilježavanje polja
           // crvenim okvirom; ako operater ručno promijeni VPC1, okvir nestaje.
-          const dogovorenaCijena = odabraniPartner
-            ? dogovoreneCijeneMap.get(
-                `${String(odabraniPartner.sifra_partnera)}_${String(artikalZaUnos.sifra_proizvoda)}`,
-              )
+          const rabatKupcaZaUnos = odabraniPartner
+            ? rabatPoArtiklu.get(String(artikalZaUnos.sifra_proizvoda))
             : undefined;
           const dogovorenaVpcAktivna =
-            dogovorenaCijena?.dogovorena_cijena_vpc != null &&
+            rabatKupcaZaUnos != null &&
             Math.abs(
-              brojVpc1 - Number(dogovorenaCijena.dogovorena_cijena_vpc),
+              brojVpc1 - cijenaPoRabatu(vpcKatalog, rabatKupcaZaUnos),
             ) < 0.005;
 
           const izracunajVpcIzRabata = (baza: number, rab: string) => {
