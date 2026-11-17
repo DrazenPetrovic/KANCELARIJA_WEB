@@ -13,7 +13,31 @@ export const getZatvoreniRadniNalozi = async (_req, res) => {
   }
 };
 
-export const getZatvoreniRadniNalogDetalji = async (req, res) => {
+export const getMagacin1 = async (_req, res) => {
+  try {
+    return res.json(await RadniNalogService.getMagacin1());
+  } catch (error) {
+    console.error("getMagacin1 error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Greška pri preuzimanju magacina 1",
+    });
+  }
+};
+
+export const getMagacin2 = async (_req, res) => {
+  try {
+    return res.json(await RadniNalogService.getMagacin2());
+  } catch (error) {
+    console.error("getMagacin2 error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Greška pri preuzimanju magacina 2",
+    });
+  }
+};
+
+export const getZatvoreniRadniNalogDetalji =async (req, res) => {
   try {
     const sifra = parseInt(req.params.sifra);
     if (!Number.isFinite(sifra)) {
