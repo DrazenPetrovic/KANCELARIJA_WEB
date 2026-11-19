@@ -472,7 +472,7 @@ function VezaniRacunModal({
   vrste,
   pocetni,
   glavniPartnerId,
-  zauzetiPartneri,
+  zauzetiRacuni,
   proizvodi,
   onSacuvaj,
   onZatvori,
@@ -482,9 +482,9 @@ function VezaniRacunModal({
   pocetni: VezaniRacun | null;
   // Dobavljač glavne kalkulacije — ne smije biti partner vezanog troška.
   glavniPartnerId: number | null;
-  // Partneri koji već imaju račun ZT na ovoj kalkulaciji — jedan partner
-  // može imati samo jedan račun (jedan red u kalkulacija_gl).
-  zauzetiPartneri: number[];
+  // Ostali ZT računi na ovoj kalkulaciji — isti partner može imati više
+  // računa, ali ne isti broj računa (partner + broj = jedan red u kalkulacija_gl).
+  zauzetiRacuni: { partnerId: number; brojRacuna: string }[];
   // Proizvodi sa kalkulacije — trošak se može vezati za jedan od njih.
   proizvodi: { sifra: number; naziv: string; kolicina: number; jm: string }[];
   onSacuvaj: (r: Omit<VezaniRacun, "id">) => void;
@@ -537,9 +537,7 @@ function VezaniRacunModal({
     const q = pretraga.trim().toLowerCase();
     // Dobavljač glavne kalkulacije se ne nudi.
     const dozvoljeni = partneri.filter(
-      (p) =>
-        p.partner_id !== glavniPartnerId &&
-        !zauzetiPartneri.includes(p.partner_id),
+      (p) => p.partner_id !== glavniPartnerId,
     );
     const l = q
       ? dozvoljeni.filter(
@@ -551,7 +549,7 @@ function VezaniRacunModal({
         )
       : dozvoljeni;
     return l.slice(0, 60);
-  }, [partneri, pretraga, glavniPartnerId, zauzetiPartneri]);
+  }, [partneri, pretraga, glavniPartnerId]);
 
   const ponistiPartnera = () => {
     setPartner(null);
@@ -563,12 +561,6 @@ function VezaniRacunModal({
     if (p.partner_id === glavniPartnerId) {
       setGreska(
         "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
-      );
-      return;
-    }
-    if (zauzetiPartneri.includes(p.partner_id)) {
-      setGreska(
-        "Ovaj partner već ima račun vezanih troškova na kalkulaciji — dodajte stavke na postojeći račun.",
       );
       return;
     }
@@ -690,11 +682,18 @@ function VezaniRacunModal({
       return setGreska(
         "Partner vezanog troška ne može biti isti kao dobavljač kalkulacije.",
       );
-    if (zauzetiPartneri.includes(partner.partner_id))
-      return setGreska(
-        "Ovaj partner već ima račun vezanih troškova na kalkulaciji — dodajte stavke na postojeći račun.",
-      );
     if (!brojRacuna.trim()) return setGreska("Unesite broj računa.");
+    const kljucBroja = brojRacuna.trim().toLowerCase();
+    if (
+      zauzetiRacuni.some(
+        (r) =>
+          r.partnerId === partner.partner_id &&
+          r.brojRacuna.trim().toLowerCase() === kljucBroja,
+      )
+    )
+      return setGreska(
+        "Ovaj partner već ima račun sa tim brojem na kalkulaciji — dodajte stavke na postojeći račun.",
+      );
     if (!datum) return setGreska("Unesite datum računa.");
     if (zapocetaStavka)
       return setGreska(
@@ -2148,11 +2147,11 @@ export function KalkulacijaUnos() {
             kolicina: s.kolicina,
             jm: s.jm,
           }))}
-          zauzetiPartneri={racuni
+          zauzetiRacuni={racuni
             .filter(
               (r) => trosakModal === "novi" || r.id !== trosakModal?.id,
             )
-            .map((r) => r.partnerId)}
+            .map((r) => ({ partnerId: r.partnerId, brojRacuna: r.brojRacuna }))}
           onSacuvaj={sacuvajTrosak}
           onZatvori={() => setTrosakModal(null)}
         />
