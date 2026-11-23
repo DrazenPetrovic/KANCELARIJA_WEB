@@ -41,6 +41,18 @@ export const getMagacin2 = async () => {
   });
 };
 
+// Prenos jednog proizvoda iz magacina 1 u magacin 2.
+// payload: { sifra_proizvoda, kolicina, transferna_cijena, vpc }
+export const prenosMagacin1Magacin2 = async (payload) => {
+  return withConnection(async (connection) => {
+    const [rows] = await connection.query(
+      "CALL erp.radni_nalog_magacin_1_magacin_2_prenos(?)",
+      [JSON.stringify(payload)],
+    );
+    return { success: true, data: rows?.[0]?.[0] ?? null };
+  });
+};
+
 export const getZatvoreniRadniNalogDetalji =async (sifraRadnogNaloga) => {
   return withConnection(async (connection) => {
     const [rows] = await connection.execute(

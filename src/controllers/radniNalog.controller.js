@@ -37,6 +37,45 @@ export const getMagacin2 = async (_req, res) => {
   }
 };
 
+export const prenosMagacin1Magacin2 = async (req, res) => {
+  try {
+    const sifra_proizvoda = parseInt(req.body?.sifra_proizvoda);
+    const kolicina = Number(req.body?.kolicina);
+    const transferna_cijena = Number(req.body?.transferna_cijena);
+    const vpc = Number(req.body?.vpc);
+
+    if (
+      !Number.isFinite(sifra_proizvoda) ||
+      !(kolicina > 0) ||
+      !(transferna_cijena > 0) ||
+      !(vpc > 0)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Neispravni podaci za prenos",
+      });
+    }
+
+    const result = await RadniNalogService.prenosMagacin1Magacin2({
+      sifra_proizvoda,
+      kolicina,
+      transferna_cijena,
+      vpc,
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("prenosMagacin1Magacin2 error:", error);
+    // Greške iz procedure (SIGNAL SQLSTATE '45000') vraćamo operateru kako jesu.
+    if (error?.sqlState === "45000") {
+      return res.status(400).json({ success: false, message: error.sqlMessage });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Greška pri prenosu proizvoda",
+    });
+  }
+};
+
 export const getZatvoreniRadniNalogDetalji =async (req, res) => {
   try {
     const sifra = parseInt(req.params.sifra);

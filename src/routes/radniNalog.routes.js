@@ -5,6 +5,7 @@ const router = Router();
 
 router.get("/magacin-1", RadniNalogController.getMagacin1);
 router.get("/magacin-2", RadniNalogController.getMagacin2);
+router.post("/prenos", RadniNalogController.prenosMagacin1Magacin2);
 router.get("/zatvoreni",RadniNalogController.getZatvoreniRadniNalozi);
 router.get("/zatvoreni/:sifra", RadniNalogController.getZatvoreniRadniNalogDetalji);
 
