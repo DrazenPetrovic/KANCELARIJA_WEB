@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FilePlus, PackageCheck, Truck } from "lucide-react";
 import { RadniNalogZatvoreni } from "./RadniNalogZatvoreni";
 import { RadniNalogPrenos } from "./RadniNalogPrenos";
+import { RadniNalogUnos } from "./RadniNalogUnos";
 
 type Sekvenca = "unos" | "prenos" | "zatvoreni";
 
@@ -47,11 +48,7 @@ export function RadniNalog() {
 
       {aktivna === "prenos" && <RadniNalogPrenos />}
 
-      {aktivna === "unos" && (
-        <div className="bg-white dark:bg-[#261f38] rounded-2xl border border-gray-100 dark:border-[#2d2648] shadow-sm py-20 text-center text-sm text-gray-400 dark:text-[#5f5878]">
-          U izradi.
-        </div>
-      )}
+      {aktivna === "unos" && <RadniNalogUnos />}
     </div>
   );
 }

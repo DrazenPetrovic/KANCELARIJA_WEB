@@ -37,6 +37,18 @@ export const getMagacin2 = async (_req, res) => {
   }
 };
 
+export const getUnosPodaci = async (_req, res) => {
+  try {
+    return res.json(await RadniNalogService.getUnosPodaci());
+  } catch (error) {
+    console.error("getUnosPodaci error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Greška pri preuzimanju sirovina i proizvoda",
+    });
+  }
+};
+
 export const prenosMagacin1Magacin2 = async (req, res) => {
   try {
     const sifra_proizvoda = parseInt(req.body?.sifra_proizvoda);
